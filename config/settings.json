@@ -1,0 +1,45 @@
+{
+  "location": {
+    "label": "Tokyo 153-0051",
+    "latitude": 35.6580,
+    "longitude": 139.6835,
+    "timezone": "Asia/Tokyo"
+  },
+  "display": {
+    "width": 960,
+    "height": 640,
+    "mode": "local_preview",
+    "waveshare_module_candidates": [
+      "waveshare_epd.epd10in2g",
+      "waveshare_epd.epd10in2_G"
+    ]
+  },
+  "runtime": {
+    "dir": "runtime",
+    "payload_file": "runtime/last_payload.json",
+    "brief_file": "runtime/last_brief.json",
+    "hero_file": "runtime/hero.png",
+    "final_file": "runtime/final_display.png",
+    "preview_file": "runtime/preview.png",
+    "stale_file": "runtime/last_success.json",
+    "log_file": "runtime/logs/weather_display.log"
+  },
+  "pipeline": {
+    "open_meteo_timeout_seconds": 8,
+    "open_meteo_retry_count": 2,
+    "allow_sample_weather_on_failure": true,
+    "sample_weather_file": "config/sample_openmeteo.json",
+    "brief_timeout_seconds": 8,
+    "image_timeout_seconds": 20,
+    "enable_openrouter_brief": false,
+    "enable_openrouter_image": true
+  },
+  "openrouter": {
+    "base_url": "https://openrouter.ai/api/v1",
+    "text_model": "openai/gpt-4o-mini",
+    "image_tool_model": "openai/gpt-5.2",
+    "image_model": "google/gemini-3.1-flash-image-preview",
+    "api_key_file": "~/.openrouter.key",
+    "ca_bundle_file": ""
+  }
+}
