@@ -71,32 +71,78 @@ def _hourly_rows(raw, date_str):
     return rows
 
 
-def _heavy_rain_rows(rows):
-    heavy_codes = {63, 65, 81, 82, 95}
+def _rain_rows_by_intensity(rows):
+    # Open-Meteo weather_code groups:
+    # light: drizzle/slight rain/showers, regular: moderate rain/showers,
+    # heavy: heavy rain/violent showers/thunderstorm.
+    light_codes = {51, 53, 55, 61, 80}
+    regular_codes = {63, 81}
+    heavy_codes = {65, 82, 95}
+    light = []
+    regular = []
     heavy = []
     for row in rows:
-        # Treat heavy rain as either strong measured precip, or strong probability
-        # with a weather code indicating moderate/heavy rain.
-        if row["rain_mm"] >= 1.0:
+        code = row["weather_code"]
+        rain_mm = row["rain_mm"]
+        rain_prob = row["rain_probability_pct"]
+
+        if rain_mm >= 1.5:
             heavy.append(row)
             continue
-        if row["rain_probability_pct"] >= 75 and row["weather_code"] in heavy_codes:
+        if rain_mm >= 0.6:
+            regular.append(row)
+            continue
+        if rain_mm >= 0.1:
+            light.append(row)
+            continue
+
+        if rain_prob >= 75 and code in (regular_codes | heavy_codes):
             heavy.append(row)
-    return heavy
+            continue
+        if rain_prob >= 55 and code in (light_codes | regular_codes | heavy_codes):
+            regular.append(row)
+            continue
+        if rain_prob >= 35 and code in (light_codes | regular_codes | heavy_codes):
+            light.append(row)
+            continue
+
+        if code in heavy_codes:
+            heavy.append(row)
+        elif code in regular_codes:
+            regular.append(row)
+        elif code in light_codes:
+            light.append(row)
+
+    return {"light": light, "regular": regular, "heavy": heavy}
 
 
 def _rain_window(rows):
-    heavy = _heavy_rain_rows(rows)
-    if not heavy:
-        return "No heavy rain expected"
-    start = heavy[0]["time"].split("T", 1)[1][:5]
-    end = heavy[-1]["time"].split("T", 1)[1][:5]
+    rain_rows = _rain_rows_by_intensity(rows)
+    if rain_rows["heavy"]:
+        level = "heavy"
+        target = rain_rows["heavy"]
+    elif rain_rows["regular"]:
+        level = "regular"
+        target = rain_rows["regular"]
+    elif rain_rows["light"]:
+        level = "light"
+        target = rain_rows["light"]
+    else:
+        return "none", "No rain expected"
+
+    start = target[0]["time"].split("T", 1)[1][:5]
+    end = target[-1]["time"].split("T", 1)[1][:5]
+    prefix = {
+        "light": "Light rain possible",
+        "regular": "Rain likely",
+        "heavy": "Heavy rain likely",
+    }[level]
     if start == end:
-        return f"Heavy rain likely around {start}"
-    return f"Heavy rain likely {start}-{end}"
+        return level, f"{prefix} around {start}"
+    return level, f"{prefix} {start}-{end}"
 
 
-def _headline(today, heavy_rain_expected, yahoo_today, yahoo_alerts):
+def _headline(today, rain_level, yahoo_today, yahoo_alerts):
     if yahoo_alerts:
         first = yahoo_alerts[0]
         candidate = f"{first.get('level', 'Alert')}: {first.get('text', '')}".strip()
@@ -106,8 +152,12 @@ def _headline(today, heavy_rain_expected, yahoo_today, yahoo_alerts):
         candidate = f"{yahoo_today['condition']} expected today."
         if _is_ascii_text(candidate):
             return candidate
-    if heavy_rain_expected:
+    if rain_level == "heavy":
         return "Heavy rain window expected today."
+    if rain_level == "regular":
+        return "Rain likely through parts of today."
+    if rain_level == "light":
+        return "Light rain possible today."
     if today["temp_max_c"] >= 30:
         return "Hot daytime conditions."
     if today["temp_min_c"] <= 5:
@@ -115,7 +165,7 @@ def _headline(today, heavy_rain_expected, yahoo_today, yahoo_alerts):
     return f"{today['condition']} with mild shifts."
 
 
-def _subtitle(today, rain_window, tomorrow_daily, heavy_rain_expected, yahoo_today, yahoo_indices):
+def _subtitle(today, rain_window, tomorrow_daily, rain_level, yahoo_today, yahoo_indices):
     umbrella_note = None
     if yahoo_indices:
         for label in ("傘", "umbrella"):
@@ -129,8 +179,12 @@ def _subtitle(today, rain_window, tomorrow_daily, heavy_rain_expected, yahoo_tod
         candidate = f"{rain_window}. Wind: {yahoo_today['wind']}"
         if _is_ascii_text(candidate):
             return candidate
-    if heavy_rain_expected:
+    if rain_level == "heavy":
         return f"{rain_window}. Carry an umbrella."
+    if rain_level == "regular":
+        return f"{rain_window}. Umbrella recommended."
+    if rain_level == "light":
+        return f"{rain_window}. A light layer should be enough."
     if today["temp_max_c"] >= 30:
         return "Hydrate and avoid the hottest afternoon window."
     if today["temp_min_c"] <= 5:
@@ -138,7 +192,7 @@ def _subtitle(today, rain_window, tomorrow_daily, heavy_rain_expected, yahoo_tod
     return f"Tomorrow trends {tomorrow_daily['condition'].lower()}."
 
 
-def _bullets(today, rain_window, yahoo_today, yahoo_indices):
+def _bullets(today, rain_window, rain_level, yahoo_today, yahoo_indices):
     bullets = [rain_window, f"High {today['temp_max_c']:.0f}C / Low {today['temp_min_c']:.0f}C"]
     if yahoo_today and yahoo_today.get("wave"):
         wave_line = f"Sea/wave note: {yahoo_today['wave']}"
@@ -152,8 +206,10 @@ def _bullets(today, rain_window, yahoo_today, yahoo_indices):
                 if _is_ascii_text(line):
                     bullets.append(line)
                     return [item for item in bullets if item][:3]
-    if rain_window != "No heavy rain expected":
+    if rain_level in {"heavy", "regular"}:
         bullets.append("Carry an umbrella.")
+    elif rain_level == "light":
+        bullets.append("Only light rain risk.")
     elif today["temp_max_c"] - today["temp_min_c"] >= 9:
         bullets.append("Big temperature swing. Layering helps.")
     else:
@@ -201,8 +257,7 @@ def build_payload(context):
     today_daily = _daily_summary(raw, today_idx)
     tomorrow_daily = _daily_summary(raw, tomorrow_idx)
     today_hourly = _hourly_rows(raw, today_daily["date"])
-    rain_window = _rain_window(today_hourly)
-    heavy_rain_expected = rain_window != "No heavy rain expected"
+    rain_level, rain_window = _rain_window(today_hourly)
     yahoo_today = _first_yahoo_today(context)
     yahoo_tomorrow = _first_yahoo_tomorrow(context)
     yahoo_indices = _first_yahoo_index_items(context)
@@ -210,10 +265,11 @@ def build_payload(context):
 
     temp_range = f"{math.floor(today_daily['temp_min_c'])}C-{math.ceil(today_daily['temp_max_c'])}C"
     brief = {
-        "headline": _headline(today_daily, heavy_rain_expected, yahoo_today, yahoo_alerts),
-        "subtitle": _subtitle(today_daily, rain_window, tomorrow_daily, heavy_rain_expected, yahoo_today, yahoo_indices),
-        "bullets": _bullets(today_daily, rain_window, yahoo_today, yahoo_indices),
+        "headline": _headline(today_daily, rain_level, yahoo_today, yahoo_alerts),
+        "subtitle": _subtitle(today_daily, rain_window, tomorrow_daily, rain_level, yahoo_today, yahoo_indices),
+        "bullets": _bullets(today_daily, rain_window, rain_level, yahoo_today, yahoo_indices),
         "rain_window": rain_window,
+        "rain_level": rain_level,
         "temp_range": temp_range,
         "tomorrow_preview": (
             f"Tomorrow: {tomorrow_daily['condition']}, "
