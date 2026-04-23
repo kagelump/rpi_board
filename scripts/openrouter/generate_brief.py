@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import ROOT, get_openrouter_api_key, load_settings, read_json, write_json
+from scripts.openrouter.network import describe_network_error, urlopen_with_context
 
 
 def _is_valid_brief(brief):
@@ -26,7 +27,7 @@ def _render_prompt(template, payload):
     return template + "\n\nINPUT_JSON:\n" + json.dumps(payload, ensure_ascii=True)
 
 
-def _call_openrouter(settings, prompt):
+def _call_openrouter(settings, prompt, model_override=None):
     api_key = get_openrouter_api_key(settings)
     if not api_key:
         raise RuntimeError(
@@ -35,8 +36,9 @@ def _call_openrouter(settings, prompt):
         )
     timeout = settings["pipeline"]["brief_timeout_seconds"]
     url = settings["openrouter"]["base_url"].rstrip("/") + "/chat/completions"
+    model = model_override or settings["openrouter"]["text_model"]
     body = {
-        "model": settings["openrouter"]["text_model"],
+        "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2,
         "response_format": {"type": "json_object"},
@@ -51,10 +53,10 @@ def _call_openrouter(settings, prompt):
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as resp:
+        with urlopen_with_context(request, timeout=timeout, settings=settings) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
     except urllib.error.URLError as error:
-        raise RuntimeError(f"openrouter brief request failed: {error}") from error
+        raise RuntimeError(f"openrouter brief request failed: {describe_network_error(error)}") from error
 
     content = payload["choices"][0]["message"]["content"]
     return json.loads(content)
@@ -65,6 +67,7 @@ def main():
     parser.add_argument("--input", default=None)
     parser.add_argument("--output", default=None)
     parser.add_argument("--force-openrouter", action="store_true")
+    parser.add_argument("--model", default=None, help="Override OpenRouter text model for this run")
     args = parser.parse_args()
 
     settings = load_settings()
@@ -84,17 +87,23 @@ def main():
     template = template_path.read_text(encoding="utf-8")
     prompt = _render_prompt(template, transformed)
 
+    print(f"[brief] use_openrouter={use_openrouter}")
     try:
-        candidate = _call_openrouter(settings, prompt)
+        model_name = args.model or settings["openrouter"]["text_model"]
+        print(f"[brief] requesting OpenRouter model={model_name}")
+        candidate = _call_openrouter(settings, prompt, model_override=args.model)
         if _is_valid_brief(candidate):
             transformed["brief"] = candidate
             transformed["brief_source"] = "openrouter"
+            print("[brief] OpenRouter response accepted (valid schema).")
         else:
             transformed["brief"] = deterministic
             transformed["brief_source"] = "deterministic_fallback_invalid_schema"
-    except Exception:
+            print("[brief] OpenRouter response rejected (invalid schema); using deterministic fallback.")
+    except Exception as error:
         transformed["brief"] = deterministic
         transformed["brief_source"] = "deterministic_fallback_error"
+        print(f"[brief] OpenRouter request failed ({type(error).__name__}: {error}); using deterministic fallback.")
 
     write_json(output_path, transformed)
     print(output_path)

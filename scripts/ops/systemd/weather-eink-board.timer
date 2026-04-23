@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Weather E-Ink Board update every morning
+
+[Timer]
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+RandomizedDelaySec=180
+Unit=weather-eink-board.service
+
+[Install]
+WantedBy=timers.target

@@ -1,11 +1,24 @@
 #!/usr/bin/env python3
 import argparse
 import importlib
+import os
 import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import absolute_path, load_settings
+
+
+def _inject_waveshare_paths(path_candidates):
+    # Bookworm/Trixie stacks are more reliable with lgpio than RPi.GPIO.
+    os.environ.setdefault("GPIOZERO_PIN_FACTORY", "lgpio")
+    for raw in path_candidates:
+        candidate = Path(raw).expanduser()
+        if not candidate.exists():
+            continue
+        candidate_s = str(candidate)
+        if candidate_s not in sys.path:
+            sys.path.append(candidate_s)
 
 
 def _load_epd_module(candidates):
@@ -36,6 +49,7 @@ def main():
     except ImportError as error:
         raise RuntimeError("Pillow must be installed to push image to EPD") from error
 
+    _inject_waveshare_paths(settings["display"].get("waveshare_python_lib_candidates", []))
     epd_module, module_name = _load_epd_module(settings["display"]["waveshare_module_candidates"])
     epd = epd_module.EPD()
     epd.init()

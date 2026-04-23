@@ -90,6 +90,28 @@ def _load_hero(settings):
         return None
 
 
+def _cover_crop_top_center(image, target_width, target_height):
+    src_w, src_h = image.size
+    src_ratio = src_w / src_h
+    target_ratio = target_width / target_height
+
+    if src_ratio > target_ratio:
+        # Source is wider: crop horizontally, centered.
+        crop_h = src_h
+        crop_w = int(round(crop_h * target_ratio))
+        left = max(0, (src_w - crop_w) // 2)
+        top = 0
+    else:
+        # Source is taller: crop vertically, anchored to top.
+        crop_w = src_w
+        crop_h = int(round(crop_w / target_ratio))
+        left = 0
+        top = 0
+
+    cropped = image.crop((left, top, left + crop_w, top + crop_h))
+    return cropped.resize((target_width, target_height), Image.Resampling.LANCZOS)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default=None)
@@ -110,7 +132,7 @@ def main():
 
     hero = _load_hero(settings)
     if hero is not None:
-        hero = hero.resize((width, height))
+        hero = _cover_crop_top_center(hero, width, height)
         board.paste(hero, (0, 0))
     else:
         draw.rectangle((0, 0, width - 1, height - 1), outline=(0, 0, 0), width=3)

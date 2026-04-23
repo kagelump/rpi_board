@@ -1,0 +1,19 @@
+[Unit]
+Description=Weather E-Ink Board daily updater
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__RUN_USER__
+WorkingDirectory=__ROOT_DIR__
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/usr/bin/mkdir -p __ROOT_DIR__/runtime/logs
+ExecStart=__PYTHON_BIN__ __ROOT_DIR__/scripts/ops/preflight.py --strict
+ExecStart=__ROOT_DIR__/scripts/display/update_display.sh
+StandardOutput=append:__ROOT_DIR__/runtime/logs/weather_display.log
+StandardError=append:__ROOT_DIR__/runtime/logs/weather_display.log
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

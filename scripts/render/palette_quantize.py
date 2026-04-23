@@ -25,7 +25,8 @@ def main():
     palette_values = [255, 255, 255, 0, 0, 0, 220, 0, 0, 220, 200, 0]
     palette_values.extend([0, 0, 0] * (256 - 4))
     palette.putpalette(palette_values)
-    quantized = image.quantize(palette=palette, dither=Image.FLOYDSTEINBERG).convert("RGB")
+    # Use nearest-color mapping with no dithering so large areas stay solid.
+    quantized = image.quantize(palette=palette, dither=Image.NONE).convert("RGB")
     quantized.save(output_path)
     print(str(output_path))
 

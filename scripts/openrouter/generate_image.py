@@ -2,16 +2,14 @@
 import argparse
 import base64
 import json
-import os
 import re
-import ssl
 import sys
 import urllib.error
-import urllib.request
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import ROOT, absolute_path, get_openrouter_api_key, load_settings, read_json
+from scripts.openrouter.network import describe_network_error, urlopen_with_context
 
 
 def _extract_image_url(payload):
@@ -53,63 +51,9 @@ def _extract_markdown_image_path(payload):
     return None
 
 
-def _download_image(image_url, timeout):
-    with urllib.request.urlopen(image_url, timeout=timeout, context=_ssl_context()) as response:
+def _download_image(image_url, timeout, settings):
+    with urlopen_with_context(image_url, timeout=timeout, settings=settings) as response:
         return response.read()
-
-
-def _ssl_context():
-    ctx = ssl.create_default_context()
-    settings = load_settings()
-    ca_bundle = settings.get("openrouter", {}).get("ca_bundle_file")
-    if ca_bundle:
-        ca_path = Path(ca_bundle).expanduser()
-        if ca_path.exists():
-            ctx.load_verify_locations(cafile=str(ca_path))
-            return ctx
-
-    # Python installs on macOS can miss system trust linkage; certifi is a solid default.
-    try:
-        import certifi  # type: ignore
-
-        ctx.load_verify_locations(cafile=certifi.where())
-    except Exception:
-        pass
-    return ctx
-
-
-def _proxy_hint():
-    keys = [
-        "HTTP_PROXY",
-        "HTTPS_PROXY",
-        "ALL_PROXY",
-        "http_proxy",
-        "https_proxy",
-        "all_proxy",
-    ]
-    present = [f"{k}={os.getenv(k)}" for k in keys if os.getenv(k)]
-    if not present:
-        return "none"
-    return ", ".join(present)
-
-
-def _describe_error(error):
-    reason = getattr(error, "reason", None)
-    if isinstance(reason, ssl.SSLCertVerificationError):
-        return (
-            "TLS certificate verification failed. If you are behind a proxy with custom "
-            "root certificates, configure openrouter.ca_bundle_file in config/settings.json "
-            "to point to that CA bundle. Active proxy env: "
-            + _proxy_hint()
-        )
-    message = str(error)
-    if "Tunnel connection failed: 403" in message or "CONNECT tunnel failed" in message:
-        return (
-            "Proxy tunnel rejected OpenRouter (HTTP 403). Check proxy allowlist/policy "
-            "for openrouter.ai. Active proxy env: "
-            + _proxy_hint()
-        )
-    return message
 
 
 def _call_image_api(settings, prompt):
@@ -123,17 +67,16 @@ def _call_image_api(settings, prompt):
     url = settings["openrouter"]["base_url"].rstrip("/") + "/responses"
     image_model = settings["openrouter"]["image_model"]
     tool_model = settings["openrouter"].get("image_tool_model", settings["openrouter"]["text_model"])
+    configured_params = settings["openrouter"].get("image_generation_parameters", {})
+    tool_parameters = {"model": image_model, **configured_params}
+    tool_parameters.setdefault("output_format", "png")
     body = {
         "model": tool_model,
         "input": prompt,
         "tools": [
             {
                 "type": "openrouter:image_generation",
-                "parameters": {
-                    "model": image_model,
-                    "size": "1024x1024",
-                    "output_format": "png",
-                },
+                "parameters": tool_parameters,
             }
         ],
     }
@@ -147,7 +90,7 @@ def _call_image_api(settings, prompt):
         },
     )
     timeout = settings["pipeline"]["image_timeout_seconds"]
-    with urllib.request.urlopen(request, timeout=timeout, context=_ssl_context()) as response:
+    with urlopen_with_context(request, timeout=timeout, settings=settings) as response:
         payload = json.loads(response.read().decode("utf-8"))
 
     if payload.get("error"):
@@ -159,7 +102,7 @@ def _call_image_api(settings, prompt):
 
     image_url = _extract_image_url(payload)
     if image_url:
-        return _download_image(image_url, timeout=timeout)
+        return _download_image(image_url, timeout=timeout, settings=settings)
 
     data_image = _extract_data_image(payload)
     if data_image:
@@ -169,7 +112,7 @@ def _call_image_api(settings, prompt):
     markdown_path = _extract_markdown_image_path(payload)
     if markdown_path:
         if markdown_path.startswith(("http://", "https://")):
-            return _download_image(markdown_path, timeout=timeout)
+            return _download_image(markdown_path, timeout=timeout, settings=settings)
         local = Path(markdown_path)
         if local.exists():
             return local.read_bytes()
@@ -209,7 +152,7 @@ def main():
     except urllib.error.URLError as error:
         if output_abs.exists():
             output_abs.unlink()
-        print(f"image-fallback-blank: {_describe_error(error)}")
+        print(f"image-fallback-blank: {describe_network_error(error)}")
     except (KeyError, json.JSONDecodeError, RuntimeError) as error:
         if output_abs.exists():
             output_abs.unlink()

@@ -8,10 +8,14 @@
   "display": {
     "width": 960,
     "height": 640,
-    "mode": "local_preview",
+    "mode": "pi_display",
     "waveshare_module_candidates": [
       "waveshare_epd.epd10in2g",
       "waveshare_epd.epd10in2_G"
+    ],
+    "waveshare_python_lib_candidates": [
+      "~/e-Paper/E-paper_Separate_Program/10in2_e-Paper_G/RaspberryPi_JetsonNano/python/lib",
+      "~/e-Paper/RaspberryPi_JetsonNano/python/lib"
     ]
   },
   "runtime": {
@@ -39,6 +43,10 @@
     "text_model": "openai/gpt-4o-mini",
     "image_tool_model": "openai/gpt-5.2",
     "image_model": "google/gemini-3.1-flash-image-preview",
+    "image_generation_parameters": {
+      "aspect_ratio": "3:2",
+      "output_format": "png"
+    },
     "api_key_file": "~/.openrouter.key",
     "ca_bundle_file": ""
   }

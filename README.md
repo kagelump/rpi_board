@@ -132,6 +132,53 @@ The display script probes both module candidates:
 - `waveshare_epd.epd10in2g`
 - `waveshare_epd.epd10in2_G`
 
+## Raspberry Pi Bring-Up (SSH/tmux)
+
+From the project root on the Pi:
+
+```bash
+chmod +x scripts/ops/setup_pi.sh scripts/ops/install_waveshare_driver.sh scripts/ops/preflight.py scripts/ops/install_systemd.sh scripts/display/update_display.sh
+./scripts/ops/setup_pi.sh
+```
+
+`setup_pi.sh` installs Python GPIO deps (`spidev`, `RPi.GPIO`) and runs
+`scripts/ops/install_waveshare_driver.sh`, which will:
+
+- reuse `/home/trainboard/e-Paper` if present (copied with `sudo rsync`)
+- otherwise clone `https://github.com/waveshare/e-Paper.git` into `~/e-Paper`
+- install BCM2835 if missing
+
+Update `config/settings.json` for device mode:
+
+```json
+"display": { "mode": "pi_display" }
+```
+
+Run preflight checks:
+
+```bash
+.venv/bin/python3 scripts/ops/preflight.py
+```
+
+Manual full run:
+
+```bash
+./scripts/display/update_display.sh
+```
+
+Install daily automation (08:00 local time):
+
+```bash
+./scripts/ops/install_systemd.sh
+systemctl list-timers weather-eink-board.timer
+```
+
+See logs:
+
+```bash
+journalctl -u weather-eink-board.service -n 100 --no-pager
+```
+
 ## Design Notes (Current Layout)
 
 - Full-bleed generated image as background.
