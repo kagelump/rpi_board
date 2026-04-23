@@ -11,5 +11,8 @@ Constraints:
 - Leave the bottom 20-25% visually quiet for headline/subtitle overlay.
 - Favor centered or slightly top-centered composition to avoid clipping.
 
+Style guidance:
+{{STYLE_GUIDANCE}}
+
 Brief context:
 {{BRIEF_JSON}}
