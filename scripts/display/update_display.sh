@@ -18,6 +18,8 @@ run_step() {
 }
 
 if run_step "fetch weather" "${PYTHON_BIN}" scripts/weather/fetch_weather.py; then
+  run_step "fetch yahoo weather" "${PYTHON_BIN}" scripts/weather/fetch_yahoo_weather.py || true
+  run_step "aggregate weather sources" "${PYTHON_BIN}" scripts/weather/aggregate_weather_sources.py
   run_step "transform weather" "${PYTHON_BIN}" scripts/weather/transform_weather.py
   run_step "generate brief" "${PYTHON_BIN}" scripts/openrouter/generate_brief.py
   run_step "generate image (optional)" "${PYTHON_BIN}" scripts/openrouter/generate_image.py || true

@@ -65,20 +65,39 @@ def _hourly_rows(raw, date_str):
     return rows
 
 
+def _heavy_rain_rows(rows):
+    heavy_codes = {63, 65, 81, 82, 95}
+    heavy = []
+    for row in rows:
+        # Treat heavy rain as either strong measured precip, or strong probability
+        # with a weather code indicating moderate/heavy rain.
+        if row["rain_mm"] >= 1.0:
+            heavy.append(row)
+            continue
+        if row["rain_probability_pct"] >= 75 and row["weather_code"] in heavy_codes:
+            heavy.append(row)
+    return heavy
+
+
 def _rain_window(rows):
-    wet = [r for r in rows if r["rain_probability_pct"] >= 40 or r["rain_mm"] >= 0.2]
-    if not wet:
-        return "Low rain risk"
-    start = wet[0]["time"].split("T", 1)[1][:5]
-    end = wet[-1]["time"].split("T", 1)[1][:5]
+    heavy = _heavy_rain_rows(rows)
+    if not heavy:
+        return "No heavy rain expected"
+    start = heavy[0]["time"].split("T", 1)[1][:5]
+    end = heavy[-1]["time"].split("T", 1)[1][:5]
     if start == end:
-        return f"Rain likely around {start}"
-    return f"Rain likely {start}-{end}"
+        return f"Heavy rain likely around {start}"
+    return f"Heavy rain likely {start}-{end}"
 
 
-def _headline(today):
-    if today["rain_prob_max_pct"] >= 70:
-        return "Wet day ahead. Plan for rain."
+def _headline(today, heavy_rain_expected, yahoo_today, yahoo_alerts):
+    if yahoo_alerts:
+        first = yahoo_alerts[0]
+        return f"{first.get('level', 'Alert')}: {first.get('text', '')}".strip()
+    if yahoo_today and yahoo_today.get("condition"):
+        return f"{yahoo_today['condition']} expected today."
+    if heavy_rain_expected:
+        return "Heavy rain window expected today."
     if today["temp_max_c"] >= 30:
         return "Hot daytime conditions."
     if today["temp_min_c"] <= 5:
@@ -86,8 +105,18 @@ def _headline(today):
     return f"{today['condition']} with mild shifts."
 
 
-def _subtitle(today, rain_window, tomorrow_daily):
-    if today["rain_prob_max_pct"] >= 70:
+def _subtitle(today, rain_window, tomorrow_daily, heavy_rain_expected, yahoo_today, yahoo_indices):
+    umbrella_note = None
+    if yahoo_indices:
+        for label in ("傘", "umbrella"):
+            if label in yahoo_indices:
+                umbrella_note = yahoo_indices[label].get("note")
+                break
+    if umbrella_note:
+        return umbrella_note
+    if yahoo_today and yahoo_today.get("wind"):
+        return f"{rain_window}. Wind: {yahoo_today['wind']}"
+    if heavy_rain_expected:
         return f"{rain_window}. Carry an umbrella."
     if today["temp_max_c"] >= 30:
         return "Hydrate and avoid the hottest afternoon window."
@@ -96,9 +125,17 @@ def _subtitle(today, rain_window, tomorrow_daily):
     return f"Tomorrow trends {tomorrow_daily['condition'].lower()}."
 
 
-def _bullets(today, rain_window):
+def _bullets(today, rain_window, yahoo_today, yahoo_indices):
     bullets = [rain_window, f"High {today['temp_max_c']:.0f}C / Low {today['temp_min_c']:.0f}C"]
-    if today["rain_prob_max_pct"] >= 50:
+    if yahoo_today and yahoo_today.get("wave"):
+        bullets.append(f"Sea/wave note: {yahoo_today['wave']}")
+        return bullets[:3]
+    if yahoo_indices:
+        for label in ("重ね着", "layering"):
+            if label in yahoo_indices:
+                bullets.append(yahoo_indices[label].get("note", ""))
+                return [item for item in bullets if item][:3]
+    if rain_window != "No heavy rain expected":
         bullets.append("Carry an umbrella.")
     elif today["temp_max_c"] - today["temp_min_c"] >= 9:
         bullets.append("Big temperature swing. Layering helps.")
@@ -107,8 +144,32 @@ def _bullets(today, rain_window):
     return bullets[:3]
 
 
-def build_payload(raw_wrapper):
-    raw = raw_wrapper["raw"]
+def _first_yahoo_today(context):
+    yahoo = context.get("sources", {}).get("yahoo", {}).get("payload", {})
+    items = yahoo.get("today_tomorrow", [])
+    return items[0] if items else {}
+
+
+def _first_yahoo_tomorrow(context):
+    yahoo = context.get("sources", {}).get("yahoo", {}).get("payload", {})
+    items = yahoo.get("today_tomorrow", [])
+    return items[1] if len(items) > 1 else {}
+
+
+def _first_yahoo_index_items(context):
+    yahoo = context.get("sources", {}).get("yahoo", {}).get("payload", {})
+    days = yahoo.get("indices", {}).get("days", [])
+    if not days:
+        return {}
+    return days[0].get("items", {})
+
+
+def build_payload(context):
+    open_meteo_wrapper = context.get("sources", {}).get("open_meteo", {}).get("payload", {})
+    raw = open_meteo_wrapper.get("raw")
+    if not raw:
+        raise RuntimeError("Missing Open-Meteo payload in aggregated context")
+
     tz_name = raw.get("timezone", "Asia/Tokyo")
     now_local = datetime.now(ZoneInfo(tz_name))
     today = now_local.date()
@@ -124,12 +185,17 @@ def build_payload(raw_wrapper):
     tomorrow_daily = _daily_summary(raw, tomorrow_idx)
     today_hourly = _hourly_rows(raw, today_daily["date"])
     rain_window = _rain_window(today_hourly)
+    heavy_rain_expected = rain_window != "No heavy rain expected"
+    yahoo_today = _first_yahoo_today(context)
+    yahoo_tomorrow = _first_yahoo_tomorrow(context)
+    yahoo_indices = _first_yahoo_index_items(context)
+    yahoo_alerts = context.get("sources", {}).get("yahoo", {}).get("payload", {}).get("alerts", [])
 
     temp_range = f"{math.floor(today_daily['temp_min_c'])}C-{math.ceil(today_daily['temp_max_c'])}C"
     brief = {
-        "headline": _headline(today_daily),
-        "subtitle": _subtitle(today_daily, rain_window, tomorrow_daily),
-        "bullets": _bullets(today_daily, rain_window),
+        "headline": _headline(today_daily, heavy_rain_expected, yahoo_today, yahoo_alerts),
+        "subtitle": _subtitle(today_daily, rain_window, tomorrow_daily, heavy_rain_expected, yahoo_today, yahoo_indices),
+        "bullets": _bullets(today_daily, rain_window, yahoo_today, yahoo_indices),
         "rain_window": rain_window,
         "temp_range": temp_range,
         "tomorrow_preview": (
@@ -137,8 +203,8 @@ def build_payload(raw_wrapper):
             f"{tomorrow_daily['temp_min_c']:.0f}-{tomorrow_daily['temp_max_c']:.0f}C"
         ),
         "illustration_prompt": (
-            f"Minimal weather poster for {today_daily['condition']} with "
-            f"rain hint={today_daily['rain_prob_max_pct']}%"
+            f"Minimal weather poster for {yahoo_today.get('condition', today_daily['condition'])} with "
+            f"rain hint={today_daily['rain_prob_max_pct']}% and wind note={yahoo_today.get('wind', 'n/a')}"
         ),
         "layout_emphasis": {
             "rain": "high" if today_daily["rain_prob_max_pct"] >= 60 else "medium",
@@ -149,9 +215,15 @@ def build_payload(raw_wrapper):
     return {
         "generated_at_local": now_local.replace(microsecond=0).isoformat(),
         "timezone": tz_name,
-        "location": raw_wrapper["location"],
-        "today": {"daily_summary": today_daily, "hourly": today_hourly},
-        "tomorrow": {"daily_summary": tomorrow_daily},
+        "location": open_meteo_wrapper["location"],
+        "today": {"daily_summary": today_daily, "hourly": today_hourly, "yahoo_summary": yahoo_today},
+        "tomorrow": {"daily_summary": tomorrow_daily, "yahoo_summary": yahoo_tomorrow},
+        "brief_context": {
+            "source_priority": context.get("source_priority", []),
+            "ordered_facts": context.get("ordered_facts", []),
+            "conflicts": context.get("conflicts", []),
+            "missing_sections": context.get("missing_sections", []),
+        },
         "brief": brief,
     }
 
@@ -163,10 +235,10 @@ def main():
     args = parser.parse_args()
 
     settings = load_settings()
-    input_path = args.input or settings["runtime"]["payload_file"]
+    input_path = args.input or settings["runtime"]["brief_context_file"]
     output_path = args.output or settings["runtime"]["brief_file"]
-    payload = read_json(input_path)
-    transformed = build_payload(payload)
+    context = read_json(input_path)
+    transformed = build_payload(context)
     write_json(output_path, transformed)
     print(output_path)
 

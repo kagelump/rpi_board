@@ -21,6 +21,8 @@
   "runtime": {
     "dir": "runtime",
     "payload_file": "runtime/last_payload.json",
+    "yahoo_weather_file": "runtime/yahoo_weather.json",
+    "brief_context_file": "runtime/brief_context.json",
     "brief_file": "runtime/last_brief.json",
     "hero_file": "runtime/hero.png",
     "final_file": "runtime/final_display.png",
@@ -31,6 +33,15 @@
   "pipeline": {
     "open_meteo_timeout_seconds": 8,
     "open_meteo_retry_count": 2,
+    "yahoo_weather_url": "https://weather.yahoo.co.jp/weather/jp/13/4410.html",
+    "yahoo_timeout_seconds": 10,
+    "yahoo_retry_count": 2,
+    "source_order": [
+      "yahoo",
+      "open_meteo",
+      "other"
+    ],
+    "additional_sources": [],
     "allow_sample_weather_on_failure": true,
     "sample_weather_file": "config/sample_openmeteo.json",
     "brief_timeout_seconds": 8,

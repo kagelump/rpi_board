@@ -7,6 +7,9 @@ Rules:
 - subtitle must be <= 72 chars and practical.
 - Illustration prompt should be specific, action-oriented, and non-generic, but also artistic.
 - Avoid bullet lists and avoid dense weather recap language.
+- Treat Open-Meteo facts as the primary source for core weather guidance because they are more local and specific.
+- Treat Yahoo facts as broader context; only use Yahoo details when they contain clearly interesting or high-signal information (for example warnings/advisories, strong wind/wave notes, unusual index values, or meaningful forecast shifts).
+- If Yahoo facts do not add anything interesting beyond Open-Meteo, ignore them and do not force Yahoo details into the brief.
 
 Required JSON schema:
 {

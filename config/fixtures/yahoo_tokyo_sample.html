@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head><meta charset="utf-8"><title>Yahoo Weather Sample</title></head>
+<body>
+  <div class="yjw_title_h2 yjw_clr">
+    <h2 class="yjMt">今日明日の天気</h2>
+    <p class="yjSt yjw_note_h2">2026年4月23日 20時00分発表</p>
+  </div>
+  <div class="forecastCity">
+    <table>
+      <tr>
+        <td>
+          <div>
+            <p class="date"><span>4月23日</span>(<span>木</span>)</p>
+            <p class="pict"><img alt="雨">雨</p>
+            <ul class="temp">
+              <li class="high"><em>20</em>℃[-3]</li>
+              <li class="low"><em>13</em>℃[+1]</li>
+            </ul>
+            <table>
+              <tr class="time"><th>時間</th><td>0-6</td><td>6-12</td><td>12-18</td><td>18-24</td></tr>
+              <tr class="precip"><th>降水</th><td>---</td><td>---</td><td>---</td><td>90％</td></tr>
+            </table>
+            <dl>
+              <dt>風：</dt><dd>北の風</dd>
+              <dt>波：</dt><dd>1メートル</dd>
+            </dl>
+          </div>
+        </td>
+        <td>
+          <div>
+            <p class="date"><span>4月24日</span>(<span>金</span>)</p>
+            <p class="pict"><img alt="雨のち晴">雨のち晴</p>
+            <ul class="temp">
+              <li class="high"><em>19</em>℃[-1]</li>
+              <li class="low"><em>13</em>℃[0]</li>
+            </ul>
+            <table>
+              <tr class="time"><th>時間</th><td>0-6</td><td>6-12</td><td>12-18</td><td>18-24</td></tr>
+              <tr class="precip"><th>降水</th><td>70％</td><td>50％</td><td>0％</td><td>0％</td></tr>
+            </table>
+            <dl>
+              <dt>風：</dt><dd>北の風後東の風</dd>
+              <dt>波：</dt><dd>1.5メートル後0.5メートル</dd>
+            </dl>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </div>
+  <!-- 警報・注意報 -->
+  <div id="wrnrpt">
+    <div class="warnAdv_area">
+      <dl>
+        <dt><span class="icoAdvisory"><span>注意報</span></span></dt>
+        <dd>強風、波浪</dd>
+      </dl>
+    </div>
+  </div>
+  <!-- 花粉モジュール -->
+  <div class="pollenInduction target_modules" id="kafunnav">
+    <div class="yjw_title_h2">
+      <h2 class="yjM">東京都の花粉情報</h2>
+      <p class="yjSt yjw_note_h2">2026年4月23日 18時00分 発表</p>
+    </div>
+    <div class="forecast">
+      <ul>
+        <li><p class="date">4/23(<span>木</span>)</p><p class="flying"><span class="type">少ない</span></p></li>
+        <li><p class="date">4/24(<span>金</span>)</p><p class="flying"><span class="type">少ない</span></p></li>
+      </ul>
+    </div>
+  </div>
+  <!--/ 花粉モジュール -->
+  <!-- 熱中症モジュール -->
+  <div class="mdheatstrokeInduction">
+    <div class="mdheatstroke_contents">
+      <ul class="mdheatstroke_day">
+        <li class="mdheatstroke_day_item">
+          <p class="day">4月23日(<span>木</span>)</p>
+          <dl class="heatstrokeLevel">
+            <dd class="heatstrokeLevel_detail">
+              <p class="label"><span>ほぼ安全</span></p>
+              <p class="comment">のどが渇く前に水分補給を</p>
+            </dd>
+          </dl>
+        </li>
+        <li class="mdheatstroke_day_item">
+          <p class="day">4月24日(<span>金</span>)</p>
+          <dl class="heatstrokeLevel">
+            <dd class="heatstrokeLevel_detail">
+              <p class="label"><span>ほぼ安全</span></p>
+              <p class="comment">のどが渇く前に水分補給を</p>
+            </dd>
+          </dl>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <!--週間の天気-->
+  <div id="yjw_week" class="yjw_main_md target_modules">
+    <div id="week" class="yjw_title_h2 yjw_clr">
+      <h2 class="yjMt">週間天気</h2>
+      <p class="yjSt yjw_note_h2">2026年4月23日 20時00分発表</p>
+    </div>
+    <table class="yjw_table">
+      <tbody>
+        <tr>
+          <td><small>日付</small></td>
+          <td><small>4月25日<br>(<span>土</span>)</small></td>
+          <td><small>4月26日<br>(<span>日</span>)</small></td>
+        </tr>
+        <tr>
+          <td><small>天気</small></td>
+          <td><img alt="晴れ">晴れ</td>
+          <td><img alt="曇一時雨">曇一時雨</td>
+        </tr>
+        <tr>
+          <td><small>気温（℃）</small></td>
+          <td>21<br>12</td>
+          <td>21<br>12</td>
+        </tr>
+        <tr>
+          <td><small>降水確率（％）</small></td>
+          <td>0</td>
+          <td>50</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <!--指数情報-->
+  <div class="yjw_title_h2" id="index2days">
+    <h2 class="yjM" id="idxdtl">今日明日の指数情報</h2>
+    <p class="yjSt yjw_note_h2">2026年4月23日 21時00分 発表</p>
+  </div>
+  <div class="indexList">
+    <ul class="tabView_navi">
+      <li class="tabView_item"><a href="#index-01" class="is-current">4月23日（<span>木</span>）</a></li>
+      <li class="tabView_item"><a href="#index-02">4月24日（<span>金</span>）</a></li>
+    </ul>
+    <div class="tabView_content is-active" id="index-01">
+      <dl class="indexList_item indexList_item-umbrella">
+        <dt>傘</dt>
+        <dd>
+          <p class="index_value index_value-90"><span>傘指数90</span></p>
+          <p class="index_text">絶対傘を忘れずに</p>
+        </dd>
+      </dl>
+      <dl class="indexList_item indexList_item-layering">
+        <dt>重ね着</dt>
+        <dd>
+          <p class="index_value index_value-40"><span>重ね着指数40</span></p>
+          <p class="index_text">パーカーや薄手のニット一枚でOK</p>
+        </dd>
+      </dl>
+    </div>
+    <div class="tabView_content" id="index-02">
+      <dl class="indexList_item indexList_item-umbrella">
+        <dt>傘</dt>
+        <dd>
+          <p class="index_value index_value-80"><span>傘指数80</span></p>
+          <p class="index_text">傘が必要です</p>
+        </dd>
+      </dl>
+    </div>
+  <!-- /指数情報 -->
+</body>
+</html>

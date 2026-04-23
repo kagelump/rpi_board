@@ -24,7 +24,14 @@ def _is_valid_brief(brief):
 
 
 def _render_prompt(template, payload):
-    return template + "\n\nINPUT_JSON:\n" + json.dumps(payload, ensure_ascii=True)
+    ordered_facts = payload.get("brief_context", {}).get("ordered_facts", [])
+    return (
+        template
+        + "\n\nORDERED_FACTS:\n"
+        + json.dumps(ordered_facts, ensure_ascii=True)
+        + "\n\nINPUT_JSON:\n"
+        + json.dumps(payload, ensure_ascii=True)
+    )
 
 
 def _call_openrouter(settings, prompt, model_override=None):
@@ -95,7 +102,8 @@ def main():
         if _is_valid_brief(candidate):
             transformed["brief"] = candidate
             transformed["brief_source"] = "openrouter"
-            print("[brief] OpenRouter response accepted (valid schema).")
+            print("[brief] OpenRouter response accepted: ")
+            print(json.dumps(candidate, indent=2, ensure_ascii=True))
         else:
             transformed["brief"] = deterministic
             transformed["brief_source"] = "deterministic_fallback_invalid_schema"

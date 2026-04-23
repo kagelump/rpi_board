@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "description": "Aggregated weather context for ordered LLM prompting.",
+  "required_keys": [
+    "schema_version",
+    "generated_at_local",
+    "timezone",
+    "location",
+    "source_priority",
+    "sources",
+    "ordered_facts",
+    "conflicts",
+    "missing_sections"
+  ],
+  "sources_entry_shape": {
+    "source_name": "string",
+    "available": "boolean",
+    "missing_sections": [
+      "string"
+    ],
+    "payload": "object"
+  },
+  "ordered_fact_shape": {
+    "id": "string",
+    "source": "string",
+    "text": "string",
+    "value": "any"
+  }
+}
