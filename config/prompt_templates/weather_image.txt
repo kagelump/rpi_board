@@ -2,10 +2,10 @@ Create a minimal weather poster illustration for a 960x640 e-ink display.
 
 Constraints:
 - High contrast composition.
-- Limited palette suitable for white/black/red/yellow e-ink.
+- Colors: white/black/red/yellow ONLY.
 - Avoid dense textures and small details.
 - Emphasize overall weather mood quickly at a glance.
-- No text inside the generated image.
+- NO TEXT.
 - Compose for a 3:2 canvas.
 - Keep the primary subject in the upper 70% of the frame.
 - Leave the bottom 20-25% visually quiet for headline/subtitle overlay.
@@ -14,5 +14,5 @@ Constraints:
 Style guidance:
 {{STYLE_GUIDANCE}}
 
-Brief context:
-{{BRIEF_JSON}}
+Creative direction distilled from weather data:
+{{IMAGE_PROMPT}}

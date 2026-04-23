@@ -69,3 +69,30 @@ def get_openrouter_api_key(settings: Dict[str, Any]) -> Optional[str]:
         if key:
             return key
     return None
+
+
+def get_fal_api_key(settings: Dict[str, Any]) -> Optional[str]:
+    for env_name in ("FAL_KEY", "FAI_API_KEY"):
+        env_key = os.getenv(env_name)
+        if env_key:
+            return env_key.strip()
+
+    configured = settings.get("fal", {}).get("api_key_file")
+    candidates = []
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    candidates.extend(
+        [
+            Path("~/.fai.key").expanduser(),
+            Path("~/.fal.key").expanduser(),
+            Path("~/.config/fal/api_key").expanduser(),
+        ]
+    )
+
+    for path in candidates:
+        if not path.exists():
+            continue
+        key = path.read_text(encoding="utf-8").strip()
+        if key:
+            return key
+    return None

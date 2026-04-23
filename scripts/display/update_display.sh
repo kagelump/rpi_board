@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/../.. && pwd)"
 cd "${ROOT_DIR}"
 
 mkdir -p runtime runtime/logs
+DISPLAY_MODE_OVERRIDE="${DISPLAY_MODE_OVERRIDE:-}"
 PYTHON_BIN="python3"
 if [[ -x "${ROOT_DIR}/.venv/bin/python3" ]]; then
   PYTHON_BIN="${ROOT_DIR}/.venv/bin/python3"
@@ -33,5 +34,9 @@ else
   fi
 fi
 
-run_step "push to display or preview" "${PYTHON_BIN}" scripts/display/push_to_epd.py
+if [[ -n "${DISPLAY_MODE_OVERRIDE}" ]]; then
+  run_step "push to display or preview" "${PYTHON_BIN}" scripts/display/push_to_epd.py --mode "${DISPLAY_MODE_OVERRIDE}"
+else
+  run_step "push to display or preview" "${PYTHON_BIN}" scripts/display/push_to_epd.py
+fi
 echo "[weather-display] complete"

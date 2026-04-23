@@ -46,8 +46,20 @@
     "sample_weather_file": "config/sample_openmeteo.json",
     "brief_timeout_seconds": 8,
     "image_timeout_seconds": 20,
+    "image_provider": "fal",
     "enable_openrouter_brief": false,
     "enable_openrouter_image": true
+  },
+  "fal": {
+    "base_url": "https://fal.run",
+    "image_model": "fal-ai/flux/schnell",
+    "image_generation_parameters": {
+      "image_size": "landscape_4_3",
+      "num_inference_steps": 10,
+      "guidance_scale": 20,
+      "output_format": "png"
+    },
+    "api_key_file": "~/.fai.key"
   },
   "openrouter": {
     "base_url": "https://openrouter.ai/api/v1",

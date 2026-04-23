@@ -6,10 +6,11 @@ import random
 import re
 import sys
 import urllib.error
+import urllib.request
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
-from scripts.common import ROOT, absolute_path, get_openrouter_api_key, load_settings, read_json, write_json
+from scripts.common import ROOT, absolute_path, get_fal_api_key, get_openrouter_api_key, load_settings, read_json, write_json
 from scripts.openrouter.network import describe_network_error, urlopen_with_context
 
 
@@ -85,16 +86,18 @@ def _pick_art_style(settings):
     return by_name[chosen_name]
 
 
-def _inject_style_prompt(template, brief_payload, style):
+def _inject_style_prompt(template, illustration_prompt, style):
     style_block = (
         f"Selected art style: {style['name']}\n"
         f"Style direction: {style['prompt']}\n"
         f"{NEGATIVE_STYLE_CONSTRAINTS}"
     )
-    prompt = template.replace("{{BRIEF_JSON}}", json.dumps(brief_payload, ensure_ascii=True))
+    prompt = template.replace("{{IMAGE_PROMPT}}", illustration_prompt.strip())
     if "{{STYLE_GUIDANCE}}" in prompt:
-        return prompt.replace("{{STYLE_GUIDANCE}}", style_block)
-    return prompt + "\n\nStyle guidance:\n" + style_block
+        prompt = prompt.replace("{{STYLE_GUIDANCE}}", style_block)
+    else:
+        prompt = prompt + "\n\nStyle guidance:\n" + style_block
+    return prompt
 
 
 def _extract_image_url(payload):
@@ -141,7 +144,7 @@ def _download_image(image_url, timeout, settings):
         return response.read()
 
 
-def _call_image_api(settings, prompt):
+def _call_openrouter_image_api(settings, prompt):
     api_key = get_openrouter_api_key(settings)
     if not api_key:
         raise RuntimeError(
@@ -202,7 +205,60 @@ def _call_image_api(settings, prompt):
         if local.exists():
             return local.read_bytes()
 
-    raise RuntimeError(f"No image URL found in response: {payload}")
+    raise RuntimeError(f"No image URL found in OpenRouter response: {payload}")
+
+
+def _call_fal_image_api(settings, prompt):
+    api_key = get_fal_api_key(settings)
+    if not api_key:
+        raise RuntimeError(
+            "FAL key not found. Set FAL_KEY or place a key in "
+            "~/.fai.key, ~/.fal.key, or ~/.config/fal/api_key"
+        )
+
+    fal_settings = settings.get("fal", {})
+    base_url = fal_settings.get("base_url", "https://fal.run").rstrip("/")
+    image_model = fal_settings.get("image_model", "fal-ai/flux/schnell")
+    configured_params = fal_settings.get("image_generation_parameters", {})
+    body = {"prompt": prompt, **configured_params}
+    url = f"{base_url}/{image_model.lstrip('/')}"
+    request = urllib.request.Request(
+        url=url,
+        data=json.dumps(body).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Key {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    timeout = settings["pipeline"]["image_timeout_seconds"]
+    with urlopen_with_context(request, timeout=timeout, settings=settings) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    image_url = _extract_image_url(payload)
+    if image_url:
+        return _download_image(image_url, timeout=timeout, settings=settings)
+
+    data_image = _extract_data_image(payload)
+    if data_image:
+        encoded = data_image.split(";base64,", 1)[1]
+        return base64.b64decode(encoded)
+
+    raise RuntimeError(f"No image URL found in FAL response: {payload}")
+
+
+def _resolve_image_provider(settings, force_openrouter):
+    if force_openrouter:
+        return "openrouter"
+    return settings.get("pipeline", {}).get("image_provider", "openrouter").strip().lower()
+
+
+def _call_image_api(settings, prompt, provider):
+    if provider == "openrouter":
+        return _call_openrouter_image_api(settings, prompt)
+    if provider in ("fal", "fai"):
+        return _call_fal_image_api(settings, prompt)
+    raise RuntimeError(f"Unsupported image provider: {provider}")
 
 
 def main():
@@ -218,8 +274,8 @@ def main():
     output_abs = absolute_path(output_path)
     output_abs.parent.mkdir(parents=True, exist_ok=True)
 
-    use_openrouter = settings["pipeline"]["enable_openrouter_image"] or args.force_openrouter
-    if not use_openrouter:
+    image_generation_enabled = settings["pipeline"]["enable_openrouter_image"] or args.force_openrouter
+    if not image_generation_enabled:
         if output_abs.exists():
             output_abs.unlink()
         print("image-disabled")
@@ -229,11 +285,16 @@ def main():
     template_path = ROOT / "config" / "prompt_templates" / "weather_image.txt"
     template = template_path.read_text(encoding="utf-8")
     style = _pick_art_style(settings)
-    prompt = _inject_style_prompt(template, payload["brief"], style)
+    illustration_prompt = payload.get("brief", {}).get("illustration_prompt", "").strip()
+    if not illustration_prompt:
+        raise RuntimeError("Missing brief.illustration_prompt for image generation")
+    prompt = _inject_style_prompt(template, illustration_prompt, style)
+    provider = _resolve_image_provider(settings, args.force_openrouter)
     print(f"[image] selected_style={style['name']}")
+    print(f"[image] provider={provider}")
 
     try:
-        image_bytes = _call_image_api(settings, prompt)
+        image_bytes = _call_image_api(settings, prompt, provider)
         output_abs.write_bytes(image_bytes)
         print(output_path)
     except urllib.error.URLError as error:
