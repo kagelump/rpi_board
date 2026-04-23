@@ -33,6 +33,12 @@ WEATHER_LABELS = {
 }
 
 
+def _is_ascii_text(text):
+    if not isinstance(text, str):
+        return False
+    return all(ord(ch) < 128 for ch in text)
+
+
 def _daily_summary(raw, idx):
     daily = raw["daily"]
     code = daily["weather_code"][idx]
@@ -93,9 +99,13 @@ def _rain_window(rows):
 def _headline(today, heavy_rain_expected, yahoo_today, yahoo_alerts):
     if yahoo_alerts:
         first = yahoo_alerts[0]
-        return f"{first.get('level', 'Alert')}: {first.get('text', '')}".strip()
+        candidate = f"{first.get('level', 'Alert')}: {first.get('text', '')}".strip()
+        if _is_ascii_text(candidate):
+            return candidate
     if yahoo_today and yahoo_today.get("condition"):
-        return f"{yahoo_today['condition']} expected today."
+        candidate = f"{yahoo_today['condition']} expected today."
+        if _is_ascii_text(candidate):
+            return candidate
     if heavy_rain_expected:
         return "Heavy rain window expected today."
     if today["temp_max_c"] >= 30:
@@ -113,9 +123,12 @@ def _subtitle(today, rain_window, tomorrow_daily, heavy_rain_expected, yahoo_tod
                 umbrella_note = yahoo_indices[label].get("note")
                 break
     if umbrella_note:
-        return umbrella_note
+        if _is_ascii_text(umbrella_note):
+            return umbrella_note
     if yahoo_today and yahoo_today.get("wind"):
-        return f"{rain_window}. Wind: {yahoo_today['wind']}"
+        candidate = f"{rain_window}. Wind: {yahoo_today['wind']}"
+        if _is_ascii_text(candidate):
+            return candidate
     if heavy_rain_expected:
         return f"{rain_window}. Carry an umbrella."
     if today["temp_max_c"] >= 30:
@@ -128,13 +141,17 @@ def _subtitle(today, rain_window, tomorrow_daily, heavy_rain_expected, yahoo_tod
 def _bullets(today, rain_window, yahoo_today, yahoo_indices):
     bullets = [rain_window, f"High {today['temp_max_c']:.0f}C / Low {today['temp_min_c']:.0f}C"]
     if yahoo_today and yahoo_today.get("wave"):
-        bullets.append(f"Sea/wave note: {yahoo_today['wave']}")
-        return bullets[:3]
+        wave_line = f"Sea/wave note: {yahoo_today['wave']}"
+        if _is_ascii_text(wave_line):
+            bullets.append(wave_line)
+            return bullets[:3]
     if yahoo_indices:
         for label in ("重ね着", "layering"):
             if label in yahoo_indices:
-                bullets.append(yahoo_indices[label].get("note", ""))
-                return [item for item in bullets if item][:3]
+                line = yahoo_indices[label].get("note", "")
+                if _is_ascii_text(line):
+                    bullets.append(line)
+                    return [item for item in bullets if item][:3]
     if rain_window != "No heavy rain expected":
         bullets.append("Carry an umbrella.")
     elif today["temp_max_c"] - today["temp_min_c"] >= 9:
@@ -203,8 +220,8 @@ def build_payload(context):
             f"{tomorrow_daily['temp_min_c']:.0f}-{tomorrow_daily['temp_max_c']:.0f}C"
         ),
         "illustration_prompt": (
-            f"Minimal weather poster for {yahoo_today.get('condition', today_daily['condition'])} with "
-            f"rain hint={today_daily['rain_prob_max_pct']}% and wind note={yahoo_today.get('wind', 'n/a')}"
+            f"Minimal weather poster for {today_daily['condition']} with "
+            f"rain hint={today_daily['rain_prob_max_pct']}%"
         ),
         "layout_emphasis": {
             "rain": "high" if today_daily["rain_prob_max_pct"] >= 60 else "medium",

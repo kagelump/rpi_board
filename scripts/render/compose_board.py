@@ -80,6 +80,14 @@ def _fit_font_size(draw, text, max_width, sizes):
     return _font(sizes[-1])
 
 
+def _ascii_only(text):
+    if not isinstance(text, str):
+        return ""
+    cleaned = "".join(ch if ord(ch) < 128 else " " for ch in text)
+    cleaned = " ".join(cleaned.split())
+    return cleaned.strip()
+
+
 def _load_hero(settings):
     hero_path = absolute_path(settings["runtime"]["hero_file"])
     if not hero_path.exists():
@@ -152,12 +160,17 @@ def main():
     draw.rectangle((0, panel_top, width, height), fill=(255, 255, 255))
     draw.line((0, panel_top, width, panel_top), fill=(0, 0, 0), width=2)
 
-    headline = brief.get("headline", "").strip()
-    subtitle = brief.get("subtitle", "").strip()
+    headline = _ascii_only(brief.get("headline", ""))
+    subtitle = _ascii_only(brief.get("subtitle", ""))
     if not subtitle:
-        subtitle = brief.get("tomorrow_preview", "").strip()
+        subtitle = _ascii_only(brief.get("tomorrow_preview", ""))
     if not subtitle:
         subtitle = "Weather shifts through the day."
+    if not headline:
+        fallback_condition = payload["today"]["daily_summary"].get("condition", "Weather update")
+        headline = _ascii_only(fallback_condition + " expected today.")
+    if not headline:
+        headline = "Weather update"
 
     headline_font = _fit_font_size(draw, headline, width - 44, [64, 58, 52, 46, 42, 38])
     subtitle_font = _fit_font_size(draw, subtitle, width - 44, [38, 34, 30, 28, 26])

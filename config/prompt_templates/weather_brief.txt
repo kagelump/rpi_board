@@ -10,6 +10,7 @@ Rules:
 - Treat Open-Meteo facts as the primary source for core weather guidance because they are more local and specific.
 - Treat Yahoo facts as broader context; only use Yahoo details when they contain clearly interesting or high-signal information (for example warnings/advisories, strong wind/wave notes, unusual index values, or meaningful forecast shifts).
 - If Yahoo facts do not add anything interesting beyond Open-Meteo, ignore them and do not force Yahoo details into the brief.
+- All display-facing output must be English ASCII only (headline/subtitle/illustration_prompt/layout_emphasis). Do not output Japanese or other non-ASCII characters.
 
 Required JSON schema:
 {
