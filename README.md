@@ -141,6 +141,15 @@ chmod +x scripts/ops/setup_pi.sh scripts/ops/install_waveshare_driver.sh scripts
 ./scripts/ops/setup_pi.sh
 ```
 
+After initial bring-up, use one command for day-to-day updates:
+
+```bash
+make update
+```
+
+`make update` runs `git pull --ff-only origin main`, installs/validates dependencies,
+and executes the display pipeline.
+
 `setup_pi.sh` installs Python GPIO deps (`spidev`, `RPi.GPIO`) and runs
 `scripts/ops/install_waveshare_driver.sh`, which will:
 
