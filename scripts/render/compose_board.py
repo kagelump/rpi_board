@@ -199,8 +199,12 @@ def _draw_chip(draw, x1, y1, text, font, accent, height, pad_x=12):
 
 
 def _is_degraded_source(source):
-    """True when the brief came from the deterministic fallback, not the LLM."""
-    return not (isinstance(source, str) and source == "openrouter")
+    """True when the brief is canned deterministic text, not LLM-authored.
+
+    "cached" is a previously-generated LLM brief reused by the cost guardrail, so
+    it is not degraded.
+    """
+    return source not in ("openrouter", "cached")
 
 
 def _ascii_only(text):

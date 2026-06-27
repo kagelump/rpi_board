@@ -20,6 +20,9 @@ class TestIsDegradedSource:
     def test_openrouter_is_fresh(self):
         assert _is_degraded_source("openrouter") is False
 
+    def test_cached_is_fresh(self):
+        assert _is_degraded_source("cached") is False
+
     def test_deterministic_is_degraded(self):
         assert _is_degraded_source("deterministic") is True
         assert _is_degraded_source("deterministic_fallback_error") is True

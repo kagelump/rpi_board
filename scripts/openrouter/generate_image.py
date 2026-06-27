@@ -263,6 +263,18 @@ def _call_image_api(settings, prompt, provider):
     raise RuntimeError(f"Unsupported image provider: {provider}")
 
 
+def _report_image_failure(output_abs, detail):
+    """On generation failure keep the last good hero (reuse) rather than blanking.
+
+    Only when no prior hero exists do we fall through to a blank, which
+    compose_board then replaces with a code-drawn pictogram.
+    """
+    if output_abs.exists():
+        print(f"image-fallback-reuse (kept previous hero): {detail}")
+    else:
+        print(f"image-fallback-blank: {detail}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default=None)
@@ -284,6 +296,14 @@ def main():
         return
 
     payload = read_json(input_path)
+
+    # Cost guardrail: when the brief was reused (unchanged inputs), the
+    # illustration prompt is identical too, so keep the existing hero instead of
+    # paying to regenerate the same image.
+    if payload.get("brief_source") == "cached" and output_abs.exists():
+        print("image-skip-cached: reusing existing hero")
+        return
+
     template_path = ROOT / "config" / "prompt_templates" / "weather_image.txt"
     template = template_path.read_text(encoding="utf-8")
     style = _pick_art_style(settings)
@@ -300,13 +320,9 @@ def main():
         output_abs.write_bytes(image_bytes)
         print(output_path)
     except urllib.error.URLError as error:
-        if output_abs.exists():
-            output_abs.unlink()
-        print(f"image-fallback-blank: {describe_network_error(error)}")
+        _report_image_failure(output_abs, describe_network_error(error))
     except (KeyError, json.JSONDecodeError, RuntimeError) as error:
-        if output_abs.exists():
-            output_abs.unlink()
-        print(f"image-fallback-blank: {error}")
+        _report_image_failure(output_abs, str(error))
 
 
 if __name__ == "__main__":

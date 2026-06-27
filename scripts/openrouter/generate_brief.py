@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import ROOT, get_openrouter_api_key, load_settings, read_json, write_json
 from scripts.openrouter.network import describe_network_error, urlopen_with_context
+from scripts.ops.render_gate import compute_signature, should_regenerate
 
 
 def _is_valid_brief(brief):
@@ -59,6 +60,24 @@ def _append_history(settings, day_context, brief):
     )
     # Keep the file bounded; 60 entries is plenty for anti-repetition + debugging.
     write_json(history_path, entries[-60:])
+
+
+def _load_last_good(settings):
+    path = settings["runtime"].get("last_good_brief_file")
+    if not path:
+        return {}
+    try:
+        data = read_json(path)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_last_good(settings, signature, generated_at, brief):
+    path = settings["runtime"].get("last_good_brief_file")
+    if not path:
+        return
+    write_json(path, {"signature": signature, "generated_at": generated_at, "brief": brief})
 
 
 def _load_day_context_extra(settings):
@@ -196,6 +215,28 @@ def main():
         print(output_path)
         return
 
+    # Cost guardrail: reuse the last good brief when the material inputs are
+    # unchanged and we generated recently, so a frequent timer doesn't pay for
+    # near-identical output. A new daypart or forecast change forces a refresh.
+    signature = compute_signature(transformed)
+    last_good = _load_last_good(settings)
+    now_iso = transformed.get("generated_at_local")
+    regenerate = should_regenerate(
+        last_good,
+        signature,
+        now_iso,
+        settings["pipeline"].get("regen_min_interval_seconds", 0),
+        force=args.force_openrouter,
+        skip_enabled=settings["pipeline"].get("skip_unchanged", False),
+    )
+    if not regenerate and isinstance(last_good.get("brief"), dict):
+        transformed["brief"] = last_good["brief"]
+        transformed["brief_source"] = "cached"
+        write_json(output_path, transformed)
+        print(f"[brief] reusing cached brief (signature {signature} unchanged within interval)")
+        print(output_path)
+        return
+
     template_path = ROOT / "config" / "prompt_templates" / "weather_brief.txt"
     template = template_path.read_text(encoding="utf-8")
     prompt = _render_prompt(template, _enrich_payload(transformed, settings))
@@ -208,6 +249,7 @@ def main():
         if _is_valid_brief(candidate):
             transformed["brief"] = candidate
             transformed["brief_source"] = "openrouter"
+            _save_last_good(settings, signature, now_iso, candidate)
             _append_history(settings, transformed.get("day_context", {}), candidate)
             print("[brief] OpenRouter response accepted: ")
             print(json.dumps(candidate, indent=2, ensure_ascii=True))

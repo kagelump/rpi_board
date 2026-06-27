@@ -32,6 +32,7 @@
     "history_file": "runtime/history.json",
     "day_context_file": "runtime/day_context.json",
     "holiday_cache_file": "runtime/holiday_cache.json",
+    "last_good_brief_file": "runtime/last_good_brief.json",
     "log_file": "runtime/logs/weather_display.log"
   },
   "pipeline": {
@@ -52,7 +53,9 @@
     "image_timeout_seconds": 20,
     "image_provider": "fal",
     "enable_openrouter_brief": true,
-    "enable_openrouter_image": true
+    "enable_openrouter_image": true,
+    "skip_unchanged": true,
+    "regen_min_interval_seconds": 5400
   },
   "voice": {
     "persona": "a wry, observant Tokyo local who notices small seasonal things and never just recites the forecast",
