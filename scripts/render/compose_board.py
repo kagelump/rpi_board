@@ -186,6 +186,23 @@ def draw_weather_glyph(draw, box, code):
         draw.polygon(bolt, fill=_YELLOW)
 
 
+def _draw_chip(draw, x1, y1, text, font, accent, height, pad_x=12):
+    """Draw a white chip with an accent outline and vertically-centered text.
+
+    Returns the chip's right edge x so chips can be laid out left-to-right.
+    """
+    text_w = draw.textbbox((0, 0), text, font=font)[2]
+    x2 = x1 + text_w + pad_x * 2
+    draw.rectangle((x1, y1, x2, y1 + height), fill=(255, 255, 255), outline=accent, width=3)
+    draw.text((x1 + pad_x, y1 + (height - font.size) // 2 - 2), text, fill=(0, 0, 0), font=font)
+    return x2
+
+
+def _is_degraded_source(source):
+    """True when the brief came from the deterministic fallback, not the LLM."""
+    return not (isinstance(source, str) and source == "openrouter")
+
+
 def _ascii_only(text):
     if not isinstance(text, str):
         return ""
@@ -289,30 +306,34 @@ def main():
     draw.text((22, panel_top + 18), headline_line, fill=(0, 0, 0), font=headline_font)
     draw.text((24, panel_top + 20 + headline_font.size + 18), subtitle_line, fill=(0, 0, 0), font=subtitle_font)
 
-    # Tiny operational metadata over the art (stroked so it reads on any ink).
+    # Operational metadata as chips so it reads over any artwork.
     daily = payload["today"]["daily_summary"]
-    date_text = payload.get("day_context", {}).get("date_pretty") or daily["date"]
-    _draw_text_with_stroke(draw, (22, 14), date_text, _font(28))
+    chip_h = 58
+    chip_y1 = 14
 
-    # Corner chip: low-high range, outlined in the mood accent.
+    # Date chip, top-left.
+    date_text = payload.get("day_context", {}).get("date_pretty") or daily["date"]
+    _draw_chip(draw, 18, chip_y1, date_text, _font(28), accent, chip_h)
+
+    # Temp range chip, top-right; low-high outlined in the mood accent.
     high_c = int(round(daily["temp_max_c"]))
     low_c = int(round(daily["temp_min_c"]))
     temp_label = f"{low_c}-{high_c}C"
     chip_font = _font(40)
-    chip_w = draw.textbbox((0, 0), temp_label, font=chip_font)[2] + 24
-    chip_h = 58
-    chip_x1 = width - chip_w - 18
-    chip_y1 = 14
-    draw.rectangle((chip_x1, chip_y1, chip_x1 + chip_w, chip_y1 + chip_h), fill=(255, 255, 255), outline=accent, width=3)
-    draw.text((chip_x1 + 12, chip_y1 + 8), temp_label, fill=(0, 0, 0), font=chip_font)
+    temp_w = draw.textbbox((0, 0), temp_label, font=chip_font)[2] + 24
+    chip_x1 = width - temp_w - 18
+    _draw_chip(draw, chip_x1, chip_y1, temp_label, chip_font, accent, chip_h)
 
-    # Glanceable weather pictogram in its own chip, just left of the temp chip,
-    # so the condition reads reliably even when the AI art is abstract.
-    glyph_chip = chip_h
-    glyph_x1 = chip_x1 - glyph_chip - 12
-    draw.rectangle((glyph_x1, chip_y1, glyph_x1 + glyph_chip, chip_y1 + glyph_chip), fill=(255, 255, 255), outline=accent, width=3)
+    # Glanceable weather pictogram chip, just left of the temp chip.
+    glyph_x1 = chip_x1 - chip_h - 12
+    draw.rectangle((glyph_x1, chip_y1, glyph_x1 + chip_h, chip_y1 + chip_h), fill=(255, 255, 255), outline=accent, width=3)
     pad = 9
-    draw_weather_glyph(draw, (glyph_x1 + pad, chip_y1 + pad, glyph_x1 + glyph_chip - pad, chip_y1 + glyph_chip - pad), weather_code)
+    draw_weather_glyph(draw, (glyph_x1 + pad, chip_y1 + pad, glyph_x1 + chip_h - pad, chip_y1 + chip_h - pad), weather_code)
+
+    # Unobtrusive degraded marker: a small red dot only when the LLM brief fell
+    # back to the deterministic text, so a glance tells you the words are canned.
+    if _is_degraded_source(payload.get("brief_source")):
+        draw.ellipse((6, 6, 20, 20), fill=(200, 0, 0))
 
     board.save(absolute_path(output_path))
     board.resize((width // 2, height // 2)).save(absolute_path(preview_path))

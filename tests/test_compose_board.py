@@ -6,9 +6,27 @@ from scripts.render.compose_board import (
     _accent_color,
     _ascii_only,
     _cover_crop_top_center,
+    _is_degraded_source,
     draw_weather_glyph,
     weather_glyph_kind,
 )
+
+
+# ---------------------------------------------------------------------------
+# _is_degraded_source
+# ---------------------------------------------------------------------------
+
+class TestIsDegradedSource:
+    def test_openrouter_is_fresh(self):
+        assert _is_degraded_source("openrouter") is False
+
+    def test_deterministic_is_degraded(self):
+        assert _is_degraded_source("deterministic") is True
+        assert _is_degraded_source("deterministic_fallback_error") is True
+
+    def test_missing_is_degraded(self):
+        assert _is_degraded_source(None) is True
+        assert _is_degraded_source(42) is True
 from PIL import ImageDraw
 
 

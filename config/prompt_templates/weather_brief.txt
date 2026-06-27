@@ -17,6 +17,9 @@ WHAT TO USE
   tone (a rainy Monday morning != a rainy Saturday evening). Reach for sunrise/
   sunset or the moon when it genuinely fits (a clear night near a Full Moon, an
   early winter sunset).
+- INPUT_JSON.time_frame: this board refreshes through the day. Adopt this
+  framing (morning / midday / evening / night) so an afternoon update does not
+  read like the morning one for the same weather.
 - INPUT_JSON.creative_angle: a lens for today. Lean the subtitle toward it so
   consecutive days differ even when the weather is similar.
 - Events / holidays, in priority order:

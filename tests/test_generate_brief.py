@@ -7,7 +7,25 @@ from scripts.openrouter.generate_brief import (
     _load_recent_history,
     _render_prompt,
     _select_text_model,
+    _time_frame,
 )
+
+
+# ---------------------------------------------------------------------------
+# _time_frame (time-of-day framing)
+# ---------------------------------------------------------------------------
+
+class TestTimeFrame:
+    def test_distinct_per_part_of_day(self):
+        frames = {_time_frame(p) for p in ("morning", "midday", "evening", "night")}
+        assert len(frames) == 4
+
+    def test_morning_mentions_morning(self):
+        assert "Morning" in _time_frame("morning")
+
+    def test_unknown_defaults_to_midday(self):
+        assert _time_frame("teatime") == _time_frame("midday")
+        assert _time_frame(None) == _time_frame("midday")
 
 
 # ---------------------------------------------------------------------------

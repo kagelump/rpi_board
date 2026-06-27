@@ -82,6 +82,19 @@ def _select_text_model(settings, override=None):
     return base
 
 
+_TIME_FRAMES = {
+    "morning": "Morning briefing: set up the day ahead and what to wear heading out.",
+    "midday": "Midday check-in: how the rest of today actually unfolds from here.",
+    "evening": "Evening wind-down: tonight, plus a short look at tomorrow.",
+    "night": "Late update: overnight conditions and the shape of tomorrow.",
+}
+
+
+def _time_frame(part_of_day):
+    """A framing directive so the same weather reads differently across the day."""
+    return _TIME_FRAMES.get(part_of_day, _TIME_FRAMES["midday"])
+
+
 def _enrich_payload(payload, settings):
     """Attach voice, recent history, day context, and a creative angle.
 
@@ -111,6 +124,7 @@ def _enrich_payload(payload, settings):
     day_context = payload.get("day_context", {})
     seed_basis = day_context.get("date_iso", "") + day_context.get("part_of_day", "")
     enriched["creative_angle"] = angles[sum(ord(c) for c in seed_basis) % len(angles)]
+    enriched["time_frame"] = _time_frame(day_context.get("part_of_day"))
     return enriched
 
 

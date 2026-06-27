@@ -14,6 +14,47 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import get_openrouter_api_key, load_settings
 
 
+def validate_config(settings):
+    """Static sanity checks on settings.json. Returns a list of issue strings.
+
+    Pure (no I/O) so it is easy to test and catches config drift like an image
+    size that no longer matches the art region after a panel_fraction change.
+    """
+    issues = []
+    display = settings.get("display", {})
+    width = display.get("width")
+    height = display.get("height")
+    if not isinstance(width, int) or width <= 0:
+        issues.append("display.width must be a positive integer")
+    if not isinstance(height, int) or height <= 0:
+        issues.append("display.height must be a positive integer")
+
+    panel_fraction = display.get("panel_fraction", 0.25)
+    if not isinstance(panel_fraction, (int, float)) or not (0 < panel_fraction < 1):
+        issues.append("display.panel_fraction must be between 0 and 1")
+    elif isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0:
+        art_h = height - round(height * panel_fraction)
+        size = settings.get("fal", {}).get("image_generation_parameters", {}).get("image_size")
+        if isinstance(size, dict):
+            if size.get("width") != width:
+                issues.append(f"fal image_size.width ({size.get('width')}) != display.width ({width})")
+            if size.get("height") != art_h:
+                issues.append(
+                    f"fal image_size.height ({size.get('height')}) != art region ({art_h}); "
+                    "art will be cropped or letterboxed"
+                )
+
+    provider = settings.get("pipeline", {}).get("image_provider", "openrouter")
+    if provider not in ("openrouter", "fal", "fai"):
+        issues.append(f"pipeline.image_provider '{provider}' is not recognised")
+
+    events_mode = settings.get("context", {}).get("events_mode", "off")
+    if events_mode not in ("online_model", "off"):
+        issues.append(f"context.events_mode '{events_mode}' is not recognised")
+
+    return issues
+
+
 def _check_spi():
     return Path("/dev/spidev0.0").exists()
 
@@ -61,6 +102,16 @@ def _check_openrouter_https(timeout):
 
 def _run_checks(settings):
     checks = []
+    config_issues = validate_config(settings)
+    checks.append(
+        {
+            "name": "config_valid",
+            "ok": not config_issues,
+            "required": True,
+            "detail": "settings.json consistent" if not config_issues else "; ".join(config_issues),
+        }
+    )
+
     spi_ok = _check_spi()
     checks.append(
         {
