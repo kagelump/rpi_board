@@ -51,12 +51,12 @@ This checklist captures what is still needed to run this project reliably on a r
 
 ## 6) Operationalization (Phase 4)
 
-- [ ] Add `systemd` service unit to run `scripts/display/update_display.sh`.
-- [ ] Add `systemd` timer unit for daily morning run (~08:00 local).
-- [ ] Add an install script under `scripts/ops/` to copy/enable units.
+- [x] Add `systemd` service unit to run `scripts/display/update_display.sh`. (`scripts/ops/systemd/weather-eink-board.service`)
+- [x] Add `systemd` timer unit for daily morning run (~08:00 local). (`scripts/ops/systemd/weather-eink-board.timer`)
+- [x] Add an install script under `scripts/ops/` to copy/enable units. (`scripts/ops/install_systemd.sh`)
 - [ ] Add log rotation policy for `runtime/logs/`.
 - [ ] Add retention cleanup policy for runtime artifacts.
-- [ ] Add stale-data marker policy and health checks for unattended runs.
+- [x] Add stale-data marker policy and health checks for unattended runs. (staleness marker → `runtime/last_success.json`; health checks → `scripts/ops/preflight.py`)
 
 ## 7) End-to-End Validation on Device
 
@@ -74,9 +74,9 @@ This checklist captures what is still needed to run this project reliably on a r
 ## 8) Nice-to-Have Hardening
 
 - [ ] Pin Python dependencies in a requirements file.
-- [ ] Add a preflight check script (`scripts/ops/preflight.py`) for:
-  - [ ] SPI availability
-  - [ ] Waveshare import detection
-  - [ ] OpenRouter connectivity
-  - [ ] API key presence
+- [x] Add a preflight check script (`scripts/ops/preflight.py`) for:
+  - [x] SPI availability
+  - [x] Waveshare import detection
+  - [x] OpenRouter connectivity
+  - [x] API key presence
 - [ ] Add a `--dry-run` mode to orchestration script for diagnostics.

@@ -246,6 +246,12 @@ strong NO-TEXT / no-gradient guidance for e-ink.
 
 ## 9. Suggested sequencing
 
+> **Status (shipped on `dynamic-board-overhaul`):** all phases below are
+> implemented and verified in the dev environment (237 tests passing).
+> Phase 1+2 → `16f8826`, Phase 3 → `149e10c`, Phase 4 → `b222108`,
+> reliability/cost guardrails (§7) → `872740a`. Remaining work is on-device
+> Raspberry Pi bring-up — see [TODO.md](TODO.md).
+
 **Phase 1 — make it dynamic (highest impact, small surface)**
 1. Enable LLM brief; move temperature to settings (~0.8).
 2. Rewrite `weather_brief.txt` with voice + date/weekday/season + anti-repetition
@@ -271,16 +277,16 @@ strong NO-TEXT / no-gradient guidance for e-ink.
 ---
 
 ## 10. Concrete first-PR checklist (Phase 1)
-- [ ] `settings.json`: `enable_openrouter_brief: true`, add
+- [x] `settings.json`: `enable_openrouter_brief: true`, add
       `voice`, `brief_temperature`, `panel_fraction` constant.
-- [ ] `generate_brief.py`: read temperature from settings; feed history; new
+- [x] `generate_brief.py`: read temperature from settings; feed history; new
       validator covering `image_prompt`/`mood`/`accent`.
-- [ ] `transform_weather.py`: emit `facts` only; keep deterministic brief under
+- [x] `transform_weather.py`: emit `facts` only; keep deterministic brief under
       a `fallback_brief` key.
-- [ ] `weather_brief.txt`: full rewrite (voice, temporal anchors, schema).
-- [ ] `generate_image.py`: prompt from `brief.image_prompt`; random seed; drop
+- [x] `weather_brief.txt`: full rewrite (voice, temporal anchors, schema).
+- [x] `generate_image.py`: prompt from `brief.image_prompt`; random seed; drop
       `guidance_scale`; image size from shared constant (960×480).
-- [ ] `compose_board.py`: derive `panel_h` and paste region from the same
+- [x] `compose_board.py`: derive `panel_h` and paste region from the same
       constant; paste art into top region only.
-- [ ] Tests updated for facts-only transform + new validator + board dimensions.
+- [x] Tests updated for facts-only transform + new validator + board dimensions.
 ```
