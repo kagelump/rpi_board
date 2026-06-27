@@ -39,6 +39,53 @@ def _is_ascii_text(text):
     return all(ord(ch) < 128 for ch in text)
 
 
+_SEASONS = {
+    12: "winter", 1: "winter", 2: "winter",
+    3: "spring", 4: "spring", 5: "spring",
+    6: "summer", 7: "summer", 8: "summer",
+    9: "autumn", 10: "autumn", 11: "autumn",
+}
+
+
+def _sun_times(raw, idx):
+    """Pull today's sunrise/sunset as HH:MM if Open-Meteo provided them.
+
+    The sample fallback payload omits these arrays, so every access is guarded.
+    """
+    daily = raw.get("daily", {})
+    out = {}
+    for key, label in (("sunrise", "sunrise"), ("sunset", "sunset")):
+        series = daily.get(key)
+        if isinstance(series, list) and idx < len(series) and isinstance(series[idx], str):
+            stamp = series[idx]
+            out[label] = stamp.split("T", 1)[1][:5] if "T" in stamp else stamp
+    return out
+
+
+def _day_context(now_local):
+    """Temporal facts the creative director can lean on for non-weather flavour.
+
+    Northern-hemisphere seasons (this board lives in Tokyo). Computed locally so
+    it never depends on the network and is always present even in fallback mode.
+    """
+    weekday = now_local.strftime("%A")
+    month = now_local.month
+    return {
+        "date_iso": now_local.date().isoformat(),
+        "date_pretty": now_local.strftime("%A, %B %-d"),
+        "weekday": weekday,
+        "is_weekend": weekday in ("Saturday", "Sunday"),
+        "month_name": now_local.strftime("%B"),
+        "season": _SEASONS.get(month, "unknown"),
+        "part_of_day": (
+            "morning" if now_local.hour < 11
+            else "midday" if now_local.hour < 16
+            else "evening" if now_local.hour < 21
+            else "night"
+        ),
+    }
+
+
 def _daily_summary(raw, idx):
     daily = raw["daily"]
     code = daily["weather_code"][idx]
@@ -263,6 +310,9 @@ def build_payload(context):
     yahoo_indices = _first_yahoo_index_items(context)
     yahoo_alerts = context.get("sources", {}).get("yahoo", {}).get("payload", {}).get("alerts", [])
 
+    day_context = _day_context(now_local)
+    day_context.update(_sun_times(raw, today_idx))
+
     temp_range = f"{math.floor(today_daily['temp_min_c'])}C-{math.ceil(today_daily['temp_max_c'])}C"
     brief = {
         "headline": _headline(today_daily, rain_level, yahoo_today, yahoo_alerts),
@@ -288,6 +338,7 @@ def build_payload(context):
     return {
         "generated_at_local": now_local.replace(microsecond=0).isoformat(),
         "timezone": tz_name,
+        "day_context": day_context,
         "location": open_meteo_wrapper["location"],
         "today": {"daily_summary": today_daily, "hourly": today_hourly, "yahoo_summary": yahoo_today},
         "tomorrow": {"daily_summary": tomorrow_daily, "yahoo_summary": yahoo_tomorrow},

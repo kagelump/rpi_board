@@ -221,6 +221,8 @@ def _call_fal_image_api(settings, prompt):
     image_model = fal_settings.get("image_model", "fal-ai/flux/schnell")
     configured_params = fal_settings.get("image_generation_parameters", {})
     body = {"prompt": prompt, **configured_params}
+    # Fresh seed every run so an identical prompt still produces a new image.
+    body.setdefault("seed", random.SystemRandom().randint(1, 2_000_000_000))
     url = f"{base_url}/{image_model.lstrip('/')}"
     request = urllib.request.Request(
         url=url,

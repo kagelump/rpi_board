@@ -1,10 +1,14 @@
 """Tests for scripts/weather/transform_weather.py"""
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import pytest
 
 from scripts.weather.transform_weather import (
     WEATHER_LABELS,
     _bullets,
     _daily_summary,
+    _day_context,
     _headline,
     _hourly_rows,
     _is_ascii_text,
@@ -409,11 +413,45 @@ class TestBullets:
 # build_payload (integration)
 # ---------------------------------------------------------------------------
 
+class TestDayContext:
+    def _dt(self, year, month, day, hour=9):
+        return datetime(year, month, day, hour, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+    def test_keys_present(self):
+        ctx = _day_context(self._dt(2024, 6, 15))
+        for key in ("date_iso", "date_pretty", "weekday", "is_weekend", "month_name", "season", "part_of_day"):
+            assert key in ctx
+
+    def test_weekend_detection(self):
+        assert _day_context(self._dt(2024, 6, 15))["is_weekend"] is True   # Saturday
+        assert _day_context(self._dt(2024, 6, 17))["is_weekend"] is False  # Monday
+
+    def test_season_mapping(self):
+        assert _day_context(self._dt(2024, 1, 10))["season"] == "winter"
+        assert _day_context(self._dt(2024, 4, 10))["season"] == "spring"
+        assert _day_context(self._dt(2024, 7, 10))["season"] == "summer"
+        assert _day_context(self._dt(2024, 10, 10))["season"] == "autumn"
+
+    def test_part_of_day(self):
+        assert _day_context(self._dt(2024, 6, 15, 8))["part_of_day"] == "morning"
+        assert _day_context(self._dt(2024, 6, 15, 13))["part_of_day"] == "midday"
+        assert _day_context(self._dt(2024, 6, 15, 19))["part_of_day"] == "evening"
+        assert _day_context(self._dt(2024, 6, 15, 23))["part_of_day"] == "night"
+
+    def test_date_iso_format(self):
+        assert _day_context(self._dt(2024, 6, 15))["date_iso"] == "2024-06-15"
+
+
 class TestBuildPayload:
     def test_top_level_keys(self):
         result = build_payload(_CONTEXT)
-        for key in ("generated_at_local", "timezone", "location", "today", "tomorrow", "brief_context", "brief"):
+        for key in ("generated_at_local", "timezone", "day_context", "location", "today", "tomorrow", "brief_context", "brief"):
             assert key in result, f"Missing key: {key}"
+
+    def test_day_context_attached(self):
+        ctx = build_payload(_CONTEXT)["day_context"]
+        assert ctx["season"] in ("winter", "spring", "summer", "autumn")
+        assert isinstance(ctx["is_weekend"], bool)
 
     def test_timezone(self):
         assert build_payload(_CONTEXT)["timezone"] == "Asia/Tokyo"

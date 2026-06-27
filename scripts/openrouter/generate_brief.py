@@ -23,6 +23,97 @@ def _is_valid_brief(brief):
     return True
 
 
+def _load_recent_history(settings):
+    """Return the last N briefs so the model can actively avoid repeating itself."""
+    history_path = settings["runtime"].get("history_file")
+    if not history_path:
+        return []
+    window = settings.get("voice", {}).get("history_window", 6)
+    try:
+        entries = read_json(history_path)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(entries, list):
+        return []
+    return entries[-window:]
+
+
+def _append_history(settings, day_context, brief):
+    history_path = settings["runtime"].get("history_file")
+    if not history_path:
+        return
+    try:
+        entries = read_json(history_path)
+        if not isinstance(entries, list):
+            entries = []
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        entries = []
+    entries.append(
+        {
+            "date": day_context.get("date_iso", ""),
+            "part_of_day": day_context.get("part_of_day", ""),
+            "headline": brief.get("headline", ""),
+            "subtitle": brief.get("subtitle", ""),
+            "illustration_prompt": brief.get("illustration_prompt", ""),
+        }
+    )
+    # Keep the file bounded; 60 entries is plenty for anti-repetition + debugging.
+    write_json(history_path, entries[-60:])
+
+
+def _load_day_context_extra(settings):
+    """Load holidays/moon/calendar produced by fetch_context.py (optional)."""
+    path = settings["runtime"].get("day_context_file")
+    if not path:
+        return {}
+    try:
+        extra = read_json(path)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    return extra if isinstance(extra, dict) else {}
+
+
+def _select_text_model(settings, override=None):
+    """Append :online for live web grounding when events_mode requests it."""
+    base = override or settings["openrouter"]["text_model"]
+    events_mode = settings.get("context", {}).get("events_mode", "off")
+    if events_mode == "online_model" and not base.endswith(":online"):
+        return base + ":online"
+    return base
+
+
+def _enrich_payload(payload, settings):
+    """Attach voice, recent history, day context, and a creative angle.
+
+    These ride inside INPUT_JSON (serialised by _render_prompt), so the prompt
+    structure and its tests are untouched while the model gets much richer input.
+    """
+    enriched = dict(payload)
+    enriched["voice"] = settings.get("voice", {})
+    enriched["board_context"] = settings.get("context", {})
+    enriched["recent_history"] = _load_recent_history(settings)
+    # Merge the holidays/moon/calendar extras onto the weather-derived day_context.
+    extra = _load_day_context_extra(settings)
+    if extra:
+        merged = dict(payload.get("day_context", {}))
+        merged.update({k: v for k, v in extra.items() if k != "fetched_at"})
+        enriched["day_context"] = merged
+    # A rotating lens keeps consecutive days distinct even when weather repeats.
+    angles = [
+        "what to wear walking out the door",
+        "the commute and getting around",
+        "laundry / drying / errands timing",
+        "an evening or after-dark beat",
+        "a small seasonal observation",
+        "plans with other people",
+        "food or a warm/cold drink that fits",
+    ]
+    day_context = payload.get("day_context", {})
+    seed_basis = day_context.get("date_iso", "") + day_context.get("part_of_day", "")
+    enriched["creative_angle"] = angles[sum(ord(c) for c in seed_basis) % len(angles)]
+    return enriched
+
+
 def _render_prompt(template, payload):
     ordered_facts = payload.get("brief_context", {}).get("ordered_facts", [])
     return (
@@ -44,10 +135,11 @@ def _call_openrouter(settings, prompt, model_override=None):
     timeout = settings["pipeline"]["brief_timeout_seconds"]
     url = settings["openrouter"]["base_url"].rstrip("/") + "/chat/completions"
     model = model_override or settings["openrouter"]["text_model"]
+    temperature = settings["openrouter"].get("brief_temperature", 0.85)
     body = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2,
+        "temperature": temperature,
         "response_format": {"type": "json_object"},
     }
     request = urllib.request.Request(
@@ -92,16 +184,17 @@ def main():
 
     template_path = ROOT / "config" / "prompt_templates" / "weather_brief.txt"
     template = template_path.read_text(encoding="utf-8")
-    prompt = _render_prompt(template, transformed)
+    prompt = _render_prompt(template, _enrich_payload(transformed, settings))
 
     print(f"[brief] use_openrouter={use_openrouter}")
     try:
-        model_name = args.model or settings["openrouter"]["text_model"]
+        model_name = _select_text_model(settings, override=args.model)
         print(f"[brief] requesting OpenRouter model={model_name}")
-        candidate = _call_openrouter(settings, prompt, model_override=args.model)
+        candidate = _call_openrouter(settings, prompt, model_override=model_name)
         if _is_valid_brief(candidate):
             transformed["brief"] = candidate
             transformed["brief_source"] = "openrouter"
+            _append_history(settings, transformed.get("day_context", {}), candidate)
             print("[brief] OpenRouter response accepted: ")
             print(json.dumps(candidate, indent=2, ensure_ascii=True))
         else:

@@ -2,7 +2,32 @@
 import pytest
 from PIL import Image
 
-from scripts.render.compose_board import _ascii_only, _cover_crop_top_center
+from scripts.render.compose_board import _accent_color, _ascii_only, _cover_crop_top_center
+
+
+# ---------------------------------------------------------------------------
+# _accent_color
+# ---------------------------------------------------------------------------
+
+class TestAccentColor:
+    def test_red(self):
+        assert _accent_color("red") == (200, 0, 0)
+
+    def test_yellow(self):
+        assert _accent_color("yellow") == (230, 170, 0)
+
+    def test_none_is_black(self):
+        assert _accent_color("none") == (0, 0, 0)
+
+    def test_unknown_defaults_black(self):
+        assert _accent_color("teal") == (0, 0, 0)
+
+    def test_case_and_whitespace_insensitive(self):
+        assert _accent_color("  RED ") == (200, 0, 0)
+
+    def test_non_string_defaults_black(self):
+        assert _accent_color(None) == (0, 0, 0)
+        assert _accent_color(42) == (0, 0, 0)
 
 
 # ---------------------------------------------------------------------------

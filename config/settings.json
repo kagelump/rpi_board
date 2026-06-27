@@ -8,6 +8,7 @@
   "display": {
     "width": 960,
     "height": 640,
+    "panel_fraction": 0.25,
     "mode": "pi_display",
     "waveshare_module_candidates": [
       "waveshare_epd.epd10in2g",
@@ -28,6 +29,9 @@
     "final_file": "runtime/final_display.png",
     "preview_file": "runtime/preview.png",
     "stale_file": "runtime/last_success.json",
+    "history_file": "runtime/history.json",
+    "day_context_file": "runtime/day_context.json",
+    "holiday_cache_file": "runtime/holiday_cache.json",
     "log_file": "runtime/logs/weather_display.log"
   },
   "pipeline": {
@@ -47,27 +51,43 @@
     "brief_timeout_seconds": 8,
     "image_timeout_seconds": 20,
     "image_provider": "fal",
-    "enable_openrouter_brief": false,
+    "enable_openrouter_brief": true,
     "enable_openrouter_image": true
+  },
+  "voice": {
+    "persona": "a wry, observant Tokyo local who notices small seasonal things and never just recites the forecast",
+    "constraints": "Vary sentence shape and opening word every day. Never restate the raw numbers as the headline. One clear feeling, then one practical or human beat.",
+    "history_window": 6
+  },
+  "context": {
+    "enable_events": true,
+    "events_mode": "online_model",
+    "location_descriptor": "Komaba, Meguro, Tokyo",
+    "holiday_country": "JP",
+    "holidays_api_url": "https://date.nager.at/api/v3/PublicHolidays",
+    "upcoming_holiday_window_days": 10,
+    "calendar_ics_urls": [],
+    "context_timeout_seconds": 8,
+    "events_note": "events_mode=online_model appends :online to the text model so it can web-search today's local events; set to off to rely only on holidays/calendar/moon/season."
   },
   "fal": {
     "base_url": "https://fal.run",
     "image_model": "fal-ai/flux/schnell",
     "image_generation_parameters": {
-      "image_size": "landscape_4_3",
-      "num_inference_steps": 10,
-      "guidance_scale": 20,
+      "image_size": { "width": 960, "height": 480 },
+      "num_inference_steps": 8,
       "output_format": "png"
     },
     "api_key_file": "~/.fai.key"
   },
   "openrouter": {
     "base_url": "https://openrouter.ai/api/v1",
-    "text_model": "openai/gpt-4o-mini",
+    "text_model": "deepseek/deepseek-v4-flash",
+    "brief_temperature": 0.85,
     "image_tool_model": "openai/gpt-5.2",
     "image_model": "google/gemini-3.1-flash-image-preview",
     "image_generation_parameters": {
-      "aspect_ratio": "3:2",
+      "aspect_ratio": "2:1",
       "output_format": "png"
     },
     "api_key_file": "~/.openrouter.key",

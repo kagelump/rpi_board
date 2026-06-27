@@ -80,6 +80,18 @@ def _fit_font_size(draw, text, max_width, sizes):
     return _font(sizes[-1])
 
 
+def _accent_color(accent):
+    """Map the brief's mood accent to an on-palette e-ink ink (black/red/yellow)."""
+    mapping = {
+        "red": (200, 0, 0),
+        "yellow": (230, 170, 0),
+        "none": (0, 0, 0),
+    }
+    if not isinstance(accent, str):
+        return (0, 0, 0)
+    return mapping.get(accent.strip().lower(), (0, 0, 0))
+
+
 def _ascii_only(text):
     if not isinstance(text, str):
         return ""
@@ -135,18 +147,28 @@ def main():
     brief = payload["brief"]
     width = settings["display"]["width"]
     height = settings["display"]["height"]
+    # Single source of truth for the split: the art fills the region above the
+    # text panel, the panel fills the rest. Image generation targets this same
+    # region (see fal image_size), so nothing the model draws is cropped away.
+    panel_fraction = settings["display"].get("panel_fraction", 0.25)
+    panel_h = round(height * panel_fraction)
+    panel_top = height - panel_h
+    art_h = panel_top
+
+    accent = _accent_color(brief.get("accent"))
+
     board = Image.new("RGB", (width, height), (245, 245, 245))
     draw = ImageDraw.Draw(board)
 
     hero = _load_hero(settings)
     if hero is not None:
-        hero = _cover_crop_top_center(hero, width, height)
+        hero = _cover_crop_top_center(hero, width, art_h)
         board.paste(hero, (0, 0))
     else:
-        draw.rectangle((0, 0, width - 1, height - 1), outline=(0, 0, 0), width=3)
+        draw.rectangle((0, 0, width - 1, art_h - 1), outline=(0, 0, 0), width=3)
         _draw_text_with_stroke(
             draw,
-            (26, height // 2 - 18),
+            (26, art_h // 2 - 18),
             "Illustration unavailable",
             _font(40),
             fill=(0, 0, 0),
@@ -154,11 +176,9 @@ def main():
             stroke_width=2,
         )
 
-    # Overlay zone: minimal text panel for headline/subtitle.
-    panel_h = int(height * 0.24)
-    panel_top = height - panel_h
+    # Text panel below the art: a clean strip, with a mood-accented divider rule.
     draw.rectangle((0, panel_top, width, height), fill=(255, 255, 255))
-    draw.line((0, panel_top, width, panel_top), fill=(0, 0, 0), width=2)
+    draw.rectangle((0, panel_top, width, panel_top + 5), fill=accent)
 
     headline = _ascii_only(brief.get("headline", ""))
     subtitle = _ascii_only(brief.get("subtitle", ""))
@@ -179,17 +199,22 @@ def main():
     draw.text((22, panel_top + 18), headline_line, fill=(0, 0, 0), font=headline_font)
     draw.text((24, panel_top + 20 + headline_font.size + 18), subtitle_line, fill=(0, 0, 0), font=subtitle_font)
 
-    # Keep tiny operational metadata and high-temp corner chip.
-    date_text = payload["today"]["daily_summary"]["date"]
-    draw.text((22, 14), date_text, fill=(0, 0, 0), font=_font(28))
-    high_c = int(round(payload["today"]["daily_summary"]["temp_max_c"]))
-    high_label = f"{high_c}C"
-    chip_w = draw.textbbox((0, 0), high_label, font=_font(40))[2] + 24
+    # Tiny operational metadata over the art (stroked so it reads on any ink).
+    daily = payload["today"]["daily_summary"]
+    date_text = payload.get("day_context", {}).get("date_pretty") or daily["date"]
+    _draw_text_with_stroke(draw, (22, 14), date_text, _font(28))
+
+    # Corner chip: low-high range, outlined in the mood accent.
+    high_c = int(round(daily["temp_max_c"]))
+    low_c = int(round(daily["temp_min_c"]))
+    temp_label = f"{low_c}-{high_c}C"
+    chip_font = _font(40)
+    chip_w = draw.textbbox((0, 0), temp_label, font=chip_font)[2] + 24
     chip_h = 58
     chip_x1 = width - chip_w - 18
     chip_y1 = 14
-    draw.rectangle((chip_x1, chip_y1, chip_x1 + chip_w, chip_y1 + chip_h), fill=(255, 255, 255), outline=(0, 0, 0), width=2)
-    draw.text((chip_x1 + 12, chip_y1 + 8), high_label, fill=(0, 0, 0), font=_font(40))
+    draw.rectangle((chip_x1, chip_y1, chip_x1 + chip_w, chip_y1 + chip_h), fill=(255, 255, 255), outline=accent, width=3)
+    draw.text((chip_x1 + 12, chip_y1 + 8), temp_label, fill=(0, 0, 0), font=chip_font)
 
     board.save(absolute_path(output_path))
     board.resize((width // 2, height // 2)).save(absolute_path(preview_path))

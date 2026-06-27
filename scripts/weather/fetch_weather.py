@@ -21,7 +21,7 @@ def build_query(settings):
         "forecast_days": 3,
         "daily": (
             "weather_code,temperature_2m_max,temperature_2m_min,"
-            "precipitation_probability_max,precipitation_sum"
+            "precipitation_probability_max,precipitation_sum,sunrise,sunset"
         ),
         "hourly": "temperature_2m,precipitation_probability,precipitation,weather_code",
     }
