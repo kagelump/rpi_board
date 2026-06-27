@@ -85,6 +85,18 @@ class TestDescribeNetworkError:
         result = describe_network_error(err)
         assert isinstance(result, str)
 
+    def test_http_error_surfaces_body(self):
+        import io
+
+        body = b'{"detail":[{"loc":["body","num_inference_steps"],"msg":"too big"}]}'
+        err = urllib.error.HTTPError(
+            url="https://fal.run/x", code=422, msg="Unprocessable Entity",
+            hdrs=None, fp=io.BytesIO(body),
+        )
+        result = describe_network_error(err)
+        assert "422" in result
+        assert "num_inference_steps" in result
+
     def test_includes_proxy_hint_when_proxy_set(self, monkeypatch):
         for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
             monkeypatch.delenv(key, raising=False)

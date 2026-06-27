@@ -72,7 +72,7 @@
   },
   "fal": {
     "base_url": "https://fal.run",
-    "image_model": "fal-ai/flux/schnell",
+    "image_model": "fal-ai/flux-2/turbo",
     "image_generation_parameters": {
       "image_size": { "width": 960, "height": 480 },
       "num_inference_steps": 8,

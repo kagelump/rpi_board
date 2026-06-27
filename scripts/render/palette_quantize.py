@@ -78,18 +78,28 @@ def main():
     dd = q_dither.load()
     width, height = image.size
 
+    # Region split mirrors compose_board: the art fills the top, the text panel
+    # the bottom. The panel stays crisp (no dithering) so type and the accent
+    # rule read sharply; the art region is dithered to fake extra tones from the
+    # four available inks.
+    panel_fraction = settings["display"].get("panel_fraction", 0.25)
+    art_h = height - round(height * panel_fraction)
+
     out = Image.new("RGB", (width, height))
     dst = out.load()
     for y in range(height):
+        in_panel = y >= art_h
         for x in range(width):
             r, g, b = src[x, y]
             if _is_protected_color(r, g, b):
+                # Pure black/red/yellow snap cleanly everywhere.
                 dst[x, y] = nd[x, y]
-                continue
-            if _is_gray_candidate(r, g, b):
-                dst[x, y] = dd[x, y]
+            elif in_panel:
+                # Panel: dither only neutral grays, keep everything else crisp.
+                dst[x, y] = dd[x, y] if _is_gray_candidate(r, g, b) else nd[x, y]
             else:
-                dst[x, y] = nd[x, y]
+                # Art region: dither all non-protected pixels for tonal depth.
+                dst[x, y] = dd[x, y]
 
     out.save(output_path)
     print(str(output_path))

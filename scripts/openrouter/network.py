@@ -41,6 +41,16 @@ def proxy_hint():
 
 
 def describe_network_error(error):
+    # HTTPError carries a response body that usually names the offending field
+    # (e.g. fal 422 validation detail); surface it instead of a bare status.
+    if isinstance(error, urllib.error.HTTPError):
+        try:
+            body = error.read().decode("utf-8", errors="replace").strip()
+        except Exception:
+            body = ""
+        base = f"HTTP {error.code} {error.reason}"
+        return f"{base}: {body}" if body else base
+
     reason = getattr(error, "reason", None)
     if isinstance(reason, ssl.SSLCertVerificationError):
         return (

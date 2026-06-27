@@ -1,18 +1,18 @@
-Create a minimal weather poster illustration for a 960x480 region of an e-ink
-board (2:1, landscape). The image fills the entire frame edge to edge. There is
-NO reserved text area inside the image; copy is rendered on a separate strip
-below by the board, so compose for the full 960x480 canvas.
-
-Hard constraints:
-- Only four inks exist: white, black, red, yellow. Design for exactly these.
-- Flat color fields, high contrast, bold shapes. NO gradients, NO soft shading,
-  NO photorealism, NO 3D, NO blur or glow, NO fine micro-texture.
-- Absolutely NO TEXT, letters, numbers, logos, or watermarks.
-- Communicate the weather mood at a single glance from across a room.
-- Strong, simple composition; a clear focal subject; generous negative space.
-
-Style guidance:
-{{STYLE_GUIDANCE}}
-
-Creative direction distilled from today's weather and context:
+SUBJECT (this is the most important part, render exactly this scene):
 {{IMAGE_PROMPT}}
+
+Render that scene as a bold minimal weather poster filling a 960x480 landscape
+frame (2:1), edge to edge. The scene above is the priority; the rules below are
+how to draw it, not what to draw. There is NO reserved text area; copy is added
+on a separate strip below by the board, so use the whole canvas.
+
+How to draw it:
+- Only four inks exist: white, black, red, yellow. Compose for exactly these.
+- Flat color fields, high contrast, bold shapes, strong focal subject, generous
+  negative space. NO gradients, NO soft shading, NO photorealism, NO 3D, NO blur
+  or glow, NO fine micro-texture.
+- Absolutely NO TEXT, letters, numbers, logos, or watermarks.
+- The weather mood must read at a glance from across a room.
+
+Style treatment:
+{{STYLE_GUIDANCE}}

@@ -2,7 +2,59 @@
 import pytest
 from PIL import Image
 
-from scripts.render.compose_board import _accent_color, _ascii_only, _cover_crop_top_center
+from scripts.render.compose_board import (
+    _accent_color,
+    _ascii_only,
+    _cover_crop_top_center,
+    draw_weather_glyph,
+    weather_glyph_kind,
+)
+from PIL import ImageDraw
+
+
+# ---------------------------------------------------------------------------
+# weather_glyph_kind
+# ---------------------------------------------------------------------------
+
+class TestWeatherGlyphKind:
+    def test_clear(self):
+        assert weather_glyph_kind(0) == "clear"
+        assert weather_glyph_kind(1) == "clear"
+
+    def test_partly(self):
+        assert weather_glyph_kind(2) == "partly"
+
+    def test_cloud(self):
+        assert weather_glyph_kind(3) == "cloud"
+        assert weather_glyph_kind(45) == "cloud"
+
+    def test_rain(self):
+        for code in (51, 61, 63, 65, 80, 82):
+            assert weather_glyph_kind(code) == "rain"
+
+    def test_snow(self):
+        for code in (71, 75, 85, 86):
+            assert weather_glyph_kind(code) == "snow"
+
+    def test_storm(self):
+        assert weather_glyph_kind(95) == "storm"
+        assert weather_glyph_kind(99) == "storm"
+
+    def test_unknown_defaults_cloud(self):
+        assert weather_glyph_kind(123) == "cloud"
+        assert weather_glyph_kind(None) == "cloud"
+        assert weather_glyph_kind("x") == "cloud"
+
+
+class TestDrawWeatherGlyph:
+    def test_draws_without_error_for_all_kinds(self):
+        # Smoke test: each family renders into a small box without raising.
+        for code in (0, 2, 3, 61, 75, 95):
+            img = Image.new("RGB", (64, 64), (255, 255, 255))
+            draw_weather_glyph(ImageDraw.Draw(img), (4, 4, 60, 60), code)
+            # Something was drawn (not still all-white).
+            assert img.getcolors(maxcolors=100000) is not None
+            assert len(img.getcolors(maxcolors=100000)) > 1
 
 
 # ---------------------------------------------------------------------------

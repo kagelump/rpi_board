@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -92,6 +93,99 @@ def _accent_color(accent):
     return mapping.get(accent.strip().lower(), (0, 0, 0))
 
 
+_BLACK = (0, 0, 0)
+_YELLOW = (230, 170, 0)
+_RED = (200, 0, 0)
+
+
+def weather_glyph_kind(code):
+    """Map an Open-Meteo weather code to a pictogram family."""
+    try:
+        code = int(code)
+    except (TypeError, ValueError):
+        return "cloud"
+    if code in (0, 1):
+        return "clear"
+    if code == 2:
+        return "partly"
+    if code in (71, 73, 75, 77, 85, 86):
+        return "snow"
+    if code in (95, 96, 99):
+        return "storm"
+    if code in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82):
+        return "rain"
+    return "cloud"
+
+
+def _draw_sun(draw, cx, cy, radius, rays=True):
+    draw.ellipse([cx - radius, cy - radius, cx + radius, cy + radius], fill=_YELLOW)
+    if rays:
+        ray_w = max(2, int(radius * 0.22))
+        for i in range(8):
+            angle = i * math.pi / 4
+            x0 = cx + math.cos(angle) * radius * 1.35
+            y0 = cy + math.sin(angle) * radius * 1.35
+            x1 = cx + math.cos(angle) * radius * 1.85
+            y1 = cy + math.sin(angle) * radius * 1.85
+            draw.line([x0, y0, x1, y1], fill=_YELLOW, width=ray_w)
+
+
+def _draw_cloud(draw, cx, cy, cw, fill=_BLACK):
+    ch = cw * 0.6
+    left, right = cx - cw / 2, cx + cw / 2
+    top, bottom = cy - ch / 2, cy + ch / 2
+    draw.ellipse([left, cy - ch * 0.15, left + cw * 0.55, bottom], fill=fill)
+    draw.ellipse([right - cw * 0.55, cy - ch * 0.15, right, bottom], fill=fill)
+    draw.ellipse([cx - cw * 0.32, top, cx + cw * 0.34, bottom], fill=fill)
+    draw.rectangle([left + cw * 0.12, cy, right - cw * 0.12, bottom], fill=fill)
+
+
+def draw_weather_glyph(draw, box, code):
+    """Draw a simple, high-contrast weather pictogram inside box (x0,y0,x1,y1).
+
+    Pure drawing on the four-ink palette; legible at chip size or full-frame.
+    """
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    s = min(w, h)
+    cx, cy = x0 + w / 2, y0 + h / 2
+    kind = weather_glyph_kind(code)
+
+    if kind == "clear":
+        _draw_sun(draw, cx, cy, s * 0.26)
+        return
+    if kind == "partly":
+        _draw_sun(draw, cx - s * 0.16, cy - s * 0.16, s * 0.2)
+        _draw_cloud(draw, cx + s * 0.08, cy + s * 0.12, s * 0.62)
+        return
+
+    # cloud-based families share a cloud body, then add precipitation marks.
+    cloud_cy = cy - s * 0.12 if kind in ("rain", "snow", "storm") else cy
+    _draw_cloud(draw, cx, cloud_cy, s * 0.72)
+    drop_top = cloud_cy + s * 0.26
+    if kind == "rain":
+        line_w = max(2, int(s * 0.05))
+        for dx in (-s * 0.2, 0, s * 0.2):
+            draw.line([cx + dx, drop_top, cx + dx - s * 0.06, drop_top + s * 0.22], fill=_RED, width=line_w)
+    elif kind == "snow":
+        flake_r = max(2, int(s * 0.04))
+        for dx in (-s * 0.2, 0, s * 0.2):
+            draw.ellipse(
+                [cx + dx - flake_r, drop_top - flake_r, cx + dx + flake_r, drop_top + flake_r],
+                fill=_BLACK,
+            )
+    elif kind == "storm":
+        bolt = [
+            (cx - s * 0.02, drop_top - s * 0.04),
+            (cx - s * 0.16, drop_top + s * 0.16),
+            (cx - s * 0.02, drop_top + s * 0.12),
+            (cx - s * 0.1, drop_top + s * 0.34),
+            (cx + s * 0.16, drop_top + s * 0.04),
+            (cx + s * 0.02, drop_top + s * 0.06),
+        ]
+        draw.polygon(bolt, fill=_YELLOW)
+
+
 def _ascii_only(text):
     if not isinstance(text, str):
         return ""
@@ -160,21 +254,17 @@ def main():
     board = Image.new("RGB", (width, height), (245, 245, 245))
     draw = ImageDraw.Draw(board)
 
+    weather_code = payload["today"]["daily_summary"].get("weather_code")
     hero = _load_hero(settings)
     if hero is not None:
         hero = _cover_crop_top_center(hero, width, art_h)
         board.paste(hero, (0, 0))
     else:
-        draw.rectangle((0, 0, width - 1, art_h - 1), outline=(0, 0, 0), width=3)
-        _draw_text_with_stroke(
-            draw,
-            (26, art_h // 2 - 18),
-            "Illustration unavailable",
-            _font(40),
-            fill=(0, 0, 0),
-            stroke_fill=(255, 255, 255),
-            stroke_width=2,
-        )
+        # No AI art this run: draw a clean code-based pictogram instead of an
+        # error string, so the board still reads the weather at a glance.
+        glyph_size = int(min(width, art_h) * 0.5)
+        gx, gy = (width - glyph_size) // 2, (art_h - glyph_size) // 2
+        draw_weather_glyph(draw, (gx, gy, gx + glyph_size, gy + glyph_size), weather_code)
 
     # Text panel below the art: a clean strip, with a mood-accented divider rule.
     draw.rectangle((0, panel_top, width, height), fill=(255, 255, 255))
@@ -215,6 +305,14 @@ def main():
     chip_y1 = 14
     draw.rectangle((chip_x1, chip_y1, chip_x1 + chip_w, chip_y1 + chip_h), fill=(255, 255, 255), outline=accent, width=3)
     draw.text((chip_x1 + 12, chip_y1 + 8), temp_label, fill=(0, 0, 0), font=chip_font)
+
+    # Glanceable weather pictogram in its own chip, just left of the temp chip,
+    # so the condition reads reliably even when the AI art is abstract.
+    glyph_chip = chip_h
+    glyph_x1 = chip_x1 - glyph_chip - 12
+    draw.rectangle((glyph_x1, chip_y1, glyph_x1 + glyph_chip, chip_y1 + glyph_chip), fill=(255, 255, 255), outline=accent, width=3)
+    pad = 9
+    draw_weather_glyph(draw, (glyph_x1 + pad, chip_y1 + pad, glyph_x1 + glyph_chip - pad, chip_y1 + glyph_chip - pad), weather_code)
 
     board.save(absolute_path(output_path))
     board.resize((width // 2, height // 2)).save(absolute_path(preview_path))
