@@ -1,6 +1,16 @@
-"""Tests for the art guardrail (text/collage rejection + bounded retry)."""
+"""Tests for the art guardrail (text/collage/off-palette rejection + bounded retry)."""
+import io
+
+from PIL import Image
+
 import scripts.openrouter.art_guardrail as ag
 import scripts.openrouter.generate_image as gi
+
+
+def _png(rgb, size=(64, 64)):
+    buf = io.BytesIO()
+    Image.new("RGB", size, rgb).save(buf, format="PNG")
+    return buf.getvalue()
 
 
 class TestInspectArtFailOpen:
@@ -63,3 +73,20 @@ class TestGenerateWithGuardrail:
         monkeypatch.setattr(gi, "inspect_art", lambda b, s: {"ok": False, "is_collage": True, "note": "frame"})
         out = gi._generate_with_guardrail(self._settings(image_guardrail_max_retries=1), "p", "fal")
         assert out == b"bad2"  # last attempt kept, never a blank board
+
+    def test_off_palette_rejected_then_passes(self, monkeypatch):
+        # First image is mostly blue (unrenderable), second is on-palette red.
+        blue, red = _png((0, 0, 255)), _png((220, 0, 0))
+        seq = [blue, red]
+        monkeypatch.setattr(gi, "_call_image_api", lambda s, p, pr: seq.pop(0))
+        monkeypatch.setattr(gi, "inspect_art", lambda b, s: {"ok": True})  # vision clean
+        out = gi._generate_with_guardrail(
+            self._settings(image_guardrail_max_retries=1, image_guardrail_max_off_palette_pct=0.15), "p", "fal")
+        assert out == red  # blue rejected on off-palette, red accepted
+
+    def test_off_palette_within_budget_accepted(self, monkeypatch):
+        red = _png((220, 0, 0))
+        monkeypatch.setattr(gi, "_call_image_api", lambda s, p, pr: red)
+        monkeypatch.setattr(gi, "inspect_art", lambda b, s: {"ok": True})
+        out = gi._generate_with_guardrail(self._settings(image_guardrail_max_off_palette_pct=0.15), "p", "fal")
+        assert out == red

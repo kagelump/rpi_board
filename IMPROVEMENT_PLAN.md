@@ -290,3 +290,18 @@ strong NO-TEXT / no-gradient guidance for e-ink.
       constant; paste art into top region only.
 - [x] Tests updated for facts-only transform + new validator + board dimensions.
 ```
+
+---
+
+## 11. Phase 6 — image quality (shipped)
+- [x] Prompt rework: titles ~80% informative / 20% voice; outdoor/weather subjects
+      (de-laundried); single-cohesive-style art direction; explicit four-ink
+      e-ink constraints (no foreign colours, no gradients/grey, bold lines).
+- [x] Art guardrail (`scripts/openrouter/art_guardrail.py` + `generate_image.py`):
+      rejects baked-in text, collage/photo-in-frame, and off-palette art, then
+      regenerates within a bounded retry. Fails open; config-gated.
+- [x] Deterministic e-ink colour metrics (`scripts/render/palette_metrics.py`):
+      palette balance + off-palette % vs the 4-ink panel; reused by the guardrail.
+- [x] Eval framework (`scripts/eval/`): prompt A/B (`run_eval.py`) and image-model
+      comparison (`compare_models.py`) with a vision-LLM judge, colour metrics,
+      cost, and latency.

@@ -57,6 +57,7 @@
     "enable_image_guardrail": true,
     "image_guardrail_max_retries": 1,
     "image_guardrail_timeout_seconds": 15,
+    "image_guardrail_max_off_palette_pct": 0.15,
     "skip_unchanged": true,
     "regen_min_interval_seconds": 5400
   },

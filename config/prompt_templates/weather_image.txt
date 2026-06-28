@@ -10,14 +10,23 @@ border or block -- the whole canvas is the same drawing in the same style. There
 is NO reserved text area; copy is added on a separate strip below by the board,
 so use the whole canvas.
 
-How to draw it:
+How to draw it (this is a FOUR-INK e-ink panel -- design for its limits):
 - This is ALWAYS a flat graphic illustration -- never a photograph, and never a
   photo treated to look stylized. If the subject sounds realistic, stylize it
   fully into flat graphic shapes.
-- Only four inks exist: white, black, red, yellow. Compose for exactly these.
-- Flat color fields, high contrast, bold shapes, strong focal subject, generous
-  negative space. NO gradients, NO soft shading, NO photorealism, NO 3D, NO blur
-  or glow, NO fine micro-texture.
+- Only four inks exist: white, black, red, yellow. Use ALL FOUR with intent --
+  generous white and black for structure, AND a meaningful amount of BOTH red and
+  yellow in every image. Never near-monochrome (not just black on white).
+- NEVER use any other colour: no blue, green, teal, purple, pink, brown, orange,
+  or grey. Render everything in the four inks -- a sky becomes flat white, black,
+  or yellow (never blue); water becomes black or white; foliage becomes black or
+  yellow. Foreign colours turn to muddy speckle on the panel.
+- No gradients, soft shading, or grey mid-tones -- the panel can only dither them
+  into noise. Use flat, solid fields of one ink with hard edges.
+- Bold shapes and thick lines only; no hairline detail or tiny elements -- fine
+  detail is lost on the panel and to dithering.
+- Yellow is weak on white -- use it as solid fills or against black, not as thin
+  marks on a white ground.
 - Absolutely NO TEXT, letters, numbers, logos, or watermarks.
 - The weather mood must read at a glance from across a room.
 

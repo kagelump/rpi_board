@@ -38,6 +38,7 @@ from scripts.openrouter.network import urlopen_with_context
 import scripts.openrouter.generate_brief as gb
 import scripts.openrouter.generate_image as gi
 import scripts.render.compose_board as cb
+import scripts.render.palette_metrics as pm
 from scripts.weather.fetch_weather import fetch_forecast
 from scripts.weather.aggregate_weather_sources import build_aggregated_context
 from scripts.weather.transform_weather import build_payload
@@ -225,6 +226,13 @@ def run_pipeline(variant_name, variant, base_settings, city, city_dir, do_image)
         result["hero_ok"] = hero_path.exists()
         if not do_image:
             result["errors"].append("image: skipped (--no-image)")
+
+    # Deterministic e-ink colour metrics on the raw art (before compositing).
+    if hero_path.exists():
+        try:
+            result["palette"] = pm.analyze(str(hero_path))
+        except Exception as exc:  # noqa: BLE001
+            result["errors"].append(f"palette: {exc}")
 
     # 6. Compose the actual board.
     try:
@@ -420,6 +428,19 @@ def build_report(run_dir, variants, cities, results, scores, meta):
         lines.append(f"- {v}: {len(hits)}/{len(cities)}" + (f" ({', '.join(hits)})" if hits else ""))
     lines.append("")
 
+    # E-ink colour utilisation (deterministic, from the hero art).
+    lines.append("E-ink palette use (avg balance 0-10 / avg off-palette % the panel can't show):\n")
+    for v in variants:
+        pals = [results.get((v, c["id"]), {}).get("palette") for c in cities]
+        pals = [p for p in pals if isinstance(p, dict)]
+        if not pals:
+            continue
+        bal = round(sum(p["palette_balance"] for p in pals) / len(pals), 1)
+        off = round(sum(p["off_palette_pct"] for p in pals) / len(pals) * 100, 1)
+        mono = sum(1 for p in pals if p.get("monochrome"))
+        lines.append(f"- {v}: balance {bal}, off-palette {off}%, monochrome {mono}/{len(pals)}")
+    lines.append("")
+
     # Per-city.
     lines.append("## Per-city detail\n")
     for c in cities:
@@ -442,6 +463,12 @@ def build_report(run_dir, variants, cities, results, scores, meta):
                 lines.append(f"- art prompt: {r['illustration_prompt']}")
             if r.get("board"):
                 lines.append(f"- board: `{r['board']}`")
+            pal = r.get("palette")
+            if isinstance(pal, dict):
+                lines.append(f"- palette: balance={pal['palette_balance']}, off-palette={pal['off_palette_pct']*100:.0f}%"
+                             + (f" ({pal['off_palette_hue']})" if pal.get("off_palette_hue") else "")
+                             + f", W/K/R/Y={pm.coverage_str(pal['coverage'])}"
+                             + (", MONOCHROME" if pal.get("monochrome") else ""))
             if "error" in sc:
                 lines.append(f"- judge: ERROR {sc['error']}")
             else:

@@ -13,6 +13,7 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import ROOT, absolute_path, get_fal_api_key, get_openrouter_api_key, load_settings, read_json, write_json
 from scripts.openrouter.network import describe_network_error, urlopen_with_context
 from scripts.openrouter.art_guardrail import inspect_art
+from scripts.render.palette_metrics import analyze as analyze_palette
 
 
 ART_STYLE_POOL = [
@@ -266,28 +267,44 @@ def _call_image_api(settings, prompt, provider):
     raise RuntimeError(f"Unsupported image provider: {provider}")
 
 
+def _off_palette_pct(image_bytes):
+    """Fraction of art in hues the 4-ink panel cannot show (blue/green/etc).
+    Deterministic and cheap (no API). Returns None if analysis fails."""
+    try:
+        return analyze_palette(image_bytes)["off_palette_pct"]
+    except Exception:  # noqa: BLE001 - never let the gate break generation
+        return None
+
+
 def _generate_with_guardrail(settings, prompt, provider):
-    """Generate art, then (if enabled) reject baked-in text / collage frames and
-    regenerate up to a bounded number of retries. Keeps the last attempt if every
-    try is flagged -- a flawed image still beats a blank board. The guardrail
-    itself fails open, so it never prevents a board from rendering."""
+    """Generate art, then (if enabled) reject baked-in text, collage frames, or art
+    that leans on colours the e-ink panel cannot show, and regenerate up to a
+    bounded number of retries. Keeps the last attempt if every try is flagged -- a
+    flawed image still beats a blank board. Each check fails open, so the guardrail
+    never prevents a board from rendering."""
     pipeline = settings.get("pipeline", {})
     enabled = pipeline.get("enable_image_guardrail", False)
     if not enabled:
         return _call_image_api(settings, prompt, provider)
 
     max_retries = int(pipeline.get("image_guardrail_max_retries", 1))
+    max_off_palette = float(pipeline.get("image_guardrail_max_off_palette_pct", 0.15))
     last_bytes = None
     for attempt in range(max_retries + 1):
         image_bytes = _call_image_api(settings, prompt, provider)
         last_bytes = image_bytes
-        verdict = inspect_art(image_bytes, settings)
-        if verdict.get("ok", True):
+        reasons = []
+        verdict = inspect_art(image_bytes, settings)  # vision: text / collage
+        if not verdict.get("ok", True):
+            reasons += [k for k in ("has_text", "is_collage") if verdict.get(k)]
+        off = _off_palette_pct(image_bytes)  # deterministic: off-palette colour
+        if off is not None and off > max_off_palette:
+            reasons.append(f"off_palette={off * 100:.0f}%")
+        if not reasons:
             if attempt:
                 print(f"[image] guardrail passed on attempt {attempt + 1}")
             return image_bytes
-        reasons = [k for k in ("has_text", "is_collage") if verdict.get(k)]
-        print(f"[image] guardrail rejected attempt {attempt + 1} ({', '.join(reasons)}): {verdict.get('note', '')}")
+        print(f"[image] guardrail rejected attempt {attempt + 1} ({', '.join(reasons)})")
     print("[image] guardrail retries exhausted; keeping last image")
     return last_bytes
 

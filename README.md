@@ -9,9 +9,14 @@ The board is designed as a **morning poster**: a generated weather illustration 
 - Daily weather pipeline: fetch -> transform -> brief -> image -> compose -> display.
 - Deterministic fallback path when APIs fail.
 - OpenRouter text brief generation (optional).
-- OpenRouter image generation via server tools (optional).
+- Image generation via fal or OpenRouter (optional).
+- Art guardrail: after generation, rejects baked-in text, collage/photo-in-frame
+  art, and art that leans on colours the 4-ink panel cannot show (off-palette),
+  regenerating within a bounded retry. See `scripts/openrouter/art_guardrail.py`.
 - Full-screen poster layout with minimal text.
 - Local preview mode and Raspberry Pi hardware mode.
+- Eval framework (`scripts/eval/`): A/B prompt variants and compare image models
+  with a vision-LLM judge plus deterministic e-ink colour metrics.
 
 ## Repository Layout
 
@@ -22,12 +27,30 @@ config/
   prompt_templates/
 scripts/
   weather/
-  openrouter/
-  render/
+  openrouter/      # brief + image generation, art guardrail
+  render/          # compose_board, palette_quantize, palette_metrics
   display/
+  eval/            # prompt A/B + image-model comparison harness
+tests/
 tokyo_weather.sh
 plan.md
 ```
+
+## Eval framework
+
+Reusable harness under `scripts/eval/` for trying prompt/model changes against
+real data before shipping:
+
+- `run_eval.py` -- A/B prompt variants across cities; scores each board with a
+  vision-LLM judge (title informativeness, art coherence, text/collage guardrail
+  flags) plus deterministic e-ink colour metrics.
+- `compare_models.py` -- feed one fixed prompt to several image models, N runs
+  each; reports judge scores, colour balance, off-palette %, cost, latency, and
+  links to each board. Supports `--append-to <run_dir>` to add a model later.
+- `palette_metrics.py` lives in `scripts/render/` (it shares the device palette
+  with `palette_quantize.py`) and is reused by the production art guardrail.
+
+Outputs land under `runtime/eval*/` (gitignored).
 
 ## Requirements
 
@@ -54,6 +77,17 @@ Key sections:
   - `pi_display` -> push to Waveshare panel.
 - `pipeline.enable_openrouter_brief`: enable LLM text brief.
 - `pipeline.enable_openrouter_image`: enable generated hero image.
+- `pipeline.image_provider`: `fal` (default) or `openrouter`.
+- `pipeline.enable_image_guardrail`: post-generation QA on the hero art. When on,
+  rejects baked-in text, collage/photo-in-frame, and off-palette art, then
+  regenerates:
+  - `image_guardrail_max_retries` (default `1`): extra attempts on a rejection.
+  - `image_guardrail_timeout_seconds` (default `15`): vision-check timeout.
+  - `image_guardrail_max_off_palette_pct` (default `0.15`): reject art with more
+    than this fraction of pixels in colours the panel cannot show.
+  Each check fails open, so the guardrail never blocks a board from rendering.
+  Adds ~1 vision call (+ a possible regen) per refresh; set the flag to `false`
+  to disable.
 - `openrouter.text_model`: model for text brief.
 - `openrouter.image_model`: image generation model (default: `google/gemini-3.1-flash-image-preview`).
 - `openrouter.image_tool_model`: model used to invoke OpenRouter image server tool (default: `openai/gpt-5.2`).
