@@ -11,6 +11,21 @@ if [[ -x "${ROOT_DIR}/.venv/bin/python3" ]]; then
   PYTHON_BIN="${ROOT_DIR}/.venv/bin/python3"
 fi
 
+# --force re-fetches/regenerates everything, bypassing the brief regen cache,
+# the cached-hero skip, and the on-disk holiday cache. (Weather is always
+# fetched fresh regardless.)
+FORCE_FLAG=""
+for arg in "$@"; do
+  case "${arg}" in
+    --force|-f) FORCE_FLAG="--force" ;;
+    -h|--help) echo "usage: update_display.sh [--force]"; exit 0 ;;
+    *) echo "[weather-display] unknown argument: ${arg}" >&2; exit 2 ;;
+  esac
+done
+if [[ -n "${FORCE_FLAG}" ]]; then
+  echo "[weather-display] --force: bypassing brief/hero/holiday caches"
+fi
+
 run_step() {
   local label="$1"
   shift
@@ -22,9 +37,9 @@ if run_step "fetch weather" "${PYTHON_BIN}" scripts/weather/fetch_weather.py; th
   run_step "fetch yahoo weather" "${PYTHON_BIN}" scripts/weather/fetch_yahoo_weather.py || true
   run_step "aggregate weather sources" "${PYTHON_BIN}" scripts/weather/aggregate_weather_sources.py
   run_step "transform weather" "${PYTHON_BIN}" scripts/weather/transform_weather.py
-  run_step "fetch day context" "${PYTHON_BIN}" scripts/weather/fetch_context.py || true
-  run_step "generate brief" "${PYTHON_BIN}" scripts/openrouter/generate_brief.py
-  run_step "generate image (optional)" "${PYTHON_BIN}" scripts/openrouter/generate_image.py || true
+  run_step "fetch day context" "${PYTHON_BIN}" scripts/weather/fetch_context.py ${FORCE_FLAG} || true
+  run_step "generate brief" "${PYTHON_BIN}" scripts/openrouter/generate_brief.py ${FORCE_FLAG}
+  run_step "generate image (optional)" "${PYTHON_BIN}" scripts/openrouter/generate_image.py ${FORCE_FLAG} || true
   run_step "compose board" "${PYTHON_BIN}" scripts/render/compose_board.py
   run_step "quantize palette" "${PYTHON_BIN}" scripts/render/palette_quantize.py
 else

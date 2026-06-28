@@ -221,6 +221,8 @@ def main():
     parser.add_argument("--input", default=None)
     parser.add_argument("--output", default=None)
     parser.add_argument("--force-openrouter", action="store_true")
+    parser.add_argument("--force", action="store_true",
+                        help="Bypass the regen cache (interval/skip-unchanged) and regenerate now")
     parser.add_argument("--model", default=None, help="Override OpenRouter text model for this run")
     args = parser.parse_args()
 
@@ -248,7 +250,7 @@ def main():
         signature,
         now_iso,
         settings["pipeline"].get("regen_min_interval_seconds", 0),
-        force=args.force_openrouter,
+        force=args.force_openrouter or args.force,
         skip_enabled=settings["pipeline"].get("skip_unchanged", False),
     )
     if not regenerate and isinstance(last_good.get("brief"), dict):

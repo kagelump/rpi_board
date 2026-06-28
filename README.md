@@ -126,6 +126,20 @@ This orchestrates:
 6. `scripts/render/palette_quantize.py`
 7. `scripts/display/push_to_epd.py`
 
+### Force a full refresh
+
+By default a re-run reuses caches: the brief is kept when inputs are unchanged
+within `regen_min_interval_seconds`, the hero is kept when the brief was cached,
+and holidays are read from an on-disk cache. To bypass all of these and
+regenerate everything (weather is always fetched fresh regardless):
+
+```bash
+./scripts/display/update_display.sh --force   # or: make force
+```
+
+The flag fans out to `generate_brief.py --force`, `generate_image.py --force`,
+and `fetch_context.py --force`.
+
 ## Runtime Artifacts
 
 Outputs are written under `runtime/`:

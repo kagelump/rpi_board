@@ -326,6 +326,8 @@ def main():
     parser.add_argument("--input", default=None)
     parser.add_argument("--output", default=None)
     parser.add_argument("--force-openrouter", action="store_true")
+    parser.add_argument("--force", action="store_true",
+                        help="Regenerate even if the brief was cached (keeps the configured provider)")
     args = parser.parse_args()
 
     settings = load_settings()
@@ -346,7 +348,7 @@ def main():
     # Cost guardrail: when the brief was reused (unchanged inputs), the
     # illustration prompt is identical too, so keep the existing hero instead of
     # paying to regenerate the same image.
-    if payload.get("brief_source") == "cached" and output_abs.exists():
+    if payload.get("brief_source") == "cached" and output_abs.exists() and not args.force:
         print("image-skip-cached: reusing existing hero")
         return
 

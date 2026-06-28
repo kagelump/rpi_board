@@ -9,6 +9,7 @@ Produces runtime/day_context.json with:
 Every network source is best-effort: failures degrade to empty fields and never
 break the pipeline. The whole step is also guarded by `|| true` in the shell.
 """
+import argparse
 import json
 import math
 import sys
@@ -139,8 +140,12 @@ def _fetch_json(url, settings, timeout):
         return json.loads(response.read().decode("utf-8"))
 
 
-def fetch_holidays(settings, year):
-    """Fetch a country's holidays for a year, caching per country-year on disk."""
+def fetch_holidays(settings, year, force=False):
+    """Fetch a country's holidays for a year, caching per country-year on disk.
+
+    `force` re-fetches from the API even when a cached copy exists (the cache is
+    still refreshed on disk).
+    """
     context = settings.get("context", {})
     country = context.get("holiday_country")
     api_url = context.get("holidays_api_url")
@@ -159,7 +164,7 @@ def fetch_holidays(settings, year):
                 cache = json.loads(cache_file.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 cache = {}
-        if isinstance(cache, dict) and cache_key in cache:
+        if not force and isinstance(cache, dict) and cache_key in cache:
             return cache[cache_key]
 
     timeout = context.get("context_timeout_seconds", 8)
@@ -193,7 +198,7 @@ def fetch_calendar_events(settings, target_date):
     return events[:5]
 
 
-def build_day_context_extra(settings, now_local):
+def build_day_context_extra(settings, now_local, force=False):
     context = settings.get("context", {})
     extra = {
         "fetched_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
@@ -208,7 +213,7 @@ def build_day_context_extra(settings, now_local):
 
     window = context.get("upcoming_holiday_window_days", 10)
     try:
-        holidays = fetch_holidays(settings, now_local.year)
+        holidays = fetch_holidays(settings, now_local.year, force=force)
         today_holiday, upcoming = select_holidays(holidays, now_local.date().isoformat(), window)
         extra["holiday_today"] = today_holiday
         extra["upcoming_holiday"] = upcoming
@@ -224,10 +229,15 @@ def build_day_context_extra(settings, now_local):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force", action="store_true",
+                        help="Bypass the on-disk holiday cache and re-fetch")
+    args = parser.parse_args()
+
     settings = load_settings()
     tz_name = settings["location"]["timezone"]
     now_local = datetime.now(ZoneInfo(tz_name))
-    extra = build_day_context_extra(settings, now_local)
+    extra = build_day_context_extra(settings, now_local, force=args.force)
     output_path = settings["runtime"]["day_context_file"]
     write_json(output_path, extra)
     print(output_path)
