@@ -1,0 +1,47 @@
+[
+  {
+    "id": "reykjavik",
+    "label": "Reykjavik, IS",
+    "latitude": 64.1466,
+    "longitude": -21.9426,
+    "timezone": "Atlantic/Reykjavik",
+    "location_descriptor": "Reykjavik, Iceland",
+    "force_style": "WPA Travel Poster"
+  },
+  {
+    "id": "phoenix",
+    "label": "Phoenix, US",
+    "latitude": 33.4484,
+    "longitude": -112.0740,
+    "timezone": "America/Phoenix",
+    "location_descriptor": "Phoenix, Arizona",
+    "force_style": "Constructivism"
+  },
+  {
+    "id": "singapore",
+    "label": "Singapore",
+    "latitude": 1.3521,
+    "longitude": 103.8198,
+    "timezone": "Asia/Singapore",
+    "location_descriptor": "Singapore",
+    "force_style": "Pop Art Comic"
+  },
+  {
+    "id": "london",
+    "label": "London, UK",
+    "latitude": 51.5074,
+    "longitude": -0.1278,
+    "timezone": "Europe/London",
+    "location_descriptor": "London, England",
+    "force_style": "De Stijl"
+  },
+  {
+    "id": "tokyo",
+    "label": "Tokyo, JP",
+    "latitude": 35.6580,
+    "longitude": 139.6835,
+    "timezone": "Asia/Tokyo",
+    "location_descriptor": "Komaba, Meguro, Tokyo",
+    "force_style": "Minimal Ukiyo-e"
+  }
+]

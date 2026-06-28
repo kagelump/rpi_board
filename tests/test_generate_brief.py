@@ -5,10 +5,34 @@ from scripts.openrouter.generate_brief import (
     _enrich_payload,
     _is_valid_brief,
     _load_recent_history,
+    _normalize_brief_punct,
     _render_prompt,
     _select_text_model,
     _time_frame,
 )
+
+
+class TestNormalizeBriefPunct:
+    def test_folds_dashes_and_quotes_to_ascii(self):
+        brief = {
+            "headline": "Hot — 41C peak",
+            "subtitle": "Take the ‘river’ walk…",
+            "illustration_prompt": "sun – over rooftops",
+        }
+        out = _normalize_brief_punct(brief)
+        assert out["headline"] == "Hot - 41C peak"
+        assert out["subtitle"] == "Take the 'river' walk..."
+        assert out["illustration_prompt"] == "sun - over rooftops"
+        assert out["headline"].isascii() and out["subtitle"].isascii()
+
+    def test_leaves_plain_ascii_untouched(self):
+        brief = {"headline": "Rain by 3pm, 22C", "subtitle": "Bring a coat"}
+        out = _normalize_brief_punct(dict(brief))
+        assert out["headline"] == brief["headline"]
+        assert out["subtitle"] == brief["subtitle"]
+
+    def test_non_dict_passthrough(self):
+        assert _normalize_brief_punct(None) is None
 
 
 # ---------------------------------------------------------------------------

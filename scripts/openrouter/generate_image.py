@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import ROOT, absolute_path, get_fal_api_key, get_openrouter_api_key, load_settings, read_json, write_json
 from scripts.openrouter.network import describe_network_error, urlopen_with_context
+from scripts.openrouter.art_guardrail import inspect_art
 
 
 ART_STYLE_POOL = [
@@ -33,7 +34,7 @@ ART_STYLE_POOL = [
     },
     {
         "name": "De Stijl",
-        "prompt": "De Stijl / Mondrian composition, orthogonal black lines, primary color blocks, severe geometric balance",
+        "prompt": "De Stijl treatment applied to the WHOLE scene: the entire subject simplified into orthogonal black dividing lines and flat primary color blocks, the forms themselves abstracted into rectilinear shapes -- NOT a realistic image placed inside a Mondrian grid or border",
     },
     {
         "name": "WPA Travel Poster",
@@ -55,7 +56,9 @@ ART_STYLE_POOL = [
 
 NEGATIVE_STYLE_CONSTRAINTS = (
     "Avoid gradients, soft shading, photorealism, 3D rendering, blur, glow, "
-    "depth of field, painterly texture, and dense micro-details."
+    "depth of field, painterly texture, and dense micro-details. The result must "
+    "be one unified illustration in a single style edge to edge -- not a collage, "
+    "not a framed or inset image, not a realistic photo with a graphic border."
 )
 
 
@@ -263,6 +266,32 @@ def _call_image_api(settings, prompt, provider):
     raise RuntimeError(f"Unsupported image provider: {provider}")
 
 
+def _generate_with_guardrail(settings, prompt, provider):
+    """Generate art, then (if enabled) reject baked-in text / collage frames and
+    regenerate up to a bounded number of retries. Keeps the last attempt if every
+    try is flagged -- a flawed image still beats a blank board. The guardrail
+    itself fails open, so it never prevents a board from rendering."""
+    pipeline = settings.get("pipeline", {})
+    enabled = pipeline.get("enable_image_guardrail", False)
+    if not enabled:
+        return _call_image_api(settings, prompt, provider)
+
+    max_retries = int(pipeline.get("image_guardrail_max_retries", 1))
+    last_bytes = None
+    for attempt in range(max_retries + 1):
+        image_bytes = _call_image_api(settings, prompt, provider)
+        last_bytes = image_bytes
+        verdict = inspect_art(image_bytes, settings)
+        if verdict.get("ok", True):
+            if attempt:
+                print(f"[image] guardrail passed on attempt {attempt + 1}")
+            return image_bytes
+        reasons = [k for k in ("has_text", "is_collage") if verdict.get(k)]
+        print(f"[image] guardrail rejected attempt {attempt + 1} ({', '.join(reasons)}): {verdict.get('note', '')}")
+    print("[image] guardrail retries exhausted; keeping last image")
+    return last_bytes
+
+
 def _report_image_failure(output_abs, detail):
     """On generation failure keep the last good hero (reuse) rather than blanking.
 
@@ -316,7 +345,7 @@ def main():
     print(f"[image] provider={provider}")
 
     try:
-        image_bytes = _call_image_api(settings, prompt, provider)
+        image_bytes = _generate_with_guardrail(settings, prompt, provider)
         output_abs.write_bytes(image_bytes)
         print(output_path)
     except urllib.error.URLError as error:

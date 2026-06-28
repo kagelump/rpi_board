@@ -54,6 +54,9 @@
     "image_provider": "fal",
     "enable_openrouter_brief": true,
     "enable_openrouter_image": true,
+    "enable_image_guardrail": true,
+    "image_guardrail_max_retries": 1,
+    "image_guardrail_timeout_seconds": 15,
     "skip_unchanged": true,
     "regen_min_interval_seconds": 5400
   },

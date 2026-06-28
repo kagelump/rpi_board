@@ -12,6 +12,28 @@ from scripts.openrouter.network import describe_network_error, urlopen_with_cont
 from scripts.ops.render_gate import compute_signature, should_regenerate
 
 
+_PUNCT_MAP = {
+    "–": "-", "—": "-", "‒": "-", "−": "-",  # dashes
+    "‘": "'", "’": "'", "“": '"', "”": '"',  # smart quotes
+    "…": "...",  # ellipsis
+    " ": " ",  # nbsp
+}
+
+
+def _normalize_brief_punct(brief):
+    """Fold common non-ASCII punctuation to ASCII so the board never renders a
+    dropped glyph. The model is told ASCII-only, but it slips occasionally."""
+    if not isinstance(brief, dict):
+        return brief
+    for key in ("headline", "subtitle", "illustration_prompt"):
+        value = brief.get(key)
+        if isinstance(value, str):
+            for bad, good in _PUNCT_MAP.items():
+                value = value.replace(bad, good)
+            brief[key] = value
+    return brief
+
+
 def _is_valid_brief(brief):
     if not isinstance(brief, dict):
         return False
@@ -134,9 +156,9 @@ def _enrich_payload(payload, settings):
     angles = [
         "what to wear walking out the door",
         "the commute and getting around",
-        "laundry / drying / errands timing",
+        "time outdoors: a walk, the park, the riverside",
         "an evening or after-dark beat",
-        "a small seasonal observation",
+        "a small seasonal observation in the sky or streets",
         "plans with other people",
         "food or a warm/cold drink that fits",
     ]
@@ -245,7 +267,7 @@ def main():
     try:
         model_name = _select_text_model(settings, override=args.model)
         print(f"[brief] requesting OpenRouter model={model_name}")
-        candidate = _call_openrouter(settings, prompt, model_override=model_name)
+        candidate = _normalize_brief_punct(_call_openrouter(settings, prompt, model_override=model_name))
         if _is_valid_brief(candidate):
             transformed["brief"] = candidate
             transformed["brief_source"] = "openrouter"
