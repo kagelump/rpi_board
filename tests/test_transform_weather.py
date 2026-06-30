@@ -9,12 +9,14 @@ from scripts.weather.transform_weather import (
     _bullets,
     _daily_summary,
     _day_context,
+    _daypart_role,
     _headline,
     _hourly_rows,
     _is_ascii_text,
     _rain_rows_by_intensity,
     _rain_window,
     _subtitle,
+    _target_offset_days,
     build_payload,
 )
 
@@ -442,6 +444,24 @@ class TestDayContext:
         assert _day_context(self._dt(2024, 6, 15))["date_iso"] == "2024-06-15"
 
 
+class TestTargetDate:
+    def _dt(self, hour):
+        return datetime(2024, 6, 15, hour, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+    def test_morning_and_midday_target_today(self):
+        assert _target_offset_days(self._dt(8)) == 0   # 8am refresh
+        assert _target_offset_days(self._dt(13)) == 0  # 1pm refresh
+
+    def test_evening_targets_tomorrow(self):
+        assert _target_offset_days(self._dt(21)) == 1  # 9pm builds tomorrow
+        assert _target_offset_days(self._dt(18)) == 1  # cutoff is 18:00
+
+    def test_daypart_roles(self):
+        assert _daypart_role(self._dt(8)) == "morning_update"
+        assert _daypart_role(self._dt(13)) == "afternoon"
+        assert _daypart_role(self._dt(21)) == "primary"
+
+
 class TestBuildPayload:
     def test_top_level_keys(self):
         result = build_payload(_CONTEXT)
@@ -452,6 +472,13 @@ class TestBuildPayload:
         ctx = build_payload(_CONTEXT)["day_context"]
         assert ctx["season"] in ("winter", "spring", "summer", "autumn")
         assert isinstance(ctx["is_weekend"], bool)
+
+    def test_day_context_has_target_fields(self):
+        # The forecast-day anchor (theme lock) and run-role must be exposed.
+        ctx = build_payload(_CONTEXT)["day_context"]
+        assert ctx["target_date_iso"] == ctx["date_iso"]
+        assert ctx["daypart_role"] in ("primary", "morning_update", "afternoon")
+        assert "run_date_iso" in ctx
 
     def test_timezone(self):
         assert build_payload(_CONTEXT)["timezone"] == "Asia/Tokyo"

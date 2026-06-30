@@ -12,25 +12,51 @@ import json
 from datetime import datetime
 
 
+# Granularity of the "major change" check that decides whether the morning
+# (8am) refresh regenerates: temperatures are bucketed so only a swing of about
+# this many degrees flips the signature -- a 1C tweak overnight reuses the board.
+_TEMP_BUCKET_C = 3
+
+
+def _temp_bucket(value):
+    """Quantise a temperature so only a meaningful (~3C) shift changes the hash."""
+    if not isinstance(value, (int, float)):
+        return None
+    return round(value / _TEMP_BUCKET_C)
+
+
+def _refresh_key(daypart_role):
+    """Collapse the three daily roles into the signature's refresh dimension.
+
+    The evening (primary) and morning (morning_update) runs share a key so the
+    8am refresh reuses the 9pm board unless the forecast itself changed. The
+    midday (afternoon) run gets its own key so it always re-frames for the rest
+    of the day even when nothing about the forecast moved.
+    """
+    return "afternoon" if daypart_role == "afternoon" else "day"
+
+
 def compute_signature(payload):
     """Stable short hash of the inputs that should drive a new brief + image.
 
-    Deliberately ignores volatile fields (exact timestamps, hourly noise) so two
-    runs in the same part of the day with the same forecast collapse to one
-    signature. part_of_day is included so each daypart still refreshes.
+    Deliberately ignores volatile fields (exact timestamps, hourly noise, and
+    sub-3C temperature jitter) so two runs of the same forecast day collapse to
+    one signature. The refresh key keeps the afternoon re-frame distinct while
+    letting the morning run reuse the evening board on an unchanged forecast.
     """
     today = payload.get("today", {}).get("daily_summary", {})
     tomorrow = payload.get("tomorrow", {}).get("daily_summary", {})
     day_context = payload.get("day_context", {})
+    brief = payload.get("brief", {})
     basis = {
-        "date": day_context.get("date_iso"),
-        "part_of_day": day_context.get("part_of_day"),
+        "date": day_context.get("target_date_iso") or day_context.get("date_iso"),
+        "refresh": _refresh_key(day_context.get("daypart_role")),
         "holiday": day_context.get("holiday_today"),
         "today_condition": today.get("condition"),
         "today_code": today.get("weather_code"),
-        "today_high": today.get("temp_max_c"),
-        "today_low": today.get("temp_min_c"),
-        "today_rain": today.get("rain_prob_max_pct"),
+        "today_high_bucket": _temp_bucket(today.get("temp_max_c")),
+        "today_low_bucket": _temp_bucket(today.get("temp_min_c")),
+        "today_rain_level": brief.get("rain_level"),
         "tomorrow_condition": tomorrow.get("condition"),
     }
     blob = json.dumps(basis, sort_keys=True, ensure_ascii=True)

@@ -59,7 +59,8 @@
     "image_guardrail_timeout_seconds": 15,
     "image_guardrail_max_off_palette_pct": 0.15,
     "skip_unchanged": true,
-    "regen_min_interval_seconds": 5400
+    "regen_min_interval_seconds": 86400,
+    "afternoon_art_prompt_similarity_threshold": 0.8
   },
   "voice": {
     "persona": "a wry, observant Tokyo local who notices small seasonal things and never just recites the forecast",

@@ -2,14 +2,18 @@
 from scripts.ops.render_gate import compute_signature, should_regenerate
 
 
-def _payload(part="morning", condition="Slight rain", high=22.0, code=61, holiday=None):
+def _payload(role="morning_update", condition="Slight rain", high=22.0, code=61,
+             holiday=None, rain_level="light"):
     return {
-        "day_context": {"date_iso": "2026-06-27", "part_of_day": part, "holiday_today": holiday},
+        "day_context": {
+            "target_date_iso": "2026-06-27", "daypart_role": role, "holiday_today": holiday,
+        },
         "today": {"daily_summary": {
             "condition": condition, "weather_code": code, "temp_max_c": high,
             "temp_min_c": 18.0, "rain_prob_max_pct": 80,
         }},
         "tomorrow": {"daily_summary": {"condition": "Clear sky"}},
+        "brief": {"rain_level": rain_level},
     }
 
 
@@ -17,14 +21,28 @@ class TestComputeSignature:
     def test_deterministic(self):
         assert compute_signature(_payload()) == compute_signature(_payload())
 
-    def test_changes_with_part_of_day(self):
-        assert compute_signature(_payload(part="morning")) != compute_signature(_payload(part="evening"))
+    def test_evening_and_morning_share_signature(self):
+        # 9pm (primary) and 8am (morning_update) collapse to one refresh key so
+        # the morning run reuses the evening board on an unchanged forecast.
+        assert compute_signature(_payload(role="primary")) == compute_signature(_payload(role="morning_update"))
+
+    def test_afternoon_differs_from_morning(self):
+        # 1pm always re-frames, so it must not reuse the morning/evening board.
+        assert compute_signature(_payload(role="afternoon")) != compute_signature(_payload(role="morning_update"))
 
     def test_changes_with_condition(self):
         assert compute_signature(_payload(condition="Heavy rain")) != compute_signature(_payload())
 
-    def test_changes_with_temperature(self):
+    def test_major_temp_swing_changes_signature(self):
+        # A ~3C+ swing crosses a temperature bucket -> regenerate.
         assert compute_signature(_payload(high=30.0)) != compute_signature(_payload())
+
+    def test_minor_temp_change_keeps_signature(self):
+        # A sub-bucket jitter (22.0 -> 22.4) is not a "major update" -> reuse.
+        assert compute_signature(_payload(high=22.4)) == compute_signature(_payload(high=22.0))
+
+    def test_changes_with_rain_level(self):
+        assert compute_signature(_payload(rain_level="heavy")) != compute_signature(_payload(rain_level="light"))
 
     def test_changes_with_holiday(self):
         assert compute_signature(_payload(holiday="Marine Day")) != compute_signature(_payload())

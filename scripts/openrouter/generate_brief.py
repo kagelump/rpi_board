@@ -162,8 +162,11 @@ def _enrich_payload(payload, settings):
         "plans with other people",
         "food or a warm/cold drink that fits",
     ]
+    # Seed on the forecast (target) day only -- never part_of_day -- so the same
+    # creative angle holds across the evening / morning / afternoon refreshes of
+    # one forecast day, keeping the daily theme fixed across all three boards.
     day_context = payload.get("day_context", {})
-    seed_basis = day_context.get("date_iso", "") + day_context.get("part_of_day", "")
+    seed_basis = day_context.get("target_date_iso") or day_context.get("date_iso", "")
     enriched["creative_angle"] = angles[sum(ord(c) for c in seed_basis) % len(angles)]
     enriched["time_frame"] = _time_frame(day_context.get("part_of_day"))
     return enriched

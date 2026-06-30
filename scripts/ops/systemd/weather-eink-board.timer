@@ -1,10 +1,14 @@
 [Unit]
-Description=Run Weather E-Ink Board update every morning
+Description=Run Weather E-Ink Board update three times a day
 
 [Timer]
+# 21:00 builds tomorrow's board; 08:00 refreshes today only on a major change;
+# 13:00 re-frames for the afternoon/evening. All three share one daily theme.
 OnCalendar=*-*-* 08:00:00
+OnCalendar=*-*-* 13:00:00
+OnCalendar=*-*-* 21:00:00
 Persistent=true
-RandomizedDelaySec=180
+RandomizedDelaySec=120
 Unit=weather-eink-board.service
 
 [Install]

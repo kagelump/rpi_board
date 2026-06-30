@@ -7,6 +7,7 @@ The board is designed as a **morning poster**: a generated weather illustration 
 ## Features
 
 - Daily weather pipeline: fetch -> transform -> brief -> image -> compose -> display.
+- Three refreshes a day that share one fixed daily theme (see *Update schedule*).
 - Deterministic fallback path when APIs fail.
 - OpenRouter text brief generation (optional).
 - Image generation via fal or OpenRouter (optional).
@@ -35,6 +36,27 @@ tests/
 tokyo_weather.sh
 plan.md
 ```
+
+## Update schedule
+
+The systemd timer (`scripts/ops/systemd/weather-eink-board.timer`) fires three
+times a day, each refresh playing a distinct role for the **forecast day**:
+
+- **21:00** -- builds tomorrow's board from scratch, so the new day is already
+  showing before you wake. Evening/night runs (>= 18:00) forecast *tomorrow*.
+- **08:00** -- refreshes today's board only on a **major update** (a change of
+  weather condition or rain level, or a high/low swing of ~3C+); an unchanged
+  forecast reuses the 21:00 board untouched.
+- **13:00** -- re-frames the brief for the **afternoon/evening** and re-renders
+  the hero in the same locked style, unless the new illustration prompt is
+  nearly identical to the morning's (then the existing art is kept).
+
+All three runs for one forecast day share a **fixed theme**: the creative angle
+(seeded on the target date, not the time of day) and the art style (locked per
+target date) stay constant, so only the wording and any major forecast change
+move between refreshes. The "major update" sensitivity and afternoon
+re-render threshold are tunable in `config/settings.json`
+(`regen_min_interval_seconds`, `afternoon_art_prompt_similarity_threshold`).
 
 ## Eval framework
 

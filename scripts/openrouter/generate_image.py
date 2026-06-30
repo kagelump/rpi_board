@@ -68,26 +68,66 @@ def _style_state_path(settings):
     return absolute_path(state_path)
 
 
-def _pick_art_style(settings):
-    styles = list(ART_STYLE_POOL)
-    names = [item["name"] for item in styles]
-    by_name = {item["name"]: item for item in styles}
+def _load_style_state(settings):
     state_file = _style_state_path(settings)
-    state = {}
     if state_file.exists():
         try:
             state = json.loads(state_file.read_text(encoding="utf-8"))
+            if isinstance(state, dict):
+                return state
         except (json.JSONDecodeError, OSError):
-            state = {}
+            pass
+    return {}
+
+
+def _save_style_state(settings, state):
+    write_json(str(_style_state_path(settings)), state)
+
+
+def _pick_art_style(settings, state, target_date):
+    """Choose the art style for this forecast day, locking it across the day.
+
+    While ``target_date`` is unchanged (the 8am / 1pm refreshes of the same
+    forecast day) the previously selected style is reused so the daily theme
+    stays fixed. A new target date (the 9pm run) advances the no-repeat rotation
+    and picks the next style. Mutates ``state`` in place; the caller persists it.
+    """
+    styles = list(ART_STYLE_POOL)
+    names = [item["name"] for item in styles]
+    by_name = {item["name"]: item for item in styles}
+
+    locked = state.get("last_selected")
+    if state.get("target_date") == target_date and locked in by_name:
+        return by_name[locked]
 
     remaining = [name for name in state.get("remaining", []) if name in by_name]
     if not remaining:
         remaining = names[:]
         random.SystemRandom().shuffle(remaining)
-
     chosen_name = remaining.pop(0)
-    write_json(str(state_file), {"remaining": remaining, "last_selected": chosen_name})
+    state["remaining"] = remaining
+    state["last_selected"] = chosen_name
+    state["target_date"] = target_date
+    # A new forecast day: any existing hero belongs to the previous day's prompt.
+    state["hero_prompt"] = None
     return by_name[chosen_name]
+
+
+def _prompt_similar(prompt_a, prompt_b, threshold):
+    """True when two illustration prompts share >= ``threshold`` of their tokens.
+
+    The afternoon (1pm) refresh re-renders the hero in the locked style by
+    default, but if the new prompt barely differs from the one behind the
+    current art, that art still fits the evening and we reuse it rather than pay
+    to regenerate something that would look the same.
+    """
+    tokens_a = set(re.findall(r"[a-z0-9]+", (prompt_a or "").lower()))
+    tokens_b = set(re.findall(r"[a-z0-9]+", (prompt_b or "").lower()))
+    if not tokens_a and not tokens_b:
+        return True
+    if not tokens_a or not tokens_b:
+        return False
+    return len(tokens_a & tokens_b) / len(tokens_a | tokens_b) >= threshold
 
 
 def _inject_style_prompt(template, illustration_prompt, style):
@@ -344,32 +384,60 @@ def main():
         return
 
     payload = read_json(input_path)
+    day_context = payload.get("day_context", {})
+    target_date = day_context.get("target_date_iso") or day_context.get("date_iso", "")
+    daypart_role = day_context.get("daypart_role", "")
 
-    # Cost guardrail: when the brief was reused (unchanged inputs), the
-    # illustration prompt is identical too, so keep the existing hero instead of
-    # paying to regenerate the same image.
-    if payload.get("brief_source") == "cached" and output_abs.exists() and not args.force:
-        print("image-skip-cached: reusing existing hero")
+    illustration_prompt = payload.get("brief", {}).get("illustration_prompt", "").strip()
+    if not illustration_prompt:
+        raise RuntimeError("Missing brief.illustration_prompt for image generation")
+
+    # Lock the art style to the forecast day so all three daily refreshes share
+    # one theme; only a new target date (the 9pm run) rolls a new style.
+    style_state = _load_style_state(settings)
+    new_target_day = style_state.get("target_date") != target_date
+    style = _pick_art_style(settings, style_state, target_date)
+
+    # Decide whether to reuse the existing hero or regenerate it.
+    reuse_reason = None
+    if output_abs.exists() and not args.force and not new_target_day:
+        if payload.get("brief_source") == "cached":
+            # Unchanged forecast (e.g. 8am with no major update): keep the art.
+            reuse_reason = "brief cached"
+        elif daypart_role == "afternoon":
+            # Afternoon re-frame: re-render in the locked style unless the new
+            # prompt barely differs from the morning's, so the art still fits.
+            threshold = float(settings.get("pipeline", {}).get(
+                "afternoon_art_prompt_similarity_threshold", 0.8))
+            prev_prompt = style_state.get("hero_prompt")
+            if prev_prompt and _prompt_similar(prev_prompt, illustration_prompt, threshold):
+                reuse_reason = "afternoon prompt ~ unchanged"
+    if reuse_reason is not None:
+        _save_style_state(settings, style_state)
+        print(f"image-skip-reuse: keeping existing hero ({reuse_reason})")
         return
 
     template_path = ROOT / "config" / "prompt_templates" / "weather_image.txt"
     template = template_path.read_text(encoding="utf-8")
-    style = _pick_art_style(settings)
-    illustration_prompt = payload.get("brief", {}).get("illustration_prompt", "").strip()
-    if not illustration_prompt:
-        raise RuntimeError("Missing brief.illustration_prompt for image generation")
     prompt = _inject_style_prompt(template, illustration_prompt, style)
     provider = _resolve_image_provider(settings, args.force_openrouter)
+    print(f"[image] target_date={target_date or 'n/a'} role={daypart_role or 'n/a'}")
     print(f"[image] selected_style={style['name']}")
     print(f"[image] provider={provider}")
 
     try:
         image_bytes = _generate_with_guardrail(settings, prompt, provider)
         output_abs.write_bytes(image_bytes)
+        # Record the prompt behind the current art so the afternoon refresh can
+        # tell whether re-rendering would actually look different.
+        style_state["hero_prompt"] = illustration_prompt
+        _save_style_state(settings, style_state)
         print(output_path)
     except urllib.error.URLError as error:
+        _save_style_state(settings, style_state)
         _report_image_failure(output_abs, describe_network_error(error))
     except (KeyError, json.JSONDecodeError, RuntimeError) as error:
+        _save_style_state(settings, style_state)
         _report_image_failure(output_abs, str(error))
 
 

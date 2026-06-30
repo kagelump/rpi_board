@@ -2,7 +2,7 @@
 import argparse
 import math
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, time as dtime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -84,6 +84,33 @@ def _day_context(now_local):
             else "night"
         ),
     }
+
+
+# From this hour onward a run is treated as "tomorrow's" board: the 21:00
+# (9pm) refresh prepares the next day, while the 08:00 and 13:00 refreshes still
+# target the current day. All three runs for one forecast day therefore resolve
+# to the same target date, which is what anchors the fixed daily theme.
+_EVENING_TARGET_HOUR = 18
+
+
+def _target_offset_days(now_local):
+    """0 if this run forecasts today, 1 if it forecasts tomorrow (evening/night)."""
+    return 1 if now_local.hour >= _EVENING_TARGET_HOUR else 0
+
+
+def _daypart_role(now_local):
+    """Which of the three daily refreshes this run is.
+
+    primary        -- evening/night (9pm): builds tomorrow's board from scratch.
+    morning_update -- before midday (8am): refresh today only on a major change.
+    afternoon      -- midday onward (1pm): re-frame for the afternoon/evening.
+    """
+    hour = now_local.hour
+    if hour >= _EVENING_TARGET_HOUR:
+        return "primary"
+    if hour < 11:
+        return "morning_update"
+    return "afternoon"
 
 
 def _daily_summary(raw, idx):
@@ -291,18 +318,24 @@ def build_payload(context):
         raise RuntimeError("Missing Open-Meteo payload in aggregated context")
 
     tz_name = raw.get("timezone", "Asia/Tokyo")
-    now_local = datetime.now(ZoneInfo(tz_name))
-    today = now_local.date()
-    tomorrow = today + timedelta(days=1)
-    today_s = today.isoformat()
-    tomorrow_s = tomorrow.isoformat()
+    tz = ZoneInfo(tz_name)
+    now_local = datetime.now(tz)
+    # The forecast day this board is about: today, or tomorrow for evening runs.
+    target = now_local.date() + timedelta(days=_target_offset_days(now_local))
+    following = target + timedelta(days=1)
+    target_s = target.isoformat()
+    following_s = following.isoformat()
 
     daily_times = raw["daily"]["time"]
-    today_idx = daily_times.index(today_s) if today_s in daily_times else 0
-    tomorrow_idx = daily_times.index(tomorrow_s) if tomorrow_s in daily_times else min(1, len(daily_times) - 1)
+    target_idx = daily_times.index(target_s) if target_s in daily_times else 0
+    following_idx = (
+        daily_times.index(following_s)
+        if following_s in daily_times
+        else min(target_idx + 1, len(daily_times) - 1)
+    )
 
-    today_daily = _daily_summary(raw, today_idx)
-    tomorrow_daily = _daily_summary(raw, tomorrow_idx)
+    today_daily = _daily_summary(raw, target_idx)
+    tomorrow_daily = _daily_summary(raw, following_idx)
     today_hourly = _hourly_rows(raw, today_daily["date"])
     rain_level, rain_window = _rain_window(today_hourly)
     yahoo_today = _first_yahoo_today(context)
@@ -310,8 +343,15 @@ def build_payload(context):
     yahoo_indices = _first_yahoo_index_items(context)
     yahoo_alerts = context.get("sources", {}).get("yahoo", {}).get("payload", {}).get("alerts", [])
 
-    day_context = _day_context(now_local)
-    day_context.update(_sun_times(raw, today_idx))
+    # Calendar context (date label, weekday, season) describes the *forecast*
+    # day, but part_of_day stays tied to the actual run time so each refresh can
+    # frame the same forecast differently (morning vs afternoon vs evening).
+    day_context = _day_context(datetime.combine(target, dtime(12), tzinfo=tz))
+    day_context["part_of_day"] = _day_context(now_local)["part_of_day"]
+    day_context["target_date_iso"] = target_s
+    day_context["run_date_iso"] = now_local.date().isoformat()
+    day_context["daypart_role"] = _daypart_role(now_local)
+    day_context.update(_sun_times(raw, target_idx))
 
     temp_range = f"{math.floor(today_daily['temp_min_c'])}C-{math.ceil(today_daily['temp_max_c'])}C"
     brief = {
