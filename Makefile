@@ -1,4 +1,4 @@
-.PHONY: update setup preflight run dev timer force
+.PHONY: update setup preflight run dev timer force tomorrow
 
 update:
 	git pull --ff-only origin main
@@ -17,6 +17,9 @@ run:
 
 force:
 	./scripts/display/update_display.sh --force
+
+tomorrow:
+	./scripts/display/update_display.sh --tomorrow
 
 dev:
 	DISPLAY_MODE_OVERRIDE=local_preview ./scripts/display/update_display.sh

@@ -14,16 +14,22 @@ fi
 # --force re-fetches/regenerates everything, bypassing the brief regen cache,
 # the cached-hero skip, and the on-disk holiday cache. (Weather is always
 # fetched fresh regardless.)
+# --tomorrow forces the "9pm primary" role regardless of the current hour:
+# targets tomorrow's forecast, rolls a new art style, and regenerates fully.
 FORCE_FLAG=""
 for arg in "$@"; do
   case "${arg}" in
     --force|-f) FORCE_FLAG="--force" ;;
-    -h|--help) echo "usage: update_display.sh [--force]"; exit 0 ;;
+    --tomorrow) export FORECAST_TARGET=tomorrow; FORCE_FLAG="--force" ;;
+    -h|--help) echo "usage: update_display.sh [--force] [--tomorrow]"; exit 0 ;;
     *) echo "[weather-display] unknown argument: ${arg}" >&2; exit 2 ;;
   esac
 done
 if [[ -n "${FORCE_FLAG}" ]]; then
   echo "[weather-display] --force: bypassing brief/hero/holiday caches"
+fi
+if [[ "${FORECAST_TARGET:-}" == "tomorrow" ]]; then
+  echo "[weather-display] --tomorrow: targeting tomorrow's forecast (primary role)"
 fi
 
 run_step() {

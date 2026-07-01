@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import os
 import sys
 from datetime import datetime, time as dtime, timedelta
 from pathlib import Path
@@ -320,8 +321,10 @@ def build_payload(context):
     tz_name = raw.get("timezone", "Asia/Tokyo")
     tz = ZoneInfo(tz_name)
     now_local = datetime.now(tz)
-    # The forecast day this board is about: today, or tomorrow for evening runs.
-    target = now_local.date() + timedelta(days=_target_offset_days(now_local))
+    # FORECAST_TARGET=tomorrow forces the 9pm (primary) role at any hour.
+    force_tomorrow = os.environ.get("FORECAST_TARGET", "").strip().lower() == "tomorrow"
+    offset = 1 if force_tomorrow else _target_offset_days(now_local)
+    target = now_local.date() + timedelta(days=offset)
     following = target + timedelta(days=1)
     target_s = target.isoformat()
     following_s = following.isoformat()
@@ -350,7 +353,7 @@ def build_payload(context):
     day_context["part_of_day"] = _day_context(now_local)["part_of_day"]
     day_context["target_date_iso"] = target_s
     day_context["run_date_iso"] = now_local.date().isoformat()
-    day_context["daypart_role"] = _daypart_role(now_local)
+    day_context["daypart_role"] = "primary" if force_tomorrow else _daypart_role(now_local)
     day_context.update(_sun_times(raw, target_idx))
 
     temp_range = f"{math.floor(today_daily['temp_min_c'])}C-{math.ceil(today_daily['temp_max_c'])}C"
