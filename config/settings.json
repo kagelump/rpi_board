@@ -33,6 +33,9 @@
     "day_context_file": "runtime/day_context.json",
     "holiday_cache_file": "runtime/holiday_cache.json",
     "last_good_brief_file": "runtime/last_good_brief.json",
+    "image_style_state_file": "runtime/image_style_state.json",
+    "generation_record_file": "runtime/generations.jsonl",
+    "generation_artifacts_dir": "runtime/generations",
     "log_file": "runtime/logs/weather_display.log"
   },
   "pipeline": {

@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import ROOT, get_openrouter_api_key, load_settings, read_json, write_json
+from scripts.history.store import record_current_log, record_current_snapshot
 from scripts.openrouter.network import describe_network_error, urlopen_with_context
 from scripts.ops.render_gate import compute_signature, should_regenerate
 
@@ -238,6 +239,11 @@ def main():
     use_openrouter = settings["pipeline"]["enable_openrouter_brief"] or args.force_openrouter
     if not use_openrouter:
         transformed["brief_source"] = "deterministic"
+        record_current_log(
+            "generate_brief", "deterministic_mode",
+            "OpenRouter brief generation is disabled",
+            data={"brief": transformed.get("brief", {})},
+        )
         write_json(output_path, transformed)
         print(output_path)
         return
@@ -259,6 +265,10 @@ def main():
     if not regenerate and isinstance(last_good.get("brief"), dict):
         transformed["brief"] = last_good["brief"]
         transformed["brief_source"] = "cached"
+        record_current_log(
+            "generate_brief", "brief_reused", "Reused cached brief",
+            data={"signature": signature, "generated_at": last_good.get("generated_at")},
+        )
         write_json(output_path, transformed)
         print(f"[brief] reusing cached brief (signature {signature} unchanged within interval)")
         print(output_path)
@@ -266,27 +276,52 @@ def main():
 
     template_path = ROOT / "config" / "prompt_templates" / "weather_brief.txt"
     template = template_path.read_text(encoding="utf-8")
-    prompt = _render_prompt(template, _enrich_payload(transformed, settings))
+    enriched = _enrich_payload(transformed, settings)
+    prompt = _render_prompt(template, enriched)
+    record_current_snapshot("brief_generation_input", enriched)
+    record_current_snapshot("brief_prompt", prompt, content_type="text/plain; charset=utf-8")
 
     print(f"[brief] use_openrouter={use_openrouter}")
     try:
         model_name = _select_text_model(settings, override=args.model)
+        record_current_log(
+            "generate_brief", "model_request", f"Requesting brief from {model_name}",
+            data={
+                "model": model_name,
+                "temperature": settings["openrouter"].get("brief_temperature", 0.85),
+                "signature": signature,
+                "timeout_seconds": settings["pipeline"]["brief_timeout_seconds"],
+            },
+        )
         print(f"[brief] requesting OpenRouter model={model_name}")
         candidate = _normalize_brief_punct(_call_openrouter(settings, prompt, model_override=model_name))
+        record_current_snapshot("brief_model_response", candidate)
         if _is_valid_brief(candidate):
             transformed["brief"] = candidate
             transformed["brief_source"] = "openrouter"
             _save_last_good(settings, signature, now_iso, candidate)
             _append_history(settings, transformed.get("day_context", {}), candidate)
+            record_current_log(
+                "generate_brief", "brief_accepted", "Model brief passed validation",
+                data={"signature": signature, "brief": candidate},
+            )
             print("[brief] OpenRouter response accepted: ")
             print(json.dumps(candidate, indent=2, ensure_ascii=True))
         else:
             transformed["brief"] = deterministic
             transformed["brief_source"] = "deterministic_fallback_invalid_schema"
+            record_current_log(
+                "generate_brief", "brief_rejected", "Model returned an invalid brief schema",
+                level="error", data={"candidate": candidate, "signature": signature},
+            )
             print("[brief] OpenRouter response rejected (invalid schema); using deterministic fallback.")
     except Exception as error:
         transformed["brief"] = deterministic
         transformed["brief_source"] = "deterministic_fallback_error"
+        record_current_log(
+            "generate_brief", "brief_request_failed", str(error), level="error",
+            data={"error_type": type(error).__name__, "signature": signature},
+        )
         print(f"[brief] OpenRouter request failed ({type(error).__name__}: {error}); using deterministic fallback.")
 
     write_json(output_path, transformed)

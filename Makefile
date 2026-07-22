@@ -1,4 +1,4 @@
-.PHONY: update setup preflight run dev timer force tomorrow
+.PHONY: update setup preflight run dev timer force tomorrow history history-import history-install
 
 update:
 	git pull --ff-only origin main
@@ -26,3 +26,12 @@ dev:
 
 timer:
 	./scripts/ops/install_systemd.sh
+
+history:
+	python3 scripts/history/server.py
+
+history-import:
+	python3 scripts/history/record.py import-legacy
+
+history-install:
+	./scripts/ops/install_history_server.sh

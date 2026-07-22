@@ -18,6 +18,9 @@ The board is designed as a **morning poster**: a generated weather illustration 
 - Local preview mode and Raspberry Pi hardware mode.
 - Eval framework (`scripts/eval/`): A/B prompt variants and compare image models
   with a vision-LLM judge plus deterministic e-ink colour metrics.
+- Local generation-history API and dashboard with an append-only event ledger,
+  immutable image artifacts, model inputs/prompts, styles, seeds, guardrail
+  results, stage logs, and failure history.
 
 ## Repository Layout
 
@@ -32,6 +35,7 @@ scripts/
   render/          # compose_board, palette_quantize, palette_metrics
   display/
   eval/            # prompt A/B + image-model comparison harness
+  history/         # append-only storage, recorder CLI, HTTP API + dashboard
 tests/
 tokyo_weather.sh
 plan.md
@@ -172,6 +176,80 @@ Outputs are written under `runtime/`:
 - `final_display.png`
 - `preview.png`
 - `last_success.json`
+
+## Generation history dashboard
+
+Every full pipeline run now records its inputs, logs, decisions, and outputs.
+Start the local dashboard with:
+
+```bash
+make history
+```
+
+Then open `http://127.0.0.1:8787`. To seed it with the existing
+`runtime/history.json` entries and current surviving runtime artifacts:
+
+```bash
+make history-import
+```
+
+The importer is idempotent. On Raspberry Pi, install the dashboard as a service:
+
+```bash
+make history-install
+ssh -L 8787:127.0.0.1:8787 <pi-user>@<raspberry-pi>
+```
+
+The service binds to localhost by default. Binding `--host 0.0.0.0` is possible
+on a trusted network, but the server intentionally has no authentication, so an
+SSH tunnel is the safer default.
+
+### On-disk storage schema
+
+`runtime/generations.jsonl` is the canonical append-only ledger. Each line is
+one complete JSON event with this envelope:
+
+```json
+{
+  "schema_version": 1,
+  "event_id": "unique-id",
+  "recorded_at": "ISO-8601 timestamp",
+  "type": "run_started|stage_started|log_recorded|snapshot_added|artifact_added|...",
+  "run_id": "generation-id",
+  "data": {}
+}
+```
+
+Writes take an exclusive file lock, append one line, flush, and `fsync`. Readers
+take a shared lock and ignore an incomplete trailing line, making recovery after
+power loss straightforward. Existing records are never updated or deleted.
+
+The server materializes and indexes the ledger in memory by run ID, target date,
+status, selected style, event type, and artifact/snapshot ID. At three scheduled
+runs per day this remains small enough to rebuild cheaply for many years. If the
+volume eventually grows, SQLite can be added as a disposable derived index
+without changing the ledger format.
+
+Generated images are immutable files under:
+
+```text
+runtime/generations/<run-id>/<artifact-kind>-<sha256-prefix>.png
+```
+
+The ledger stores each artifact's path, MIME type, SHA-256, byte size, and image
+dimensions. It also stores JSON/text snapshots for raw weather inputs, Yahoo and
+Open-Meteo aggregation, day context, transformed/generated briefs, complete text
+and image prompts, model request parameters and random seed, style state,
+guardrail verdicts, and each pipeline stage's combined stdout/stderr.
+
+### HTTP API
+
+- `GET /api/health`
+- `GET /api/stats`
+- `GET /api/runs?limit=50&offset=0&target_date=YYYY-MM-DD&status=degraded&style=Linocut`
+- `GET /api/runs/<run-id>`
+- `GET /api/snapshots/<snapshot-id>`
+- `GET /api/artifacts/<artifact-id>`
 
 ## Local vs Pi Mode
 

@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import ROOT, absolute_path, get_fal_api_key, get_openrouter_api_key, load_settings, read_json, write_json
+from scripts.history.store import record_current_log, record_current_snapshot
 from scripts.openrouter.network import describe_network_error, urlopen_with_context
 from scripts.openrouter.art_guardrail import inspect_art
 from scripts.render.palette_metrics import analyze as analyze_palette
@@ -212,6 +213,12 @@ def _call_openrouter_image_api(settings, prompt):
             }
         ],
     }
+    record_current_snapshot("image_api_request", {
+        "provider": "openrouter",
+        "tool_model": tool_model,
+        "image_model": image_model,
+        "request": body,
+    })
     request = urllib.request.Request(
         url=url,
         data=json.dumps(body).encode("utf-8"),
@@ -267,6 +274,11 @@ def _call_fal_image_api(settings, prompt):
     body = {"prompt": prompt, **configured_params}
     # Fresh seed every run so an identical prompt still produces a new image.
     body.setdefault("seed", random.SystemRandom().randint(1, 2_000_000_000))
+    record_current_snapshot("image_api_request", {
+        "provider": "fal",
+        "image_model": image_model,
+        "request": body,
+    })
     url = f"{base_url}/{image_model.lstrip('/')}"
     request = urllib.request.Request(
         url=url,
@@ -340,6 +352,18 @@ def _generate_with_guardrail(settings, prompt, provider):
         off = _off_palette_pct(image_bytes)  # deterministic: off-palette colour
         if off is not None and off > max_off_palette:
             reasons.append(f"off_palette={off * 100:.0f}%")
+        record_current_log(
+            "generate_image", "guardrail_attempt",
+            "Guardrail passed" if not reasons else "Guardrail rejected image",
+            level="info" if not reasons else "warning",
+            data={
+                "attempt": attempt + 1,
+                "verdict": verdict,
+                "off_palette_pct": off,
+                "reasons": reasons,
+                "image_byte_size": len(image_bytes),
+            },
+        )
         if not reasons:
             if attempt:
                 print(f"[image] guardrail passed on attempt {attempt + 1}")
@@ -381,6 +405,9 @@ def main():
         if output_abs.exists():
             output_abs.unlink()
         print("image-disabled")
+        record_current_log(
+            "generate_image", "image_disabled", "Image generation is disabled"
+        )
         return
 
     payload = read_json(input_path)
@@ -395,8 +422,19 @@ def main():
     # Lock the art style to the forecast day so all three daily refreshes share
     # one theme; only a new target date (the 9pm run) rolls a new style.
     style_state = _load_style_state(settings)
+    prior_style_state = dict(style_state)
     new_target_day = style_state.get("target_date") != target_date
     style = _pick_art_style(settings, style_state, target_date)
+    record_current_log(
+        "generate_image", "style_selected", f"Selected {style['name']}",
+        data={
+            "target_date": target_date,
+            "daypart_role": daypart_role,
+            "new_target_day": new_target_day,
+            "previous_state": prior_style_state,
+            "selected_state": style_state,
+        },
+    )
 
     # Decide whether to reuse the existing hero or regenerate it.
     reuse_reason = None
@@ -414,6 +452,10 @@ def main():
                 reuse_reason = "afternoon prompt ~ unchanged"
     if reuse_reason is not None:
         _save_style_state(settings, style_state)
+        record_current_log(
+            "generate_image", "hero_reused", reuse_reason,
+            data={"target_date": target_date, "style": style["name"]},
+        )
         print(f"image-skip-reuse: keeping existing hero ({reuse_reason})")
         return
 
@@ -421,6 +463,14 @@ def main():
     template = template_path.read_text(encoding="utf-8")
     prompt = _inject_style_prompt(template, illustration_prompt, style)
     provider = _resolve_image_provider(settings, args.force_openrouter)
+    record_current_snapshot("image_generation_input", {
+        "target_date": target_date,
+        "daypart_role": daypart_role,
+        "illustration_prompt": illustration_prompt,
+        "selected_style": style,
+        "provider": provider,
+    })
+    record_current_snapshot("image_prompt", prompt, content_type="text/plain; charset=utf-8")
     print(f"[image] target_date={target_date or 'n/a'} role={daypart_role or 'n/a'}")
     print(f"[image] selected_style={style['name']}")
     print(f"[image] provider={provider}")
@@ -432,12 +482,31 @@ def main():
         # tell whether re-rendering would actually look different.
         style_state["hero_prompt"] = illustration_prompt
         _save_style_state(settings, style_state)
+        record_current_log(
+            "generate_image", "image_generated", "Wrote a new hero image",
+            data={
+                "target_date": target_date,
+                "style": style["name"],
+                "provider": provider,
+                "byte_size": len(image_bytes),
+                "output_path": str(output_abs),
+            },
+        )
         print(output_path)
     except urllib.error.URLError as error:
         _save_style_state(settings, style_state)
-        _report_image_failure(output_abs, describe_network_error(error))
+        detail = describe_network_error(error)
+        record_current_log(
+            "generate_image", "image_generation_failed", detail, level="error",
+            data={"error_type": type(error).__name__, "style": style["name"], "provider": provider},
+        )
+        _report_image_failure(output_abs, detail)
     except (KeyError, json.JSONDecodeError, RuntimeError) as error:
         _save_style_state(settings, style_state)
+        record_current_log(
+            "generate_image", "image_generation_failed", str(error), level="error",
+            data={"error_type": type(error).__name__, "style": style["name"], "provider": provider},
+        )
         _report_image_failure(output_abs, str(error))
 
 
