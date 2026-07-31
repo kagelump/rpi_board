@@ -53,6 +53,7 @@
     "allow_sample_weather_on_failure": true,
     "sample_weather_file": "config/sample_openmeteo.json",
     "brief_timeout_seconds": 8,
+    "brief_offline_retry_count": 2,
     "image_timeout_seconds": 20,
     "image_provider": "fal",
     "enable_openrouter_brief": true,

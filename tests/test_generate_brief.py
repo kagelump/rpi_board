@@ -2,10 +2,12 @@
 import json
 
 from scripts.openrouter.generate_brief import (
+    _brief_model_attempts,
     _enrich_payload,
     _is_valid_brief,
     _load_recent_history,
     _normalize_brief_punct,
+    _request_brief_with_fallback,
     _render_prompt,
     _select_text_model,
     _time_frame,
@@ -77,6 +79,122 @@ class TestSelectTextModel:
     def test_missing_events_mode_defaults_off(self):
         s = {"openrouter": {"text_model": "m"}, "context": {}}
         assert _select_text_model(s) == "m"
+
+
+class TestBriefModelAttempts:
+    def _settings(self, events_mode="online_model", retries=2):
+        return {
+            "openrouter": {"text_model": "provider/model"},
+            "context": {"events_mode": events_mode},
+            "pipeline": {"brief_offline_retry_count": retries},
+        }
+
+    def test_online_then_two_non_online_attempts(self):
+        assert _brief_model_attempts(self._settings()) == [
+            "provider/model:online",
+            "provider/model",
+            "provider/model",
+        ]
+
+    def test_non_online_primary_can_retry_twice(self):
+        assert _brief_model_attempts(self._settings(events_mode="off")) == [
+            "provider/model",
+            "provider/model",
+            "provider/model",
+        ]
+
+    def test_retry_count_is_configurable(self):
+        assert _brief_model_attempts(self._settings(retries=1)) == [
+            "provider/model:online",
+            "provider/model",
+        ]
+
+
+class TestRequestBriefWithFallback:
+    def _settings(self):
+        return {
+            "openrouter": {"text_model": "provider/model", "brief_temperature": 0.5},
+            "context": {"events_mode": "online_model"},
+            "pipeline": {"brief_timeout_seconds": 8, "brief_offline_retry_count": 2},
+        }
+
+    def _valid(self):
+        return {
+            "headline": "Rain by 3pm",
+            "subtitle": "Bring an umbrella.",
+            "illustration_prompt": "Rain over a city street.",
+        }
+
+    def test_primary_success_does_not_retry(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief._call_openrouter",
+            lambda settings, prompt, model_override=None: calls.append(model_override) or self._valid(),
+        )
+        monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_log", lambda *args, **kwargs: None)
+        monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_snapshot", lambda *args, **kwargs: None)
+
+        candidate, metadata = _request_brief_with_fallback(self._settings(), "prompt", "sig")
+
+        assert candidate == self._valid()
+        assert calls == ["provider/model:online"]
+        assert metadata["fallback"] is False
+
+    def test_online_failure_then_two_non_online_attempts(self, monkeypatch):
+        calls = []
+        outcomes = iter([RuntimeError("online failed"), RuntimeError("offline failed"), self._valid()])
+
+        def fake_call(settings, prompt, model_override=None):
+            calls.append(model_override)
+            outcome = next(outcomes)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+        logs = []
+        monkeypatch.setattr("scripts.openrouter.generate_brief._call_openrouter", fake_call)
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief.record_current_log",
+            lambda component, event_type, message, **kwargs: logs.append((event_type, kwargs.get("level"))),
+        )
+        monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_snapshot", lambda *args, **kwargs: None)
+
+        candidate, metadata = _request_brief_with_fallback(self._settings(), "prompt", "sig")
+
+        assert candidate == self._valid()
+        assert calls == ["provider/model:online", "provider/model", "provider/model"]
+        assert metadata == {
+            "kind": "accepted",
+            "model": "provider/model",
+            "attempt": 3,
+            "attempt_count": 3,
+            "fallback": True,
+        }
+        assert ("brief_request_failed", "error") not in logs
+        assert logs.count(("brief_attempt_failed", "warning")) == 2
+
+    def test_exhaustion_records_only_final_failure_as_error(self, monkeypatch):
+        calls = []
+        logs = []
+
+        def always_fail(settings, prompt, model_override=None):
+            calls.append(model_override)
+            raise RuntimeError("unavailable")
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief._call_openrouter", always_fail)
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief.record_current_log",
+            lambda component, event_type, message, **kwargs: logs.append((event_type, kwargs.get("level"))),
+        )
+        monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_snapshot", lambda *args, **kwargs: None)
+
+        candidate, metadata = _request_brief_with_fallback(self._settings(), "prompt", "sig")
+
+        assert candidate is None
+        assert calls == ["provider/model:online", "provider/model", "provider/model"]
+        assert metadata["kind"] == "error"
+        assert logs.count(("brief_attempt_failed", "warning")) == 2
+        assert logs.count(("brief_request_failed", "error")) == 1
 
 
 # ---------------------------------------------------------------------------

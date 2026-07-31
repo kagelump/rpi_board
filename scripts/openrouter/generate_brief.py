@@ -124,6 +124,28 @@ def _select_text_model(settings, override=None):
     return base
 
 
+def _offline_text_model(model):
+    """Return the underlying model name without OpenRouter's online variant."""
+    suffix = ":online"
+    return model[:-len(suffix)] if model.endswith(suffix) else model
+
+
+def _brief_model_attempts(settings, override=None):
+    """Build the ordered brief-model attempt list.
+
+    The configured online model gets one attempt. Any failure then falls back to
+    the same base model without ``:online``. The non-online model may retry the
+    configured number of times; when online mode is disabled, those retries
+    apply after the initial non-online attempt.
+    """
+    primary = _select_text_model(settings, override=override)
+    offline = _offline_text_model(primary)
+    retry_count = max(0, int(settings.get("pipeline", {}).get("brief_offline_retry_count", 2)))
+    if primary.endswith(":online"):
+        return [primary, *([offline] * retry_count)]
+    return [offline] * (retry_count + 1)
+
+
 _TIME_FRAMES = {
     "morning": "Morning briefing: set up the day ahead and what to wear heading out.",
     "midday": "Midday check-in: how the rest of today actually unfolds from here.",
@@ -217,7 +239,84 @@ def _call_openrouter(settings, prompt, model_override=None):
         raise RuntimeError(f"openrouter brief request failed: {describe_network_error(error)}") from error
 
     content = payload["choices"][0]["message"]["content"]
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("OpenRouter brief response contained no message content")
     return json.loads(content)
+
+
+def _request_brief_with_fallback(settings, prompt, signature, model_override=None):
+    """Request a valid brief, falling back from online to non-online attempts.
+
+    Intermediate failures are warnings so a later successful fallback does not
+    mark the overall history run degraded. Only exhaustion records an error.
+    Returns ``(candidate, metadata)``; candidate is ``None`` on exhaustion.
+    """
+    models = _brief_model_attempts(settings, override=model_override)
+    last_failure = {"kind": "error", "error_type": "RuntimeError", "message": "No model attempts configured"}
+
+    for index, model_name in enumerate(models, start=1):
+        is_fallback = index > 1
+        has_more = index < len(models)
+        request_data = {
+            "model": model_name,
+            "attempt": index,
+            "attempt_count": len(models),
+            "fallback": is_fallback,
+            "temperature": settings["openrouter"].get("brief_temperature", 0.85),
+            "signature": signature,
+            "timeout_seconds": settings["pipeline"]["brief_timeout_seconds"],
+        }
+        record_current_log(
+            "generate_brief", "model_request", f"Requesting brief from {model_name}",
+            data=request_data,
+        )
+        print(f"[brief] requesting OpenRouter model={model_name} attempt={index}/{len(models)}")
+
+        try:
+            candidate = _normalize_brief_punct(
+                _call_openrouter(settings, prompt, model_override=model_name)
+            )
+            record_current_snapshot("brief_model_response", candidate)
+        except Exception as error:  # noqa: BLE001 - retry model/network/response failures
+            last_failure = {
+                "kind": "error",
+                "error_type": type(error).__name__,
+                "message": str(error),
+            }
+            event_type = "brief_attempt_failed" if has_more else "brief_request_failed"
+            record_current_log(
+                "generate_brief", event_type, str(error),
+                level="warning" if has_more else "error",
+                data={
+                    **request_data,
+                    "error_type": type(error).__name__,
+                    "will_retry": has_more,
+                },
+            )
+            if has_more:
+                print(f"[brief] attempt {index} failed ({type(error).__name__}: {error}); retrying")
+            continue
+
+        if _is_valid_brief(candidate):
+            return candidate, {
+                "kind": "accepted",
+                "model": model_name,
+                "attempt": index,
+                "attempt_count": len(models),
+                "fallback": is_fallback,
+            }
+
+        last_failure = {"kind": "invalid", "candidate": candidate}
+        event_type = "brief_attempt_rejected" if has_more else "brief_rejected"
+        record_current_log(
+            "generate_brief", event_type, "Model returned an invalid brief schema",
+            level="warning" if has_more else "error",
+            data={**request_data, "candidate": candidate, "will_retry": has_more},
+        )
+        if has_more:
+            print(f"[brief] attempt {index} returned an invalid schema; retrying")
+
+    return None, last_failure
 
 
 def main():
@@ -282,47 +381,31 @@ def main():
     record_current_snapshot("brief_prompt", prompt, content_type="text/plain; charset=utf-8")
 
     print(f"[brief] use_openrouter={use_openrouter}")
-    try:
-        model_name = _select_text_model(settings, override=args.model)
+    candidate, attempt = _request_brief_with_fallback(
+        settings, prompt, signature, model_override=args.model
+    )
+    if candidate is not None:
+        transformed["brief"] = candidate
+        transformed["brief_source"] = "openrouter"
+        _save_last_good(settings, signature, now_iso, candidate)
+        _append_history(settings, transformed.get("day_context", {}), candidate)
         record_current_log(
-            "generate_brief", "model_request", f"Requesting brief from {model_name}",
-            data={
-                "model": model_name,
-                "temperature": settings["openrouter"].get("brief_temperature", 0.85),
-                "signature": signature,
-                "timeout_seconds": settings["pipeline"]["brief_timeout_seconds"],
-            },
+            "generate_brief", "brief_accepted", "Model brief passed validation",
+            data={"signature": signature, "brief": candidate, **attempt},
         )
-        print(f"[brief] requesting OpenRouter model={model_name}")
-        candidate = _normalize_brief_punct(_call_openrouter(settings, prompt, model_override=model_name))
-        record_current_snapshot("brief_model_response", candidate)
-        if _is_valid_brief(candidate):
-            transformed["brief"] = candidate
-            transformed["brief_source"] = "openrouter"
-            _save_last_good(settings, signature, now_iso, candidate)
-            _append_history(settings, transformed.get("day_context", {}), candidate)
-            record_current_log(
-                "generate_brief", "brief_accepted", "Model brief passed validation",
-                data={"signature": signature, "brief": candidate},
-            )
-            print("[brief] OpenRouter response accepted: ")
-            print(json.dumps(candidate, indent=2, ensure_ascii=True))
-        else:
-            transformed["brief"] = deterministic
-            transformed["brief_source"] = "deterministic_fallback_invalid_schema"
-            record_current_log(
-                "generate_brief", "brief_rejected", "Model returned an invalid brief schema",
-                level="error", data={"candidate": candidate, "signature": signature},
-            )
-            print("[brief] OpenRouter response rejected (invalid schema); using deterministic fallback.")
-    except Exception as error:
+        print("[brief] OpenRouter response accepted: ")
+        print(json.dumps(candidate, indent=2, ensure_ascii=True))
+    elif attempt.get("kind") == "invalid":
+        transformed["brief"] = deterministic
+        transformed["brief_source"] = "deterministic_fallback_invalid_schema"
+        print("[brief] OpenRouter attempts returned invalid schemas; using deterministic fallback.")
+    else:
         transformed["brief"] = deterministic
         transformed["brief_source"] = "deterministic_fallback_error"
-        record_current_log(
-            "generate_brief", "brief_request_failed", str(error), level="error",
-            data={"error_type": type(error).__name__, "signature": signature},
+        print(
+            "[brief] OpenRouter attempts failed "
+            f"({attempt.get('error_type')}: {attempt.get('message')}); using deterministic fallback."
         )
-        print(f"[brief] OpenRouter request failed ({type(error).__name__}: {error}); using deterministic fallback.")
 
     write_json(output_path, transformed)
     print(output_path)
