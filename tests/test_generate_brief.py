@@ -217,7 +217,10 @@ class TestEnrichPayload:
 
     def test_adds_expected_keys(self, tmp_path):
         out = _enrich_payload(self._payload(), self._settings(tmp_path))
-        for key in ("voice", "board_context", "recent_history", "creative_angle"):
+        for key in (
+            "voice", "board_context", "recent_history", "creative_angle",
+            "visual_angle", "composition",
+        ):
             assert key in out
 
     def test_does_not_mutate_input(self, tmp_path):
@@ -231,6 +234,19 @@ class TestEnrichPayload:
         b = _enrich_payload(self._payload(), settings)["creative_angle"]
         assert a == b
         assert isinstance(a, str) and a
+
+    def test_visual_direction_advances_for_next_target_day(self, tmp_path):
+        settings = self._settings(tmp_path)
+        first = self._payload()
+        first["day_context"]["target_date_iso"] = "2026-07-30"
+        second = self._payload()
+        second["day_context"]["target_date_iso"] = "2026-07-31"
+
+        a = _enrich_payload(first, settings)
+        b = _enrich_payload(second, settings)
+
+        assert a["visual_angle"] != b["visual_angle"]
+        assert a["composition"] != b["composition"]
 
     def test_history_window_respected(self, tmp_path):
         history = [{"headline": f"h{i}"} for i in range(10)]

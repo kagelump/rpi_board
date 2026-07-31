@@ -20,19 +20,19 @@ from scripts.render.palette_metrics import analyze as analyze_palette
 ART_STYLE_POOL = [
     {
         "name": "Bauhaus",
-        "prompt": "Bauhaus poster, Swiss grid discipline, geometric abstraction, bold black structure with red/yellow accents",
+        "prompt": "Bauhaus poster language: strict geometric construction, circles and bars, asymmetric balance, decisive blocks of empty space",
     },
     {
         "name": "Constructivism",
-        "prompt": "Soviet constructivist poster language, stark geometry, dynamic diagonals, red-black-white impact",
+        "prompt": "constructivist poster language: forceful diagonals, cropped monumental forms, radiating geometry, urgent visual motion",
     },
     {
         "name": "Pop Art Comic",
-        "prompt": "Lichtenstein-inspired pop art, thick black outlines, comic-panel clarity, Ben-Day-dot-like flat patterning",
+        "prompt": "vintage pop-comic treatment: thick contour lines, bold spot shapes, coarse halftone fields, energetic panel-like staging without borders",
     },
     {
         "name": "Minimal Ukiyo-e",
-        "prompt": "minimal ukiyo-e inspired woodblock print, strong contour lines, flat color fields, elegant negative space",
+        "prompt": "minimal ukiyo-e woodblock language: flowing contour lines, cropped foreground forms, layered distance, elegant negative space and carved texture",
     },
     {
         "name": "De Stijl",
@@ -40,27 +40,124 @@ ART_STYLE_POOL = [
     },
     {
         "name": "WPA Travel Poster",
-        "prompt": "1930s WPA travel poster, flat vector screen-print look, strong silhouettes, clear atmospheric storytelling",
+        "prompt": "1930s travel-poster treatment: simplified scenic depth, monumental perspective, broad screen-printed masses, atmospheric storytelling",
     },
     {
         "name": "Linocut",
-        "prompt": "linocut print aesthetic, carved high-contrast shapes, simplified forms, bold inked contours",
+        "prompt": "hand-cut linocut aesthetic: visibly gouged edges, carved white marks inside dark masses, rough ink texture, muscular contours",
     },
     {
         "name": "Stencil Graphic",
-        "prompt": "stencil graphic poster style, cutout shapes, hard edges, minimal details, strong visual hierarchy",
+        "prompt": "layered stencil graphic: interrupted bridges in shapes, overspray-like dot texture made only from device inks, hard cut edges, bold overlap",
     },
     {
         "name": "Pictogram Minimalism",
         "prompt": "modern pictogram minimalism, icon-like weather motifs, clean vectors, immediate readability",
     },
+    {
+        "name": "Paper Cutout",
+        "prompt": "hand-cut paper collage rendered as one unified illustration: irregular scissor edges, overlapping color silhouettes, playful depth from shape boundaries",
+    },
+    {
+        "name": "Scratchboard Engraving",
+        "prompt": "scratchboard engraving: black-dominant field, bright carved strokes, dense directional hatching, dramatic illumination and tactile incised marks",
+    },
+    {
+        "name": "Sumi-e Brush",
+        "prompt": "expressive sumi-e brush language adapted to solid inks: sweeping brush silhouettes, dry-brush gaps, calligraphic motion, sparse forceful accents",
+    },
+    {
+        "name": "Risograph",
+        "prompt": "risograph print aesthetic: chunky offset ink layers, coarse dot screens, imperfect registration, playful overlaps using only device inks",
+    },
+    {
+        "name": "Silkscreen",
+        "prompt": "hand-pulled silkscreen poster: broad ink fields, visible screen texture, slightly imperfect edges, layered shapes with assertive negative space",
+    },
+    {
+        "name": "Retro Pixel Art",
+        "prompt": "low-resolution retro pixel art: block clusters, stepped diagonals, crisp pixel silhouettes, limited-scale texture and readable game-scene staging",
+    },
+    {
+        "name": "Stained Glass",
+        "prompt": "stained-glass interpretation: thick black leading divides irregular luminous cells, sweeping connected shapes, bold colored sections filling the frame",
+    },
+    {
+        "name": "Editorial Ink",
+        "prompt": "editorial ink illustration: loose expressive contour, brushy spot shapes, witty asymmetric visual metaphor, deliberate unfinished gaps",
+    },
+    {
+        "name": "Art Nouveau",
+        "prompt": "Art Nouveau graphic language: flowing whiplash curves, organic silhouettes, rhythmic botanical or cloud forms integrated into the entire scene",
+    },
+    {
+        "name": "Pulp Sci-Fi",
+        "prompt": "retro pulp science-fiction poster: exaggerated perspective, radial energy, strange monumental weather, dramatic silhouettes and theatrical scale",
+    },
+    {
+        "name": "Folk Print",
+        "prompt": "naive folk-print treatment: hand-carved uneven shapes, repeated decorative motifs, flattened perspective, warm narrative energy and visible craft",
+    },
+    {
+        "name": "Op Art",
+        "prompt": "op-art weather abstraction: vibrating stripes, repeated high-contrast geometry, optical rhythm bending around recognizable weather and landscape forms",
+    },
+    {
+        "name": "Mosaic",
+        "prompt": "graphic mosaic: scene assembled from irregular tile-like pieces separated by strong black joins, clustered color rhythm, no smooth vector surfaces",
+    },
+    {
+        "name": "Noir Shadow",
+        "prompt": "noir shadow play: black-dominant composition, oblique viewpoints, sharp beams of light, cropped silhouettes, tense empty space and rain-sliced geometry",
+    },
+    {
+        "name": "Retro Railway Poster",
+        "prompt": "mid-century railway-poster language: bold receding perspective, cropped architecture or landscape, simplified speed lines, confident graphic masses",
+    },
+]
+
+
+PALETTE_STRATEGY_POOL = [
+    {
+        "name": "Red Signal",
+        "prompt": "Black and white dominate. Use red as the decisive focal signal; yellow may be absent or extremely sparse.",
+    },
+    {
+        "name": "Golden Light",
+        "prompt": "Black and white provide structure. Let yellow carry the light and atmosphere; use red only as a tiny counterpoint if useful.",
+    },
+    {
+        "name": "Night Signal",
+        "prompt": "Make black the dominant field with white carved openings and one concentrated red or yellow light source.",
+    },
+    {
+        "name": "Yellow Field",
+        "prompt": "Use a substantial yellow field as sky, light, or ground, with black structure and restrained white/red interruptions.",
+    },
+    {
+        "name": "Red Field",
+        "prompt": "Use a substantial red field as weather, atmosphere, or motion, organized by black forms and white negative space; yellow is optional.",
+    },
+    {
+        "name": "Balanced Four-Ink",
+        "prompt": "Use all four device inks in clearly separated, meaningful masses without making every color equally dominant.",
+    },
+    {
+        "name": "Ink Drawing",
+        "prompt": "Black and white dominate like an ink drawing. Choose either red or yellow for one sparse emotional accent; do not force both.",
+    },
+    {
+        "name": "Dueling Accents",
+        "prompt": "Keep black and white structural, then use red and yellow as two distinct opposing forces in separate parts of the composition.",
+    },
 ]
 
 NEGATIVE_STYLE_CONSTRAINTS = (
-    "Avoid gradients, soft shading, photorealism, 3D rendering, blur, glow, "
-    "depth of field, painterly texture, and dense micro-details. The result must "
-    "be one unified illustration in a single style edge to edge -- not a collage, "
-    "not a framed or inset image, not a realistic photo with a graphic border."
+    "Avoid photorealism, 3D rendering, blur, depth of field, smooth gradients, "
+    "photographic lighting, and tiny illegible detail. Texture and tonal variation "
+    "must come from deliberate marks in the selected style using the device inks. "
+    "The result must be one unified illustration edge to edge -- not a collage, "
+    "not a framed or inset image, and not a realistic photo with a graphic border."
 )
 
 
@@ -114,6 +211,25 @@ def _pick_art_style(settings, state, target_date):
     return by_name[chosen_name]
 
 
+def _pick_palette_strategy(state, new_target_day):
+    """Choose and lock a palette emphasis independently from the art style."""
+    by_name = {item["name"]: item for item in PALETTE_STRATEGY_POOL}
+    locked = state.get("last_palette")
+    if not new_target_day and locked in by_name:
+        return by_name[locked]
+
+    remaining = [
+        name for name in state.get("palette_remaining", []) if name in by_name
+    ]
+    if not remaining:
+        remaining = list(by_name)
+        random.SystemRandom().shuffle(remaining)
+    chosen_name = remaining.pop(0)
+    state["palette_remaining"] = remaining
+    state["last_palette"] = chosen_name
+    return by_name[chosen_name]
+
+
 def _prompt_similar(prompt_a, prompt_b, threshold):
     """True when two illustration prompts share >= ``threshold`` of their tokens.
 
@@ -131,13 +247,16 @@ def _prompt_similar(prompt_a, prompt_b, threshold):
     return len(tokens_a & tokens_b) / len(tokens_a | tokens_b) >= threshold
 
 
-def _inject_style_prompt(template, illustration_prompt, style):
+def _inject_style_prompt(template, illustration_prompt, style, palette):
     style_block = (
         f"Selected art style: {style['name']}\n"
         f"Style direction: {style['prompt']}\n"
         f"{NEGATIVE_STYLE_CONSTRAINTS}"
     )
     prompt = template.replace("{{IMAGE_PROMPT}}", illustration_prompt.strip())
+    if "{{PALETTE_GUIDANCE}}" in prompt:
+        palette_block = f"{palette['name']}: {palette['prompt']}"
+        prompt = prompt.replace("{{PALETTE_GUIDANCE}}", palette_block)
     if "{{STYLE_GUIDANCE}}" in prompt:
         prompt = prompt.replace("{{STYLE_GUIDANCE}}", style_block)
     else:
@@ -425,12 +544,15 @@ def main():
     prior_style_state = dict(style_state)
     new_target_day = style_state.get("target_date") != target_date
     style = _pick_art_style(settings, style_state, target_date)
+    palette = _pick_palette_strategy(style_state, new_target_day)
     record_current_log(
-        "generate_image", "style_selected", f"Selected {style['name']}",
+        "generate_image", "style_selected",
+        f"Selected {style['name']} with {palette['name']} palette",
         data={
             "target_date": target_date,
             "daypart_role": daypart_role,
             "new_target_day": new_target_day,
+            "selected_palette": palette,
             "previous_state": prior_style_state,
             "selected_state": style_state,
         },
@@ -454,25 +576,31 @@ def main():
         _save_style_state(settings, style_state)
         record_current_log(
             "generate_image", "hero_reused", reuse_reason,
-            data={"target_date": target_date, "style": style["name"]},
+            data={
+                "target_date": target_date,
+                "style": style["name"],
+                "palette": palette["name"],
+            },
         )
         print(f"image-skip-reuse: keeping existing hero ({reuse_reason})")
         return
 
     template_path = ROOT / "config" / "prompt_templates" / "weather_image.txt"
     template = template_path.read_text(encoding="utf-8")
-    prompt = _inject_style_prompt(template, illustration_prompt, style)
+    prompt = _inject_style_prompt(template, illustration_prompt, style, palette)
     provider = _resolve_image_provider(settings, args.force_openrouter)
     record_current_snapshot("image_generation_input", {
         "target_date": target_date,
         "daypart_role": daypart_role,
         "illustration_prompt": illustration_prompt,
         "selected_style": style,
+        "selected_palette": palette,
         "provider": provider,
     })
     record_current_snapshot("image_prompt", prompt, content_type="text/plain; charset=utf-8")
     print(f"[image] target_date={target_date or 'n/a'} role={daypart_role or 'n/a'}")
     print(f"[image] selected_style={style['name']}")
+    print(f"[image] selected_palette={palette['name']}")
     print(f"[image] provider={provider}")
 
     try:
@@ -487,6 +615,7 @@ def main():
             data={
                 "target_date": target_date,
                 "style": style["name"],
+                "palette": palette["name"],
                 "provider": provider,
                 "byte_size": len(image_bytes),
                 "output_path": str(output_abs),
@@ -498,14 +627,24 @@ def main():
         detail = describe_network_error(error)
         record_current_log(
             "generate_image", "image_generation_failed", detail, level="error",
-            data={"error_type": type(error).__name__, "style": style["name"], "provider": provider},
+            data={
+                "error_type": type(error).__name__,
+                "style": style["name"],
+                "palette": palette["name"],
+                "provider": provider,
+            },
         )
         _report_image_failure(output_abs, detail)
     except (KeyError, json.JSONDecodeError, RuntimeError) as error:
         _save_style_state(settings, style_state)
         record_current_log(
             "generate_image", "image_generation_failed", str(error), level="error",
-            data={"error_type": type(error).__name__, "style": style["name"], "provider": provider},
+            data={
+                "error_type": type(error).__name__,
+                "style": style["name"],
+                "palette": palette["name"],
+                "provider": provider,
+            },
         )
         _report_image_failure(output_abs, str(error))
 

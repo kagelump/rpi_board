@@ -4,6 +4,7 @@ import json
 import sys
 import urllib.error
 import urllib.request
+from datetime import date
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
@@ -154,6 +155,59 @@ _TIME_FRAMES = {
 }
 
 
+_CREATIVE_ANGLES = [
+    "what to wear walking out the door",
+    "the commute and getting around",
+    "time outdoors: a walk, the park, the riverside",
+    "an evening or after-dark beat",
+    "a small seasonal observation in the sky or streets",
+    "plans with other people",
+    "food or a warm/cold drink that fits",
+]
+
+
+_VISUAL_ANGLES = [
+    "a wide urban landscape where weather changes the whole scene",
+    "an intimate street vignette with a small human story",
+    "an expressive human moment outdoors in the weather",
+    "an animal or plant reacting to the season",
+    "architecture transformed by light, rain, heat, or wind",
+    "a close-up seasonal detail that implies the larger weather",
+    "an abstract visual metaphor grounded in today's real conditions",
+    "a dramatic study of the sky and its relationship to the city",
+    "a quiet after-dark scene with one revealing detail",
+    "motion: gusts, rain, shadows, people, or objects crossing the frame",
+    "a pattern or rhythm found in weather and the built environment",
+    "an unexpected outdoor object made expressive by the conditions",
+]
+
+
+_COMPOSITIONS = [
+    "extreme close-up with the subject cropped by the frame",
+    "wide panorama with a very low horizon",
+    "strong diagonal movement from one corner to the other",
+    "layered foreground, middle distance, and far weather",
+    "tiny focal subject surrounded by purposeful negative space",
+    "asymmetrical editorial composition weighted to one edge",
+    "bird's-eye view looking down on streets, umbrellas, or shadows",
+    "worm's-eye view looking up through architecture, trees, or sky",
+    "repeating forms that create a bold visual rhythm",
+    "near-symmetrical emblem with one deliberate disruption",
+    "split composition contrasting two moments or weather states",
+    "edge-to-edge landscape with no isolated central icon",
+    "off-center foreground silhouette against an expansive background",
+]
+
+
+def _rotating_choice(options, seed_basis, offset=0):
+    """Choose a deterministic daily rotation entry, advancing on real dates."""
+    try:
+        seed = date.fromisoformat(seed_basis).toordinal()
+    except (TypeError, ValueError):
+        seed = sum(ord(char) for char in (seed_basis or ""))
+    return options[(seed + offset) % len(options)]
+
+
 def _time_frame(part_of_day):
     """A framing directive so the same weather reads differently across the day."""
     return _TIME_FRAMES.get(part_of_day, _TIME_FRAMES["midday"])
@@ -175,22 +229,14 @@ def _enrich_payload(payload, settings):
         merged = dict(payload.get("day_context", {}))
         merged.update({k: v for k, v in extra.items() if k != "fetched_at"})
         enriched["day_context"] = merged
-    # A rotating lens keeps consecutive days distinct even when weather repeats.
-    angles = [
-        "what to wear walking out the door",
-        "the commute and getting around",
-        "time outdoors: a walk, the park, the riverside",
-        "an evening or after-dark beat",
-        "a small seasonal observation in the sky or streets",
-        "plans with other people",
-        "food or a warm/cold drink that fits",
-    ]
-    # Seed on the forecast (target) day only -- never part_of_day -- so the same
-    # creative angle holds across the evening / morning / afternoon refreshes of
-    # one forecast day, keeping the daily theme fixed across all three boards.
+    # Seed on the forecast day only so all refreshes share a coherent daily
+    # direction. The pools have different lengths, producing many combinations
+    # before a visual angle/composition pairing repeats.
     day_context = payload.get("day_context", {})
     seed_basis = day_context.get("target_date_iso") or day_context.get("date_iso", "")
-    enriched["creative_angle"] = angles[sum(ord(c) for c in seed_basis) % len(angles)]
+    enriched["creative_angle"] = _rotating_choice(_CREATIVE_ANGLES, seed_basis)
+    enriched["visual_angle"] = _rotating_choice(_VISUAL_ANGLES, seed_basis, offset=3)
+    enriched["composition"] = _rotating_choice(_COMPOSITIONS, seed_basis, offset=7)
     enriched["time_frame"] = _time_frame(day_context.get("part_of_day"))
     return enriched
 
