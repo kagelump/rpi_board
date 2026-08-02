@@ -87,7 +87,7 @@
     "image_model": "fal-ai/flux-2/klein/9b",
     "image_generation_parameters": {
       "image_size": { "width": 960, "height": 480 },
-      "num_inference_steps": 12,
+      "num_inference_steps": 8,
       "output_format": "png"
     },
     "api_key_file": "~/.fai.key"
