@@ -63,6 +63,12 @@ def main():
     input_path = absolute_path(args.input or settings["runtime"]["final_file"])
     output_path = absolute_path(args.output or settings["runtime"]["final_file"])
 
+    quantize_board(settings, input_path, output_path)
+
+
+def quantize_board(settings, input_path, output_path):
+    """Convert a board to the device palette without fetching or generating inputs."""
+
     image = Image.open(input_path).convert("RGB")
     palette = Image.new("P", (1, 1))
     # White, Black, Red, Yellow (remaining palette entries stay zeroed).

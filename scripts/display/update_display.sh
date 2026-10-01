@@ -5,6 +5,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/../.. && pwd)"
 cd "${ROOT_DIR}"
 
 mkdir -p runtime runtime/logs
+# Shared with POST /create_update; hold through rendering and hardware delivery.
+exec 9>runtime/update.lock
+if ! flock -n 9; then
+  echo "[weather-display] another update is in progress" >&2
+  exit 75
+fi
 DISPLAY_MODE_OVERRIDE="${DISPLAY_MODE_OVERRIDE:-}"
 PYTHON_BIN="python3"
 if [[ -x "${ROOT_DIR}/.venv/bin/python3" ]]; then

@@ -40,6 +40,13 @@ def main():
     image_path = absolute_path(args.input or settings["runtime"]["final_file"])
     mode = args.mode or settings["display"]["mode"]
 
+    push_image(settings, image_path, mode)
+
+
+def push_image(settings, image_path, mode=None):
+    """Deliver an explicit image with the configured device driver."""
+    mode = mode or settings["display"]["mode"]
+
     if mode != "pi_display":
         print(f"Skipping hardware display in mode={mode}. Image: {image_path}")
         return

@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlparse
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from scripts.history.store import GenerationStore
+from scripts.history.create_update import MAX_BODY_BYTES, SCHEMA, UpdateBusy, UpdateFailed, UpdateService
 
 
 DASHBOARD_HTML = r"""<!doctype html>
@@ -45,6 +46,7 @@ $('#refresh').onclick=()=>{runs();stats()};stats();runs();
 
 class HistoryRequestHandler(BaseHTTPRequestHandler):
     store: GenerationStore
+    updates: UpdateService
 
     def log_message(self, format, *args):
         print(f"[history-server] {self.address_string()} {format % args}")
@@ -61,6 +63,48 @@ class HistoryRequestHandler(BaseHTTPRequestHandler):
     def _not_found(self):
         self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
+    def do_POST(self):  # noqa: N802
+        if urlparse(self.path).path.rstrip("/") != "/create_update":
+            self._not_found()
+            return
+        if self.headers.get("Origin") is not None:
+            self._json({"error": "browser-origin writes are not supported; use an API client"}, HTTPStatus.FORBIDDEN)
+            return
+        if self.headers.get_content_type() != "application/json":
+            self._json({"error": "Content-Type must be application/json"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+            return
+        if self.headers.get("Transfer-Encoding") or len(self.headers.get_all("Content-Length", [])) != 1:
+            self._json({"error": "one Content-Length header is required; chunked uploads are unsupported"}, HTTPStatus.LENGTH_REQUIRED)
+            return
+        try:
+            length = int(self.headers["Content-Length"])
+            if length <= 0:
+                raise ValueError("request body must not be empty")
+            if length > MAX_BODY_BYTES:
+                self._json({"error": f"request exceeds {MAX_BODY_BYTES} bytes"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+                return
+            self.connection.settimeout(15)
+            raw = self.rfile.read(length)
+            if len(raw) != length:
+                raise ValueError("incomplete request body")
+            def invalid_constant(value):
+                raise ValueError(f"invalid JSON constant: {value}")
+            request = json.loads(raw, parse_constant=invalid_constant)
+            result = self.updates.create(request)
+        except UpdateBusy as error:
+            self._json({"error": str(error)}, HTTPStatus.CONFLICT)
+        except UpdateFailed as error:
+            self._json({"error": str(error), "run_id": error.run_id,
+                        "run_url": f"/api/runs/{error.run_id}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+        except TimeoutError:
+            self._json({"error": "request body timed out"}, HTTPStatus.REQUEST_TIMEOUT)
+        except (ValueError, TypeError, UnicodeDecodeError, RecursionError) as error:
+            self._json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+        except Exception as error:  # noqa: BLE001
+            self._json({"error": f"internal error: {error}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+        else:
+            self._json(result, HTTPStatus.CREATED)
+
     def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler API
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
@@ -74,7 +118,10 @@ class HistoryRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
             if path == "/api/health":
-                self._json({"ok": True, "schema_version": 1})
+                self._json({"ok": True, "schema_version": 1, "create_update": True})
+                return
+            if path == "/create_update":
+                self._json(SCHEMA)
                 return
             if path == "/api/stats":
                 self._json(self.store.stats())
@@ -120,9 +167,11 @@ class HistoryRequestHandler(BaseHTTPRequestHandler):
             self._json({"error": f"internal error: {error}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
 
-def make_server(host: str, port: int, store: GenerationStore | None = None):
+def make_server(host: str, port: int, store: GenerationStore | None = None, updates=None):
     store = store or GenerationStore()
-    handler = type("ConfiguredHistoryHandler", (HistoryRequestHandler,), {"store": store})
+    handler = type("ConfiguredHistoryHandler", (HistoryRequestHandler,), {
+        "store": store, "updates": updates or UpdateService(store),
+    })
     return ThreadingHTTPServer((host, port), handler)
 
 

@@ -258,7 +258,11 @@ def main():
     output_path = args.output or settings["runtime"]["final_file"]
     preview_path = settings["runtime"]["preview_file"]
 
-    payload = read_json(input_path)
+    render_board(settings, read_json(input_path), output_path, preview_path)
+
+
+def render_board(settings, payload, output_path, preview_path):
+    """Compose a board using explicitly supplied inputs and output paths."""
     brief = payload["brief"]
     width = settings["display"]["width"]
     height = settings["display"]["height"]

@@ -251,6 +251,113 @@ guardrail verdicts, and each pipeline stage's combined stdout/stderr.
 - `GET /api/snapshots/<snapshot-id>`
 - `GET /api/artifacts/<artifact-id>`
 
+### Upload an externally authored update
+
+`POST /create_update` accepts a JSON update authored on another computer (for
+example by Codex). The history service still binds to **127.0.0.1:8787** by
+default. Access it through an SSH tunnel:
+
+```bash
+ssh -N -L 8787:127.0.0.1:8787 <pi-user>@<raspberry-pi>
+```
+
+Save a native board payload as `update.json`:
+
+```json
+{
+  "brief": {
+    "headline": "A dry afternoon",
+    "subtitle": "Leave the umbrella at home.",
+    "accent": "yellow"
+  },
+  "today": {
+    "daily_summary": {
+      "date": "2026-10-01",
+      "condition": "Clear",
+      "weather_code": 0,
+      "temp_min_c": 18,
+      "temp_max_c": 29
+    }
+  },
+  "day_context": {
+    "date_pretty": "Thursday, October 1",
+    "daypart_role": "afternoon"
+  },
+  "timezone": "Asia/Tokyo"
+}
+```
+
+Render and archive a preview, then publish when ready:
+
+```bash
+python3 scripts/ops/upload_update.py --payload update.json --hero illustration.png --preview
+python3 scripts/ops/upload_update.py --payload update.json --hero illustration.png
+```
+
+For a complete externally composed board at the configured device resolution
+(normally 960×640), use `--board board.png` instead. `--payload` is optional in
+this mode and is retained as metadata; the supplied board is not recomposed.
+Use `--metadata provenance.json` for an arbitrary JSON object describing the
+author, source, style, or notes. `--url` selects a different tunnel address.
+
+The wire format is `application/json`:
+
+| Field | Meaning |
+| --- | --- |
+| `payload` | Full native board payload shown above, including any additional fields. Required unless `board_image` is supplied. |
+| `hero_image` | Optional raw base64 PNG/JPEG artwork. Without it, composition uses a weather pictogram, never the previous run's artwork. |
+| `board_image` | Optional raw base64 PNG/JPEG complete board at exact device dimensions. Mutually exclusive with `hero_image`. |
+| `publish` | Boolean, default `true`. `false` renders and archives without touching hardware or live output files. |
+| `metadata` | Optional arbitrary JSON object, preserved in history. |
+
+All native payload fields can be supplied and are archived. The compositor uses:
+
+| Payload field | Rendering behavior |
+| --- | --- |
+| `brief.headline` | Required nonblank headline for composition. |
+| `brief.subtitle` | Subtitle; falls back to `brief.tomorrow_preview`, then a default sentence. |
+| `brief.accent` | `black` (or `none`), `red`, or `yellow`; default black. |
+| `today.daily_summary.date` | Required ISO date; default date-chip text. |
+| `today.daily_summary.temp_min_c`, `temp_max_c` | Required numeric Celsius extrema, rounded for the temperature chip. |
+| `today.daily_summary.weather_code` | Optional integer WMO code for the weather glyph; unknown/omitted uses a cloud. |
+| `today.daily_summary.condition` | Optional weather description. |
+| `day_context.date_pretty` | Optional custom date-chip text. |
+| `brief_source` | Defaults to `external`; native deterministic sources show the existing degraded dot. History identifies submission origin as external. |
+| `generated_at_local` | ISO timestamp with timezone; defaults to submission time. |
+| `timezone` | IANA timezone; defaults to the device's configured location timezone. |
+
+Other fields, including `brief.bullets`, `illustration_prompt`, `mood`,
+`event_ref`, `rain_level`, `rain_window`, `temp_range`, `layout_emphasis`,
+`day_context`, `today.hourly`, `tomorrow`, `location`, and `brief_context`, are
+preserved for provenance and future use. They do not trigger generation or add
+new layout elements. Existing text fitting and ASCII rendering rules apply;
+upload a complete board for full control of typography and layout. Server paths,
+credentials, physical dimensions, and hardware settings are not request options.
+
+`GET /create_update` returns the JSON request schema. Uploads are limited to
+16 MiB of JSON (including base64); images to 16 million pixels. PNG transparency
+is flattened onto white. Both upload modes are converted to the device palette,
+and the archived preview is derived from that final output. Browser-origin writes
+are rejected. The API has no authentication; retain the default loopback binding
+and use SSH for remote access.
+
+Successful requests return HTTP **201** with `run_id`, `run_url`, `status`,
+`published`, `display_mode`, and `artifacts.final_display` / `artifacts.preview`
+URLs. The call is synchronous and can take the duration of a panel refresh;
+the helper defaults to a 180-second timeout. `published: true` means the configured
+display delivery and live-file publication completed; `local_preview` mode skips
+physical hardware. Scheduled updates continue normally and can replace an external
+update at the next scheduled run. External uploads do not replace scheduled weather,
+brief, or hero caches.
+
+Errors use JSON: **400** invalid input, **403** browser origin, **408** body-read
+timeout, **409** another update holds the shared lock, **411** missing/unsupported
+body length, **413** oversized body, **415** wrong content type, **500** render or
+publication failure (with a history `run_id` when processing started). Failed
+hardware delivery leaves live output files unchanged, although a driver failure
+may occur after a physical refresh has begun. Requests are not deduplicated:
+after an ambiguous client timeout, check history before resubmitting.
+
 ## Local vs Pi Mode
 
 ### Local preview
