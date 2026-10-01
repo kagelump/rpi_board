@@ -1,13 +1,18 @@
-"""Tests for pure helpers in scripts/render/compose_board.py"""
+"""Tests for board rendering and helpers in scripts/render/compose_board.py."""
+import json
+from pathlib import Path
+
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from scripts.render.compose_board import (
     _accent_color,
     _ascii_only,
     _cover_crop_top_center,
     _is_degraded_source,
+    _layout_panel_text,
     draw_weather_glyph,
+    render_board,
     weather_glyph_kind,
 )
 
@@ -30,7 +35,86 @@ class TestIsDegradedSource:
     def test_missing_is_degraded(self):
         assert _is_degraded_source(None) is True
         assert _is_degraded_source(42) is True
-from PIL import ImageDraw
+
+
+RECORDED_COPY = json.loads(
+    (Path(__file__).parent / "fixtures" / "issue4_panel_copy.json").read_text()
+)
+
+
+@pytest.mark.parametrize("copy", RECORDED_COPY, ids=lambda copy: copy["run_id"])
+def test_recorded_copy_renders_complete_within_panel(copy, tmp_path, monkeypatch):
+    """Check the actual draw calls and ink bounds of the finished 960x640 board."""
+    panel_calls = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def capture_text(draw, xy, text, *args, **kwargs):
+        if xy[1] >= 480:
+            box = draw.textbbox(xy, text, font=kwargs["font"])
+            panel_calls.append((text, box, kwargs["font"].size))
+        return original_text(draw, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", capture_text)
+    settings = {
+        "display": {"width": 960, "height": 640, "panel_fraction": 0.25},
+        "runtime": {"hero_file": str(tmp_path / "missing.png"),
+                    "stale_file": str(tmp_path / "status.json")},
+    }
+    payload = {
+        "brief": copy,
+        "today": {"daily_summary": {"date": "2026-10-01", "weather_code": 51,
+                                    "temp_min_c": 18, "temp_max_c": 30}},
+        "generated_at_local": "2026-10-01T08:00:00+09:00",
+        "brief_source": "openrouter",
+    }
+    output = tmp_path / "board.png"
+    preview = tmp_path / "preview.png"
+    render_board(settings, payload, str(output), str(preview))
+
+    assert " ".join(text for text, _, _ in panel_calls) == (
+        copy["headline"] + " " + copy["subtitle"]
+    )
+    assert len(panel_calls) <= 4
+    assert panel_calls[0][2] >= panel_calls[-1][2]
+    previous_bottom = 480
+    for _, (left, top, right, bottom), size in panel_calls:
+        assert 22 <= left < right <= 938
+        assert previous_bottom < top < bottom <= 624
+        assert size >= 26
+        previous_bottom = bottom
+    assert Image.open(output).size == (960, 640)
+    assert Image.open(preview).size == (480, 320)
+
+
+def test_short_copy_keeps_large_fonts():
+    draw = ImageDraw.Draw(Image.new("RGB", (960, 640)))
+    heading, detail = _layout_panel_text(draw, "Rain by 3pm", "Bring a coat.", 916, 126)
+    assert heading["font"].size == 64
+    assert detail["font"].size == 38
+    assert heading["lines"] == ["Rain by 3pm"]
+    assert detail["lines"] == ["Bring a coat."]
+
+
+def test_long_headline_wraps_without_losing_words():
+    draw = ImageDraw.Draw(Image.new("RGB", (960, 640)))
+    headline = "Heavy rain through the morning, clearing after lunch with gusty winds"
+    heading, detail = _layout_panel_text(draw, headline, "Carry an umbrella.", 916, 126)
+    assert len(heading["lines"]) == 2
+    assert " ".join(heading["lines"]) == headline
+    assert heading["font"].size >= 32
+    assert detail["font"].size >= 26
+
+
+@pytest.mark.parametrize("headline,subtitle,width,height", [
+    ("W" * 200, "Bring a coat.", 916, 126),
+    ("Rain today", "Bring a coat. " * 100, 916, 126),
+    ("Rain today", "Bring a coat.", 916, 20),
+    ("Rain today", "Bring a coat.", 20, 126),
+])
+def test_unfittable_copy_requires_rewrite(headline, subtitle, width, height):
+    draw = ImageDraw.Draw(Image.new("RGB", (960, 640)))
+    with pytest.raises(ValueError, match="rewrite more concisely"):
+        _layout_panel_text(draw, headline, subtitle, width, height)
 
 
 # ---------------------------------------------------------------------------

@@ -330,9 +330,15 @@ Other fields, including `brief.bullets`, `illustration_prompt`, `mood`,
 `event_ref`, `rain_level`, `rain_window`, `temp_range`, `layout_emphasis`,
 `day_context`, `today.hourly`, `tomorrow`, `location`, and `brief_context`, are
 preserved for provenance and future use. They do not trigger generation or add
-new layout elements. Existing text fitting and ASCII rendering rules apply;
-upload a complete board for full control of typography and layout. Server paths,
-credentials, physical dimensions, and hardware settings are not request options.
+new layout elements. ASCII rendering rules apply. Headline and subtitle fitting
+uses actual font bounds and the available panel height, allowing up to two lines
+per field. Headlines stay at least 32px and subtitles at least 26px; short copy
+uses larger fonts. Copy that cannot fit raises a render error rather than silently
+truncating forecast advice. Rewrite it concisely, preserving useful timing and
+clothing/umbrella advice. Generated copy targets 52 headline and 72 subtitle
+characters, but measured fit is authoritative. You can also upload a complete
+board for full control of typography and layout. Server paths, credentials,
+physical dimensions, and hardware settings are not request options.
 
 `GET /create_update` returns the JSON request schema. Uploads are limited to
 16 MiB of JSON (including base64); images to 16 million pixels. PNG transparency

@@ -53,6 +53,10 @@ VOICE RULES
   chores. Do not make it about whether to do laundry. Specific beats generic.
 - Vary your opening word from day to day. No bullet lists. No weather jargon
   dumps.
+- The renderer measures actual font widths and allows up to two lines per
+  field. Character counts alone do not guarantee a fit: prefer short words and
+  concise sentences. Put actionable timing and clothing/umbrella advice before
+  whimsy; rewrite an overlong sentence instead of cutting off its useful ending.
 - HARD LIMITS, count before you answer: headline MUST be <= 52 characters and
   subtitle <= 72. If over, cut words until it fits -- a tight headline beats a
   truncated one.

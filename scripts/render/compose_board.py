@@ -25,60 +25,73 @@ def _font(size):
     return ImageFont.load_default()
 
 
-def _draw_wrapped(draw, text, xy, width, font, fill, line_spacing=8, max_lines=2):
-    words = text.split()
+def _wrap_lines(draw, text, width, font):
+    """Wrap at word boundaries using ink bounds; never discard words."""
     lines = []
-    current = []
-    for word in words:
-        trial = " ".join(current + [word])
-        bbox = draw.textbbox((0, 0), trial, font=font)
-        if bbox[2] <= width:
-            current.append(word)
+    current = ""
+    for word in text.split():
+        left, _, right, _ = draw.textbbox((0, 0), word, font=font)
+        if right - left > width:
+            return None  # A token cannot fit at this font size.
+        trial = f"{current} {word}" if current else word
+        left, _, right, _ = draw.textbbox((0, 0), trial, font=font)
+        if right - left <= width:
+            current = trial
         else:
-            if current:
-                lines.append(" ".join(current))
-            current = [word]
+            lines.append(current)
+            current = word
     if current:
-        lines.append(" ".join(current))
-    lines = lines[:max_lines]
+        lines.append(current)
+    return lines
+
+
+def _text_candidates(draw, text, width, max_size, min_size, max_lines):
+    for size in range(max_size, min_size - 1, -1):
+        font = _font(size)
+        lines = _wrap_lines(draw, text, width, font)
+        if lines is None or len(lines) > max_lines:
+            continue
+        bounds = [draw.textbbox((0, 0), line, font=font) for line in lines]
+        line_height = max((bottom - top for _, top, _, bottom in bounds), default=0)
+        height = len(lines) * line_height + max(0, len(lines) - 1) * 6
+        yield {"font": font, "lines": lines, "bounds": bounds,
+               "line_height": line_height, "height": height}
+
+
+def _layout_panel_text(draw, headline, subtitle, width, height):
+    """Fit both complete fields within the panel's usable ink rectangle.
+
+    Prefer a single headline, then permit two lines. Give actionable subtitle
+    copy first choice of font size while keeping the headline at least as large.
+    Search every integer size, keeping headlines >=32px and subtitles >=26px at
+    native resolution.
+    Oversize copy must be rewritten by the author, never silently ellipsized.
+    """
+    subtitles = list(_text_candidates(draw, subtitle, width, 38, 26, 2))
+    for headline_lines in (1, 2):
+        headings = list(_text_candidates(draw, headline, width, 64, 32, headline_lines))
+        for detail in subtitles:
+            for heading in headings:
+                if (heading["font"].size >= detail["font"].size
+                        and heading["height"] + 12 + detail["height"] <= height):
+                    return heading, detail
+    raise ValueError(
+        "Headline/subtitle do not fit the text panel at readable font sizes; "
+        "rewrite more concisely while preserving forecast timing and advice."
+    )
+
+
+def _draw_text_block(draw, block, xy):
     x, y = xy
-    for line in lines:
-        draw.text((x, y), line, fill=fill, font=font)
-        y += font.size + line_spacing
-    return y
-
-
-def _fit_single_line(draw, text, width, font):
-    text = text.strip()
-    if draw.textbbox((0, 0), text, font=font)[2] <= width:
-        return text
-    words = text.split()
-    if not words:
-        return ""
-    current = []
-    for word in words:
-        trial = " ".join(current + [word]).strip()
-        with_ellipsis = f"{trial}..."
-        if draw.textbbox((0, 0), with_ellipsis, font=font)[2] <= width:
-            current.append(word)
-        else:
-            break
-    if not current:
-        # Fallback for a very long single token.
-        return text[: max(1, len(text) // 2)] + "..."
-    return " ".join(current).strip() + "..."
+    for line, (left, top, _, _) in zip(block["lines"], block["bounds"]):
+        # Position the actual ink, including bearings and descenders, within
+        # the measured rectangle instead of relying on nominal font.size.
+        draw.text((x - left, y - top), line, fill=(0, 0, 0), font=block["font"])
+        y += block["line_height"] + 6
 
 
 def _draw_text_with_stroke(draw, xy, text, font, fill=(0, 0, 0), stroke_fill=(255, 255, 255), stroke_width=3):
     draw.text(xy, text, fill=fill, font=font, stroke_fill=stroke_fill, stroke_width=stroke_width)
-
-
-def _fit_font_size(draw, text, max_width, sizes):
-    for size in sizes:
-        font = _font(size)
-        if draw.textbbox((0, 0), text, font=font)[2] <= max_width:
-            return font
-    return _font(sizes[-1])
 
 
 def _accent_color(accent):
@@ -307,12 +320,12 @@ def render_board(settings, payload, output_path, preview_path):
     if not headline:
         headline = "Weather update"
 
-    headline_font = _fit_font_size(draw, headline, width - 44, [64, 58, 52, 46, 42, 38])
-    subtitle_font = _fit_font_size(draw, subtitle, width - 44, [38, 34, 30, 28, 26])
-    headline_line = _fit_single_line(draw, headline, width - 44, headline_font)
-    subtitle_line = _fit_single_line(draw, subtitle, width - 44, subtitle_font)
-    draw.text((22, panel_top + 18), headline_line, fill=(0, 0, 0), font=headline_font)
-    draw.text((24, panel_top + 20 + headline_font.size + 18), subtitle_line, fill=(0, 0, 0), font=subtitle_font)
+    text_x, text_y = 22, panel_top + 18
+    heading, detail = _layout_panel_text(
+        draw, headline, subtitle, width - 44, panel_h - 18 - 16,
+    )
+    _draw_text_block(draw, heading, (text_x, text_y))
+    _draw_text_block(draw, detail, (text_x, text_y + heading["height"] + 12))
 
     # Operational metadata as chips so it reads over any artwork.
     daily = payload["today"]["daily_summary"]

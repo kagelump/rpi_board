@@ -116,6 +116,22 @@ def test_no_hero_uses_pictogram_and_schema_is_discoverable(api, payload):
     assert schema["properties"]["publish"]["default"] is True
 
 
+def test_unfittable_copy_fails_without_publishing(api, payload):
+    request, store, service, pushed = api
+    payload["brief"]["subtitle"] = "Carry an umbrella and a light layer. " * 50
+    status, raw = request({"payload": payload})
+    assert status == 500, raw
+    result = json.loads(raw)
+    run = store.get_run(result["run_id"])
+    assert run["status"] == "failed"
+    assert "rewrite more concisely" in run["error_summary"]
+    assert run["stages"][-1]["stage_name"] == "compose_board"
+    assert run["stages"][-1]["status"] == "failed"
+    assert not pushed
+    for key in ("final_file", "preview_file", "stale_file", "brief_file", "hero_file"):
+        assert Path(service.settings["runtime"][key]).read_bytes() == b"original"
+
+
 @pytest.mark.parametrize("body", [
     [], {}, {"payload": {}}, {"publish": "false"}, {"settings": {}},
     {"board_image": "not base64"}, {"board_image": base64.b64encode(b"not an image").decode()},
