@@ -9,14 +9,8 @@ BCM_LIB="/usr/local/lib/libbcm2835.a"
 echo "[waveshare] target dir: ${TARGET_DIR}"
 
 if [[ ! -d "${TARGET_DIR}" ]]; then
-  if sudo test -d "/home/trainboard/e-Paper"; then
-    echo "[waveshare] copying existing driver tree from /home/trainboard/e-Paper"
-    sudo rsync -a "/home/trainboard/e-Paper/" "${TARGET_DIR}/"
-    sudo chown -R "${USER}:${USER}" "${TARGET_DIR}"
-  else
-    echo "[waveshare] cloning ${WAVESHARE_REPO}"
-    git clone --depth 1 "${WAVESHARE_REPO}" "${TARGET_DIR}"
-  fi
+  echo "[waveshare] cloning ${WAVESHARE_REPO}"
+  git clone --depth 1 "${WAVESHARE_REPO}" "${TARGET_DIR}"
 else
   if [[ -d "${TARGET_DIR}/.git" ]]; then
     echo "[waveshare] driver tree already present"

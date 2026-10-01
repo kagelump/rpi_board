@@ -408,7 +408,7 @@ and executes the display pipeline.
 `setup_pi.sh` installs Python GPIO deps (`spidev`, `RPi.GPIO`) and runs
 `scripts/ops/install_waveshare_driver.sh`, which will:
 
-- reuse `/home/trainboard/e-Paper` if present (copied with `sudo rsync`)
+- reuse the driver checkout at `~/e-Paper` if it is already installed
 - otherwise clone `https://github.com/waveshare/e-Paper.git` into `~/e-Paper`
 - install BCM2835 if missing
 

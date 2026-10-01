@@ -4,18 +4,13 @@
 
 Build a Raspberry Pi weather display system that renders a once-daily morning weather briefing onto a Waveshare e-ink panel, using minimal text and a strong illustration-first composition so the board is quick to read from a distance.
 
-## Known Display Constraints (from `../trainboard`)
+## Known Display Constraints
 
-- Hardware target: Waveshare 10.2inch e-Paper HAT (G) on Raspberry Pi (trainboard docs use Pi Zero 2 W).
+- Hardware target: Waveshare 10.2inch e-Paper HAT (G) on Raspberry Pi.
 - Native resolution: `960x640`.
 - Color capability: 4 colors (`white`, `black`, `red`, `yellow`).
-- Existing driver usage in trainboard:
-  - `waveshare_epd.epd10in2g` in display update flow.
-  - `waveshare_epd.epd10in2_G` appears in clear script.
-  - Plan: verify exact installed module name on your Pi and standardize to one import path.
-- Existing refresh pattern in trainboard is practical:
-  - mostly partial refreshes,
-  - periodic full refresh to reduce ghosting.
+- The display updater probes `waveshare_epd.epd10in2g` and `waveshare_epd.epd10in2_G`; verify which module is installed on the Pi.
+- Keep the refresh behavior aligned with the current display updater; use a full refresh when needed to clear ghosting.
 
 ## Product Definition (v1)
 
@@ -84,7 +79,7 @@ Build a Raspberry Pi weather display system that renders a once-daily morning we
      - avoid optimizing for partial-refresh-heavy patterns unless a later use case requires intra-day updates.
 
 6. **Scheduler/Operations Layer**
-   - systemd service + timer (same operational model as trainboard).
+   - the existing systemd service and timer.
    - Default schedule: once daily around `08:00` local time.
    - Log to file + journal.
    - Keep last-success artifacts and run metadata.
