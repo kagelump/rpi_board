@@ -146,6 +146,78 @@ def _hourly_rows(raw, date_str):
     return rows
 
 
+# Open-Meteo weather codes ordered from calmest to most disruptive. Used to
+# pick the representative condition for the remaining part of a same-day run.
+_CONDITION_SEVERITY = {
+    0: 0, 1: 1, 2: 2, 3: 3, 45: 3, 48: 3,
+    51: 4, 56: 4, 61: 4, 71: 4, 80: 4,
+    53: 5, 63: 5, 66: 5, 73: 5, 77: 5, 81: 5, 85: 5,
+    55: 6, 57: 6, 65: 6, 67: 6, 75: 6, 82: 6, 86: 6,
+    95: 7, 96: 7, 99: 7,
+}
+
+
+def _row_start(stamp):
+    """Parse an Open-Meteo local timestamp into a datetime (may be naive)."""
+    try:
+        return datetime.fromisoformat(stamp)
+    except (TypeError, ValueError):
+        return None
+
+
+def _remaining_hourly_rows(rows, now_local):
+    """Rows still relevant to a same-day update.
+
+    Each row is keyed by the hour it starts, so the row for the run's current
+    hour counts as ongoing/future while earlier rows have elapsed. This keeps
+    overnight rain from resurfacing in a midday briefing without dropping rain
+    that is happening right now.
+    """
+    cutoff = now_local.replace(minute=0, second=0, microsecond=0)
+    kept = []
+    for row in rows:
+        start = _row_start(row["time"])
+        if start is None:
+            kept.append(row)
+            continue
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=now_local.tzinfo)
+        if start >= cutoff:
+            kept.append(row)
+    return kept
+
+
+def _remaining_summary(today_daily, rows):
+    """Fold the remaining hours into the summary that drives advice text.
+
+    Full-day temperature extrema are preserved, but condition and rain fields
+    describe only the still-open window so the rain copy, icon, and
+    illustration all reflect what is actually ahead.
+    """
+    summary = dict(today_daily)
+    if not rows:
+        summary.update(
+            condition=WEATHER_LABELS[0],
+            weather_code=0,
+            rain_prob_max_pct=0,
+            rain_sum_mm=0.0,
+        )
+        return summary
+
+    representative = max(
+        rows,
+        key=lambda row: _CONDITION_SEVERITY.get(row["weather_code"], 3),
+    )
+    code = representative["weather_code"]
+    summary.update(
+        condition=WEATHER_LABELS.get(code, f"Code {code}"),
+        weather_code=code,
+        rain_prob_max_pct=max(int(row["rain_probability_pct"]) for row in rows),
+        rain_sum_mm=round(sum(float(row["rain_mm"]) for row in rows), 1),
+    )
+    return summary
+
+
 def _rain_rows_by_intensity(rows):
     # Open-Meteo weather_code groups:
     # light: drizzle/slight rain/showers, regular: moderate rain/showers,
@@ -312,7 +384,7 @@ def _first_yahoo_index_items(context):
     return days[0].get("items", {})
 
 
-def build_payload(context):
+def build_payload(context, now_local=None):
     open_meteo_wrapper = context.get("sources", {}).get("open_meteo", {}).get("payload", {})
     raw = open_meteo_wrapper.get("raw")
     if not raw:
@@ -320,7 +392,13 @@ def build_payload(context):
 
     tz_name = raw.get("timezone", "Asia/Tokyo")
     tz = ZoneInfo(tz_name)
-    now_local = datetime.now(tz)
+    # ``now_local`` is injectable so a replay can pin the run's local clock.
+    if now_local is None:
+        now_local = datetime.now(tz)
+    elif now_local.tzinfo is None:
+        now_local = now_local.replace(tzinfo=tz)
+    else:
+        now_local = now_local.astimezone(tz)
     # FORECAST_TARGET=tomorrow forces the 9pm (primary) role at any hour.
     force_tomorrow = os.environ.get("FORECAST_TARGET", "").strip().lower() == "tomorrow"
     offset = 1 if force_tomorrow else _target_offset_days(now_local)
@@ -340,7 +418,18 @@ def build_payload(context):
     today_daily = _daily_summary(raw, target_idx)
     tomorrow_daily = _daily_summary(raw, following_idx)
     today_hourly = _hourly_rows(raw, today_daily["date"])
-    rain_level, rain_window = _rain_window(today_hourly)
+
+    # Morning and afternoon refreshes brief only the hours still open on the
+    # target day, so elapsed overnight rain is never recycled as upcoming
+    # advice. The evening run builds tomorrow's board from the full day.
+    same_day = offset == 0 and today_daily["date"] == now_local.date().isoformat()
+    if same_day:
+        advising_hourly = _remaining_hourly_rows(today_hourly, now_local)
+        advice_daily = _remaining_summary(today_daily, advising_hourly)
+    else:
+        advising_hourly = today_hourly
+        advice_daily = today_daily
+    rain_level, rain_window = _rain_window(advising_hourly)
     yahoo_today = _first_yahoo_today(context)
     yahoo_tomorrow = _first_yahoo_tomorrow(context)
     yahoo_indices = _first_yahoo_index_items(context)
@@ -358,9 +447,9 @@ def build_payload(context):
 
     temp_range = f"{math.floor(today_daily['temp_min_c'])}C-{math.ceil(today_daily['temp_max_c'])}C"
     brief = {
-        "headline": _headline(today_daily, rain_level, yahoo_today, yahoo_alerts),
-        "subtitle": _subtitle(today_daily, rain_window, tomorrow_daily, rain_level, yahoo_today, yahoo_indices),
-        "bullets": _bullets(today_daily, rain_window, rain_level, yahoo_today, yahoo_indices),
+        "headline": _headline(advice_daily, rain_level, yahoo_today, yahoo_alerts),
+        "subtitle": _subtitle(advice_daily, rain_window, tomorrow_daily, rain_level, yahoo_today, yahoo_indices),
+        "bullets": _bullets(advice_daily, rain_window, rain_level, yahoo_today, yahoo_indices),
         "rain_window": rain_window,
         "rain_level": rain_level,
         "temp_range": temp_range,
@@ -369,11 +458,11 @@ def build_payload(context):
             f"{tomorrow_daily['temp_min_c']:.0f}-{tomorrow_daily['temp_max_c']:.0f}C"
         ),
         "illustration_prompt": (
-            f"Minimal weather poster for {today_daily['condition']} with "
-            f"rain hint={today_daily['rain_prob_max_pct']}%"
+            f"Minimal weather poster for {advice_daily['condition']} with "
+            f"rain hint={advice_daily['rain_prob_max_pct']}%"
         ),
         "layout_emphasis": {
-            "rain": "high" if today_daily["rain_prob_max_pct"] >= 60 else "medium",
+            "rain": "high" if advice_daily["rain_prob_max_pct"] >= 60 else "medium",
             "temperature": "high" if today_daily["temp_max_c"] >= 30 or today_daily["temp_min_c"] <= 5 else "medium",
         },
     }
@@ -383,7 +472,7 @@ def build_payload(context):
         "timezone": tz_name,
         "day_context": day_context,
         "location": open_meteo_wrapper["location"],
-        "today": {"daily_summary": today_daily, "hourly": today_hourly, "yahoo_summary": yahoo_today},
+        "today": {"daily_summary": advice_daily, "hourly": today_hourly, "yahoo_summary": yahoo_today},
         "tomorrow": {"daily_summary": tomorrow_daily, "yahoo_summary": yahoo_tomorrow},
         "brief_context": {
             "source_priority": context.get("source_priority", []),

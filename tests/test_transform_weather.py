@@ -15,6 +15,8 @@ from scripts.weather.transform_weather import (
     _is_ascii_text,
     _rain_rows_by_intensity,
     _rain_window,
+    _remaining_hourly_rows,
+    _remaining_summary,
     _subtitle,
     _target_offset_days,
     build_payload,
@@ -518,3 +520,201 @@ class TestBuildPayload:
         assert "temperature" in emphasis
         assert emphasis["rain"] in ("high", "medium")
         assert emphasis["temperature"] in ("high", "medium")
+
+
+# ---------------------------------------------------------------------------
+# Same-day fallback rain window (issue #1)
+# ---------------------------------------------------------------------------
+
+_TZ = ZoneInfo("Asia/Tokyo")
+
+
+def _hourly_series(day, rain_hours=(), code=0, rain_mm=0.0, rain_prob=90):
+    hours = list(range(24))
+    return {
+        "time": [f"{day}T{hour:02d}:00" for hour in hours],
+        "temperature_2m": [20.0 for _ in hours],
+        "precipitation_probability": [rain_prob if hour in rain_hours else 5 for hour in hours],
+        "precipitation": [rain_mm if hour in rain_hours else 0.0 for hour in hours],
+        "weather_code": [code if hour in rain_hours else 0 for hour in hours],
+    }
+
+
+def _replay_context(day1_rain=(), day1_code=61, day1_mm=0.8,
+                    day2_rain=(), day2_code=65, day2_mm=1.8,
+                    day1_daily_code=61, day2_daily_code=0):
+    """Context mirroring the recorded morning/afternoon replay inputs.
+
+    Both target days carry a full 24h of hourly rows so the same-day filter and
+    the untouched next-day window can be exercised from one fixture.
+    """
+    day1 = _hourly_series("2026-10-01", day1_rain, day1_code, day1_mm)
+    day2 = _hourly_series("2026-10-02", day2_rain, day2_code, day2_mm)
+    raw = {
+        "timezone": "Asia/Tokyo",
+        "daily": {
+            "time": ["2026-10-01", "2026-10-02", "2026-10-03"],
+            "weather_code": [day1_daily_code, day2_daily_code, 2],
+            "temperature_2m_max": [25.0, 26.0, 24.0],
+            "temperature_2m_min": [18.0, 17.0, 16.0],
+            "precipitation_probability_max": [80, 40, 20],
+            "precipitation_sum": [5.0, 1.0, 0.0],
+        },
+        "hourly": {
+            field: day1[field] + day2[field]
+            for field in day1
+        },
+    }
+    return {
+        "sources": {
+            "open_meteo": {
+                "payload": {
+                    "location": {"timezone": "Asia/Tokyo", "latitude": 35.658, "longitude": 139.6835},
+                    "raw": raw,
+                }
+            }
+        },
+        "source_priority": ["yahoo", "open_meteo"],
+        "ordered_facts": [],
+        "conflicts": [],
+        "missing_sections": [],
+    }
+
+
+class TestRemainingHourlyRows:
+    def test_drops_elapsed_hours_and_keeps_current_hour(self):
+        rows = [_row(f"2026-10-01T{hour:02d}:00", 0.0, 0, 0) for hour in (11, 12, 13, 14)]
+        now = datetime(2026, 10, 1, 13, 1, tzinfo=_TZ)
+        kept = _remaining_hourly_rows(rows, now)
+        assert [row["time"][11:13] for row in kept] == ["13", "14"]
+
+    def test_naive_stamps_are_compared_in_the_run_timezone(self):
+        rows = [_row("2026-10-01T13:00", 0.0, 0, 0)]
+        now = datetime(2026, 10, 1, 13, 1, tzinfo=ZoneInfo("UTC"))
+        # 13:00 naive is interpreted as 13:00 UTC, which is >= the 13:00 cutoff.
+        assert len(_remaining_hourly_rows(rows, now)) == 1
+
+
+class TestRemainingSummary:
+    def _daily(self):
+        return {
+            "date": "2026-10-01",
+            "condition": "Slight rain",
+            "weather_code": 61,
+            "temp_max_c": 25.0,
+            "temp_min_c": 18.0,
+            "rain_prob_max_pct": 80,
+            "rain_sum_mm": 5.0,
+        }
+
+    def test_temperature_extrema_are_preserved(self):
+        summary = _remaining_summary(self._daily(), [_row("2026-10-01T13:00", 0.0, 5, 0)])
+        assert summary["temp_max_c"] == 25.0
+        assert summary["temp_min_c"] == 18.0
+
+    def test_rain_fields_describe_only_remaining_rows(self):
+        rows = [
+            _row("2026-10-01T13:00", 0.0, 5, 0),
+            _row("2026-10-01T14:00", 0.4, 10, 3),
+        ]
+        summary = _remaining_summary(self._daily(), rows)
+        assert summary["weather_code"] == 3
+        assert summary["condition"] == "Overcast"
+        assert summary["rain_prob_max_pct"] == 10
+        assert summary["rain_sum_mm"] == 0.4
+
+    def test_empty_window_is_dry(self):
+        summary = _remaining_summary(self._daily(), [])
+        assert summary["weather_code"] == 0
+        assert summary["condition"] == "Clear sky"
+        assert summary["rain_prob_max_pct"] == 0
+        assert summary["rain_sum_mm"] == 0.0
+
+
+class TestSameDayFallbackRain:
+    NOW_MIDDAY = datetime(2026, 10, 1, 13, 1, tzinfo=_TZ)
+
+    @pytest.fixture(autouse=True)
+    def _no_forced_tomorrow(self, monkeypatch):
+        monkeypatch.delenv("FORECAST_TARGET", raising=False)
+
+    def test_overnight_rain_is_not_presented_as_upcoming_at_midday(self):
+        ctx = _replay_context(day1_rain=range(1, 6), day1_mm=0.8)
+        result = build_payload(ctx, now_local=self.NOW_MIDDAY)
+        brief = result["brief"]
+
+        assert brief["rain_level"] == "none"
+        assert brief["rain_window"] == "No rain expected"
+        assert "01:00" not in brief["rain_window"]
+        assert "rain" not in brief["headline"].lower()
+        # Full-day temperature extrema survive even though the min/max rows
+        # themselves may already have elapsed.
+        assert brief["temp_range"] == "18C-25C"
+
+    def test_refresh_reports_dry_remainder_of_the_day(self):
+        ctx = _replay_context(day1_rain=range(1, 6))
+        result = build_payload(ctx, now_local=self.NOW_MIDDAY)
+        summary = result["today"]["daily_summary"]
+
+        assert summary["weather_code"] == 0
+        assert summary["condition"] == "Clear sky"
+        assert summary["rain_prob_max_pct"] == 5
+        assert "poster for Clear sky" in result["brief"]["illustration_prompt"]
+        assert "rain hint=5%" in result["brief"]["illustration_prompt"]
+        assert "rain hint=80%" not in result["brief"]["illustration_prompt"]
+        assert result["brief"]["layout_emphasis"]["rain"] == "medium"
+
+    def test_rain_in_the_current_hour_is_retained(self):
+        # Rain only in the 13:00 row (an ongoing/current interval at 13:01)
+        # must survive the same-day filter even though earlier rows are gone.
+        ctx = _replay_context(day1_rain={13}, day1_code=61, day1_mm=0.2)
+        result = build_payload(ctx, now_local=self.NOW_MIDDAY)
+
+        assert result["brief"]["rain_level"] == "light"
+        assert result["brief"]["rain_window"] == "Light rain possible around 13:00"
+
+    def test_ongoing_rain_interval_is_retained(self):
+        # Rain spans 12:00-15:00; the 13:00 run must keep what is happening now
+        # without reporting the already-finished 12:00 hour as upcoming.
+        ctx = _replay_context(day1_rain=range(12, 16), day1_code=63, day1_mm=0.8)
+        result = build_payload(ctx, now_local=self.NOW_MIDDAY)
+        brief = result["brief"]
+
+        assert brief["rain_level"] == "regular"
+        assert brief["rain_window"] == "Rain likely 13:00-15:00"
+        assert "12:00" not in brief["rain_window"]
+
+    def test_future_rain_is_reported(self):
+        ctx = _replay_context(day1_rain=range(16, 19), day1_code=61, day1_mm=0.2)
+        now = datetime(2026, 10, 1, 8, 0, tzinfo=_TZ)
+        result = build_payload(ctx, now_local=now)
+
+        assert result["brief"]["rain_level"] == "light"
+        assert result["brief"]["rain_window"] == "Light rain possible 16:00-18:00"
+
+    def test_morning_update_drops_only_elapsed_overnight_rain(self):
+        ctx = _replay_context(day1_rain=range(1, 6))
+        now = datetime(2026, 10, 1, 8, 0, tzinfo=_TZ)
+        result = build_payload(ctx, now_local=now)
+
+        assert result["brief"]["rain_window"] == "No rain expected"
+
+    def test_evening_run_preserves_full_next_day_window(self):
+        ctx = _replay_context(day2_rain=range(1, 6), day2_code=65, day2_mm=1.8,
+                              day2_daily_code=65)
+        now = datetime(2026, 10, 1, 21, 0, tzinfo=_TZ)
+        result = build_payload(ctx, now_local=now)
+
+        assert result["today"]["daily_summary"]["date"] == "2026-10-02"
+        assert result["brief"]["rain_level"] == "heavy"
+        assert result["brief"]["rain_window"] == "Heavy rain likely 01:00-05:00"
+        assert result["brief"]["temp_range"] == "17C-26C"
+
+    def test_utc_clock_matches_local_run_time(self):
+        ctx = _replay_context(day1_rain=range(1, 6))
+        local = build_payload(ctx, now_local=self.NOW_MIDDAY)
+        utc = build_payload(ctx, now_local=datetime(2026, 10, 1, 4, 1, tzinfo=ZoneInfo("UTC")))
+
+        assert local["brief"]["rain_window"] == "No rain expected"
+        assert utc["brief"]["rain_window"] == local["brief"]["rain_window"]
+        assert utc["day_context"]["run_date_iso"] == "2026-10-01"
