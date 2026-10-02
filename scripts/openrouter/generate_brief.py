@@ -12,6 +12,7 @@ from scripts.common import ROOT, get_openrouter_api_key, load_settings, read_jso
 from scripts.history.store import record_current_log, record_current_snapshot
 from scripts.openrouter.network import describe_network_error, urlopen_with_context
 from scripts.ops.render_gate import compute_signature, should_regenerate
+from scripts.render.compose_board import fit_panel_copy
 
 
 _PUNCT_MAP = {
@@ -27,7 +28,7 @@ def _normalize_brief_punct(brief):
     dropped glyph. The model is told ASCII-only, but it slips occasionally."""
     if not isinstance(brief, dict):
         return brief
-    for key in ("headline", "subtitle", "illustration_prompt"):
+    for key in ("headline", "subtitle", "illustration_prompt", "event_ref"):
         value = brief.get(key)
         if isinstance(value, str):
             for bad, good in _PUNCT_MAP.items():
@@ -36,16 +37,147 @@ def _normalize_brief_punct(brief):
     return brief
 
 
-def _is_valid_brief(brief):
+# The strict output contract advertised in config/prompt_templates/weather_brief.txt.
+# Runtime validation mirrors it here so an accepted response can never violate the
+# schema the model was given (prompt/schema drift is what let issue #6 through).
+_BRIEF_REQUIRED_KEYS = (
+    "headline",
+    "subtitle",
+    "illustration_prompt",
+    "mood",
+    "accent",
+    "event_ref",
+)
+_BRIEF_NONBLANK_KEYS = ("headline", "subtitle", "illustration_prompt")
+_BRIEF_ASCII_KEYS = ("headline", "subtitle", "illustration_prompt", "event_ref")
+_BRIEF_MAX_LENGTHS = {"headline": 52, "subtitle": 72}
+_BRIEF_ENUMS = {
+    "mood": frozenset({"calm", "alert", "cozy", "stormy", "festive", "crisp", "muggy"}),
+    # The prompt schema offers red|yellow|none; "black" is the external-payload
+    # spelling and is intentionally not part of the model contract.
+    "accent": frozenset({"red", "yellow", "none"}),
+}
+
+
+def _brief_schema_violations(brief):
+    """Return the contract violations in ``brief``; an empty list means valid.
+
+    Covers the deterministic, non-render constraints: exactly the six advertised
+    keys, required presence, string types, non-blank copy, ASCII-only text,
+    headline/subtitle length caps, and the mood/accent enums.
+    """
     if not isinstance(brief, dict):
+        return ["response is not a JSON object"]
+
+    violations = []
+    for key in sorted(brief):
+        if key not in _BRIEF_REQUIRED_KEYS:
+            violations.append(
+                f"unexpected field {key!r}; schema allows only "
+                f"{', '.join(_BRIEF_REQUIRED_KEYS)}"
+            )
+    for key in _BRIEF_REQUIRED_KEYS:
+        if key not in brief:
+            violations.append(f"missing required field {key!r}")
+
+    for key in _BRIEF_ASCII_KEYS:
+        if key not in brief:
+            continue
+        value = brief[key]
+        if not isinstance(value, str):
+            violations.append(f"{key} must be a string (got {type(value).__name__})")
+            continue
+        if key in _BRIEF_NONBLANK_KEYS and not value.strip():
+            violations.append(f"{key} must not be blank")
+        if not value.isascii():
+            bad = "".join(sorted({ch for ch in value if not ch.isascii()}))
+            violations.append(f"{key} contains non-ASCII characters {bad!r}")
+        limit = _BRIEF_MAX_LENGTHS.get(key)
+        if limit is not None and len(value) > limit:
+            violations.append(
+                f"{key} is {len(value)} characters, over the {limit}-character limit"
+            )
+
+    for key, allowed in _BRIEF_ENUMS.items():
+        if key not in brief:
+            continue
+        value = brief[key]
+        if not isinstance(value, str):
+            violations.append(f"{key} must be a string enum (got {type(value).__name__})")
+        elif value not in allowed:
+            violations.append(f"{key}={value!r} is not one of {sorted(allowed)}")
+
+    return violations
+
+
+def _has_display_settings(settings):
+    """True when settings carry enough display geometry to measure panel copy."""
+    display = settings.get("display") if isinstance(settings, dict) else None
+    if not isinstance(display, dict):
         return False
-    required_str = ["headline", "subtitle", "illustration_prompt"]
-    for key in required_str:
-        if key not in brief or not isinstance(brief[key], str):
-            return False
-    if len(brief["headline"].strip()) == 0 or len(brief["subtitle"].strip()) == 0:
-        return False
-    return True
+    return all(isinstance(display.get(key), (int, float)) for key in ("width", "height"))
+
+
+def _brief_violations(brief, settings=None):
+    """Return schema violations plus, when geometry is available, renderability.
+
+    The renderability half reuses compose_board's own font-fitting logic so a
+    response that would later raise the readable-fit ``ValueError`` is rejected
+    before artwork generation instead. Callers without display geometry still
+    get the deterministic schema checks.
+    """
+    violations = _brief_schema_violations(brief)
+    if violations or not _has_display_settings(settings):
+        return violations
+    try:
+        fit_panel_copy(settings, brief["headline"], brief["subtitle"])
+    except ValueError as error:
+        violations.append(str(error))
+    return violations
+
+
+def _is_valid_brief(brief, settings=None):
+    """Return True when ``brief`` satisfies the output contract.
+
+    With no ``settings`` this is the schema-only check used by callers such as
+    the eval harness. The live pipeline passes settings so the compositor's own
+    renderability check is included before a response is accepted.
+    """
+    return not _brief_violations(brief, settings)
+
+
+# Last-resort copy proven to fit at the smallest readable font sizes. Used only
+# if the deterministic brief itself cannot be drawn (for example a long Yahoo
+# alert or index line), so the scheduled update still publishes rather than
+# aborting in compose_board.
+_SAFE_FALLBACK_HEADLINE = "Weather update"
+_SAFE_FALLBACK_SUBTITLE = "Check the forecast before heading out."
+
+
+def _renderable_deterministic_brief(settings, deterministic):
+    """Return a deterministic brief guaranteed to fit the text panel.
+
+    The transform-derived fallback normally renders, but Yahoo alert/index text
+    can occasionally run long. Re-check it with compose_board's own fit logic
+    and downgrade only the headline/subtitle to known-safe copy when needed.
+    """
+    if isinstance(deterministic, dict):
+        headline = deterministic.get("headline")
+        subtitle = deterministic.get("subtitle")
+        if (isinstance(headline, str) and isinstance(subtitle, str)
+                and headline.strip() and subtitle.strip()):
+            if not _has_display_settings(settings):
+                # No geometry to measure against; keep the deterministic copy.
+                return deterministic
+            try:
+                fit_panel_copy(settings, headline, subtitle)
+                return deterministic
+            except ValueError:
+                pass
+    safe = dict(deterministic) if isinstance(deterministic, dict) else {}
+    safe["headline"] = _SAFE_FALLBACK_HEADLINE
+    safe["subtitle"] = _SAFE_FALLBACK_SUBTITLE
+    return safe
 
 
 def _load_recent_history(settings):
@@ -343,7 +475,8 @@ def _request_brief_with_fallback(settings, prompt, signature, model_override=Non
                 print(f"[brief] attempt {index} failed ({type(error).__name__}: {error}); retrying")
             continue
 
-        if _is_valid_brief(candidate):
+        violations = _brief_violations(candidate, settings)
+        if not violations:
             return candidate, {
                 "kind": "accepted",
                 "model": model_name,
@@ -352,15 +485,26 @@ def _request_brief_with_fallback(settings, prompt, signature, model_override=Non
                 "fallback": is_fallback,
             }
 
-        last_failure = {"kind": "invalid", "candidate": candidate}
+        detail = "; ".join(violations)
+        last_failure = {
+            "kind": "invalid",
+            "candidate": candidate,
+            "violations": violations,
+        }
         event_type = "brief_attempt_rejected" if has_more else "brief_rejected"
         record_current_log(
-            "generate_brief", event_type, "Model returned an invalid brief schema",
+            "generate_brief", event_type,
+            f"Model brief violated the output contract: {detail}",
             level="warning" if has_more else "error",
-            data={**request_data, "candidate": candidate, "will_retry": has_more},
+            data={
+                **request_data,
+                "candidate": candidate,
+                "violations": violations,
+                "will_retry": has_more,
+            },
         )
         if has_more:
-            print(f"[brief] attempt {index} returned an invalid schema; retrying")
+            print(f"[brief] attempt {index} rejected ({detail}); retrying")
 
     return None, last_failure
 
@@ -408,16 +552,27 @@ def main():
         skip_enabled=settings["pipeline"].get("skip_unchanged", False),
     )
     if not regenerate and isinstance(last_good.get("brief"), dict):
-        transformed["brief"] = last_good["brief"]
-        transformed["brief_source"] = "cached"
+        cached_violations = _brief_violations(last_good["brief"], settings)
+        if not cached_violations:
+            transformed["brief"] = last_good["brief"]
+            transformed["brief_source"] = "cached"
+            record_current_log(
+                "generate_brief", "brief_reused", "Reused cached brief",
+                data={"signature": signature, "generated_at": last_good.get("generated_at")},
+            )
+            write_json(output_path, transformed)
+            print(f"[brief] reusing cached brief (signature {signature} unchanged within interval)")
+            print(output_path)
+            return
+        # A brief cached by an older, weaker validator must not bypass the new
+        # contract and fail late in the compositor; regenerate instead.
         record_current_log(
-            "generate_brief", "brief_reused", "Reused cached brief",
-            data={"signature": signature, "generated_at": last_good.get("generated_at")},
+            "generate_brief", "brief_cache_rejected",
+            "Cached brief violated the output contract; regenerating",
+            level="warning",
+            data={"signature": signature, "violations": cached_violations},
         )
-        write_json(output_path, transformed)
-        print(f"[brief] reusing cached brief (signature {signature} unchanged within interval)")
-        print(output_path)
-        return
+        print("[brief] cached brief violated the output contract; regenerating")
 
     template_path = ROOT / "config" / "prompt_templates" / "weather_brief.txt"
     template = template_path.read_text(encoding="utf-8")
@@ -442,12 +597,28 @@ def main():
         print("[brief] OpenRouter response accepted: ")
         print(json.dumps(candidate, indent=2, ensure_ascii=True))
     elif attempt.get("kind") == "invalid":
-        transformed["brief"] = deterministic
+        transformed["brief"] = _renderable_deterministic_brief(settings, deterministic)
         transformed["brief_source"] = "deterministic_fallback_invalid_schema"
-        print("[brief] OpenRouter attempts returned invalid schemas; using deterministic fallback.")
+        record_current_log(
+            "generate_brief", "brief_fallback_deterministic",
+            "All model briefs violated the output contract; using a renderable deterministic brief",
+            level="warning",
+            data={
+                "violations": attempt.get("violations", []),
+                "headline": transformed["brief"].get("headline", ""),
+                "subtitle": transformed["brief"].get("subtitle", ""),
+            },
+        )
+        print("[brief] OpenRouter attempts returned invalid briefs; using deterministic fallback.")
     else:
-        transformed["brief"] = deterministic
+        transformed["brief"] = _renderable_deterministic_brief(settings, deterministic)
         transformed["brief_source"] = "deterministic_fallback_error"
+        record_current_log(
+            "generate_brief", "brief_fallback_deterministic",
+            "OpenRouter brief attempts failed; using a renderable deterministic brief",
+            level="warning",
+            data={"error_type": attempt.get("error_type"), "message": attempt.get("message")},
+        )
         print(
             "[brief] OpenRouter attempts failed "
             f"({attempt.get('error_type')}: {attempt.get('message')}); using deterministic fallback."

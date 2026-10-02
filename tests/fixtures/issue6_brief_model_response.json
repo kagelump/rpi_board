@@ -1,0 +1,12 @@
+{
+  "date": "2026-10-02",
+  "headline": "The rain is a morning person",
+  "illustration_prompt": "A rain-speckled window looking onto a quiet Tokyo side street in early autumn; a single clear umbrella crosses wet asphalt; a gingko tree drops a few yellow leaves; soft grey overcast light; calm and still; no text.",
+  "layout_emphasis": {
+    "rain": "high",
+    "temperature": "medium"
+  },
+  "part_of_day": "morning",
+  "subtitle": "Damp 19\u00b0C start, 96% chance of drizzle, drying to a mild 22\u00b0C afternoon. Tonight: 10% chance of a sprinkle. Tomorrow: partly cloudy, 17-24\u00b0C.",
+  "time_frame": "Morning briefing: umbrella for the morning, free hands by lunch."
+}

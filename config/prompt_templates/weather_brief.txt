@@ -88,7 +88,8 @@ ART DIRECTION
   metaphor. Do not specify an art style by name; a separate stage chooses it.
 - Absolutely NO TEXT, letters, numbers, captions, signs, or logos in the image.
 
-Return STRICT JSON ONLY, no markdown, exactly this schema:
+Return STRICT JSON ONLY, no markdown. All six keys below are required and no
+other keys are allowed (extra keys are rejected):
 {
   "headline": "string (<=52 chars, ASCII, condition + concrete specific)",
   "subtitle": "string (<=72 chars, ASCII)",

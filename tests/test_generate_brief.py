@@ -1,16 +1,49 @@
 """Tests for pure helpers in scripts/openrouter/generate_brief.py"""
 import json
+from pathlib import Path
+
+import pytest
 
 from scripts.openrouter.generate_brief import (
     _brief_model_attempts,
+    _brief_schema_violations,
+    _brief_violations,
     _enrich_payload,
     _is_valid_brief,
     _load_recent_history,
     _normalize_brief_punct,
+    _renderable_deterministic_brief,
     _request_brief_with_fallback,
     _render_prompt,
     _select_text_model,
     _time_frame,
+)
+
+
+def _full_brief(**overrides):
+    """A concise brief that satisfies the advertised six-key output contract."""
+    brief = {
+        "headline": "Rain by 3pm, 22C",
+        "subtitle": "Bring a coat and an umbrella.",
+        "illustration_prompt": "Rain over a city street.",
+        "mood": "stormy",
+        "accent": "yellow",
+        "event_ref": "",
+    }
+    brief.update(overrides)
+    return brief
+
+
+def _display_settings():
+    return {"display": {"width": 960, "height": 640, "panel_fraction": 0.25}}
+
+
+# Verbatim payload of the archived model response from run
+# aa5ea68fa13e43fb9b35a3bebebc4881 / snapshot 08edf1d91b5b4155ac2dae6186c8dea1.
+# tests/test_issue6_brief_recovery.py pins the recorded sha256 and byte-size so
+# this fixture cannot drift from the archive.
+ARCHIVED_RESPONSE = json.loads(
+    (Path(__file__).parent / "fixtures" / "issue6_brief_model_response.json").read_text(encoding="utf-8")
 )
 
 
@@ -116,6 +149,7 @@ class TestRequestBriefWithFallback:
             "openrouter": {"text_model": "provider/model", "brief_temperature": 0.5},
             "context": {"events_mode": "online_model"},
             "pipeline": {"brief_timeout_seconds": 8, "brief_offline_retry_count": 2},
+            "display": {"width": 960, "height": 640, "panel_fraction": 0.25},
         }
 
     def _valid(self):
@@ -123,6 +157,9 @@ class TestRequestBriefWithFallback:
             "headline": "Rain by 3pm",
             "subtitle": "Bring an umbrella.",
             "illustration_prompt": "Rain over a city street.",
+            "mood": "stormy",
+            "accent": "yellow",
+            "event_ref": "",
         }
 
     def test_primary_success_does_not_retry(self, monkeypatch):
@@ -294,87 +331,203 @@ class TestEnrichPayload:
 
 class TestIsValidBrief:
     def test_valid_brief(self):
-        brief = {
-            "headline": "Heavy rain expected today.",
-            "subtitle": "Carry an umbrella.",
-            "illustration_prompt": "Dark rain clouds over city.",
-        }
-        assert _is_valid_brief(brief) is True
+        assert _is_valid_brief(_full_brief()) is True
 
-    def test_extra_keys_allowed(self):
-        brief = {
-            "headline": "Sunny skies.",
-            "subtitle": "Comfortable afternoon.",
-            "illustration_prompt": "Bright sun, minimal poster.",
-            "bullets": ["No rain", "High 22C"],
-        }
-        assert _is_valid_brief(brief) is True
+    def test_extra_keys_rejected(self):
+        # The prompt says "exactly this schema": a decision made explicit here so
+        # the archived response's extra keys are a recorded violation, not ignored.
+        brief = _full_brief(bullets=["No rain"], custom_field={"a": 1})
+        assert _is_valid_brief(brief) is False
+        violations = _brief_schema_violations(brief)
+        assert any("unexpected field 'bullets'" in v for v in violations)
+        assert any("unexpected field 'custom_field'" in v for v in violations)
 
     def test_not_a_dict(self):
         assert _is_valid_brief("some string") is False
         assert _is_valid_brief(None) is False
         assert _is_valid_brief(["headline", "subtitle"]) is False
 
-    def test_missing_headline(self):
-        brief = {
-            "subtitle": "Carry an umbrella.",
-            "illustration_prompt": "Rain clouds.",
-        }
+    @pytest.mark.parametrize(
+        "key", ["headline", "subtitle", "illustration_prompt", "mood", "accent", "event_ref"]
+    )
+    def test_each_required_field_is_required(self, key):
+        brief = _full_brief()
+        del brief[key]
         assert _is_valid_brief(brief) is False
-
-    def test_missing_subtitle(self):
-        brief = {
-            "headline": "Rain today.",
-            "illustration_prompt": "Rain clouds.",
-        }
-        assert _is_valid_brief(brief) is False
-
-    def test_missing_illustration_prompt(self):
-        brief = {
-            "headline": "Rain today.",
-            "subtitle": "Carry an umbrella.",
-        }
-        assert _is_valid_brief(brief) is False
+        assert any(
+            f"missing required field '{key}'" in v
+            for v in _brief_schema_violations(brief)
+        )
 
     def test_empty_headline(self):
-        brief = {
-            "headline": "   ",
-            "subtitle": "Carry an umbrella.",
-            "illustration_prompt": "Rain clouds.",
-        }
-        assert _is_valid_brief(brief) is False
+        assert _is_valid_brief(_full_brief(headline="   ")) is False
 
     def test_empty_subtitle(self):
-        brief = {
-            "headline": "Rain today.",
-            "subtitle": "",
-            "illustration_prompt": "Rain clouds.",
-        }
-        assert _is_valid_brief(brief) is False
+        assert _is_valid_brief(_full_brief(subtitle="")) is False
 
-    def test_non_string_headline(self):
-        brief = {
-            "headline": 42,
-            "subtitle": "Carry an umbrella.",
-            "illustration_prompt": "Rain clouds.",
-        }
-        assert _is_valid_brief(brief) is False
+    def test_empty_illustration_prompt(self):
+        assert _is_valid_brief(_full_brief(illustration_prompt="  ")) is False
 
-    def test_non_string_illustration_prompt(self):
-        brief = {
-            "headline": "Rain today.",
-            "subtitle": "Carry an umbrella.",
-            "illustration_prompt": None,
-        }
-        assert _is_valid_brief(brief) is False
+    def test_event_ref_may_be_empty(self):
+        assert _is_valid_brief(_full_brief(event_ref="")) is True
+        assert _is_valid_brief(_full_brief(event_ref="Marine Day")) is True
+
+    def test_non_string_fields(self):
+        assert _is_valid_brief(_full_brief(headline=42)) is False
+        assert _is_valid_brief(_full_brief(illustration_prompt=None)) is False
+        assert _is_valid_brief(_full_brief(event_ref=None)) is False
+        assert _is_valid_brief(_full_brief(mood=None)) is False
+        assert _is_valid_brief(_full_brief(accent=42)) is False
 
     def test_whitespace_headline_invalid(self):
-        brief = {
-            "headline": "\t\n",
-            "subtitle": "Fine.",
-            "illustration_prompt": "Poster.",
-        }
+        assert _is_valid_brief(_full_brief(headline="\t\n")) is False
+
+    def test_mood_enum_enforced(self):
+        for mood in ("calm", "alert", "cozy", "stormy", "festive", "crisp", "muggy"):
+            assert _is_valid_brief(_full_brief(mood=mood)) is True
+        brief = _full_brief(mood="sunny")
         assert _is_valid_brief(brief) is False
+        assert any("mood='sunny'" in v for v in _brief_schema_violations(brief))
+
+    def test_accent_enum_enforced(self):
+        for accent in ("red", "yellow", "none"):
+            assert _is_valid_brief(_full_brief(accent=accent)) is True
+        for accent in ("black", "teal"):
+            assert _is_valid_brief(_full_brief(accent=accent)) is False
+
+    def test_headline_length_cap(self):
+        assert _is_valid_brief(_full_brief(headline="a" * 52)) is True
+        brief = _full_brief(headline="a" * 53)
+        assert _is_valid_brief(brief) is False
+        assert any("over the 52-character limit" in v for v in _brief_schema_violations(brief))
+
+    def test_subtitle_length_cap(self):
+        assert _is_valid_brief(_full_brief(subtitle="a" * 72)) is True
+        brief = _full_brief(subtitle="a" * 73)
+        assert _is_valid_brief(brief) is False
+        assert any("over the 72-character limit" in v for v in _brief_schema_violations(brief))
+
+    @pytest.mark.parametrize("key", ["headline", "subtitle", "illustration_prompt", "event_ref"])
+    def test_non_ascii_rejected(self, key):
+        brief = _full_brief(**{key: "deg \u00b0 mark"})
+        assert _is_valid_brief(brief) is False
+        assert any("non-ASCII" in v for v in _brief_schema_violations(brief))
+
+
+class TestBriefRenderabilityValidation:
+    def test_concise_brief_is_renderable(self):
+        assert _brief_violations(_full_brief(), _display_settings()) == []
+
+    def test_is_valid_brief_accepts_optional_settings(self):
+        assert _is_valid_brief(_full_brief()) is True
+        assert _is_valid_brief(_full_brief(), _display_settings()) is True
+        assert _is_valid_brief(_full_brief(headline="W" * 52), _display_settings()) is False
+
+    def test_schema_valid_but_unrenderable_is_rejected(self):
+        # 52 chars satisfies the character cap but cannot wrap at the readable
+        # minimums, so compose_board would raise; upstream validation must reject
+        # it through the same font-fitting logic.
+        brief = _full_brief(headline="W" * 52)
+        assert _brief_schema_violations(brief) == []
+        violations = _brief_violations(brief, _display_settings())
+        assert any("do not fit the text panel" in v for v in violations)
+
+
+class TestRenderableDeterministicBrief:
+    def test_renderable_copy_is_kept_verbatim(self):
+        deterministic = {
+            "headline": "Light rain possible today.",
+            "subtitle": "Light rain possible 01:00-05:00. A light layer should be enough.",
+        }
+        assert _renderable_deterministic_brief(_display_settings(), deterministic) is deterministic
+
+    def test_unrenderable_copy_downgrades_to_proven_safe_text(self):
+        deterministic = {"headline": "W" * 60, "subtitle": "x" * 200, "rain_level": "light"}
+        out = _renderable_deterministic_brief(_display_settings(), deterministic)
+        assert out["headline"] == "Weather update"
+        assert out["subtitle"] == "Check the forecast before heading out."
+        # Other deterministic fields are preserved for provenance/rendering.
+        assert out["rain_level"] == "light"
+
+    def test_non_dict_input_still_yields_safe_copy(self):
+        out = _renderable_deterministic_brief(_display_settings(), None)
+        assert out["headline"] == "Weather update"
+
+
+class TestArchivedIssue6Response:
+    """Exact payload of snapshot 08edf1d91b5b4155ac2dae6186c8dea1 from run
+    aa5ea68f: headline "The rain is a morning person" with a 141-char non-ASCII
+    subtitle, omitted mood/accent/event_ref, and extra scheduling keys."""
+
+    def _settings(self):
+        return _display_settings()
+
+    def test_fixture_is_the_exact_archived_payload(self):
+        assert ARCHIVED_RESPONSE["headline"] == "The rain is a morning person"
+        assert ARCHIVED_RESPONSE["illustration_prompt"] == (
+            "A rain-speckled window looking onto a quiet Tokyo side street in "
+            "early autumn; a single clear umbrella crosses wet asphalt; a gingko "
+            "tree drops a few yellow leaves; soft grey overcast light; calm and "
+            "still; no text."
+        )
+        assert len(ARCHIVED_RESPONSE["subtitle"]) == 141
+        assert ARCHIVED_RESPONSE["subtitle"] == (
+            "Damp 19\u00b0C start, 96% chance of drizzle, drying to a mild "
+            "22\u00b0C afternoon. Tonight: 10% chance of a sprinkle. Tomorrow: "
+            "partly cloudy, 17-24\u00b0C."
+        )
+        assert ARCHIVED_RESPONSE["date"] == "2026-10-02"
+        assert ARCHIVED_RESPONSE["part_of_day"] == "morning"
+        assert ARCHIVED_RESPONSE["time_frame"] == (
+            "Morning briefing: umbrella for the morning, free hands by lunch."
+        )
+        assert ARCHIVED_RESPONSE["layout_emphasis"] == {"rain": "high", "temperature": "medium"}
+        assert "mood" not in ARCHIVED_RESPONSE
+        assert "accent" not in ARCHIVED_RESPONSE
+        assert "event_ref" not in ARCHIVED_RESPONSE
+
+    def test_rejected_with_specific_violations(self):
+        assert _is_valid_brief(ARCHIVED_RESPONSE) is False
+        violations = _brief_violations(ARCHIVED_RESPONSE, self._settings())
+        assert len(ARCHIVED_RESPONSE["subtitle"]) == 141
+        assert any("subtitle is 141 characters" in v for v in violations)
+        assert any("non-ASCII" in v and "subtitle" in v for v in violations)
+        for field in ("mood", "accent", "event_ref"):
+            assert any(f"missing required field '{field}'" in v for v in violations)
+        for extra in ("date", "part_of_day", "time_frame", "layout_emphasis"):
+            assert any(f"unexpected field '{extra}'" in v for v in violations)
+
+    def test_invalid_attempts_retry_then_exhaust(self, monkeypatch):
+        settings = {
+            "openrouter": {"text_model": "provider/model", "brief_temperature": 0.5},
+            "context": {"events_mode": "online_model"},
+            "pipeline": {"brief_timeout_seconds": 8, "brief_offline_retry_count": 2},
+            "display": {"width": 960, "height": 640, "panel_fraction": 0.25},
+        }
+        calls = []
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief._call_openrouter",
+            lambda s, p, model_override=None: calls.append(model_override) or dict(ARCHIVED_RESPONSE),
+        )
+        events = []
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief.record_current_log",
+            lambda component, event_type, message, **kwargs: events.append(
+                (event_type, kwargs.get("level"), kwargs.get("data", {}))
+            ),
+        )
+        monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_snapshot",
+                            lambda *args, **kwargs: None)
+
+        candidate, metadata = _request_brief_with_fallback(settings, "prompt", "sig")
+
+        assert candidate is None
+        assert calls == ["provider/model:online", "provider/model", "provider/model"]
+        assert metadata["kind"] == "invalid"
+        assert any("subtitle is 141 characters" in v for v in metadata["violations"])
+        rejected = [entry for entry in events if entry[0] in ("brief_attempt_rejected", "brief_rejected")]
+        assert [level for _, level, _ in rejected] == ["warning", "warning", "error"]
+        assert rejected[-1][2]["violations"] == metadata["violations"]
 
 
 # ---------------------------------------------------------------------------

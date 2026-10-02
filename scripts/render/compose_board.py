@@ -81,6 +81,36 @@ def _layout_panel_text(draw, headline, subtitle, width, height):
     )
 
 
+def _panel_box(settings):
+    """Return the usable ink box (width, height) for the headline/subtitle panel.
+
+    Shared by ``render_board`` and the upstream brief validator so the limits
+    the prompt advertises and the limits enforced at render time cannot drift.
+    """
+    width = settings["display"]["width"]
+    height = settings["display"]["height"]
+    panel_h = round(height * settings["display"].get("panel_fraction", 0.25))
+    return width - 44, panel_h - 18 - 16
+
+
+def fit_panel_copy(settings, headline, subtitle):
+    """Fit headline/subtitle exactly the way ``render_board`` will.
+
+    Returns the heading/detail layout blocks or raises the same ``ValueError``
+    the compositor raises when the complete copy cannot be drawn at readable
+    font sizes. ``generate_brief`` calls this before artwork generation so
+    unrenderable model copy is rejected and retried instead of aborting the
+    scheduled update late in compose_board.
+    """
+    width = settings["display"]["width"]
+    height = settings["display"]["height"]
+    box_w, box_h = _panel_box(settings)
+    draw = ImageDraw.Draw(Image.new("RGB", (width, height)))
+    return _layout_panel_text(
+        draw, _ascii_only(headline), _ascii_only(subtitle), box_w, box_h,
+    )
+
+
 def _draw_text_block(draw, block, xy):
     x, y = xy
     for line, (left, top, _, _) in zip(block["lines"], block["bounds"]):
@@ -321,9 +351,8 @@ def render_board(settings, payload, output_path, preview_path):
         headline = "Weather update"
 
     text_x, text_y = 22, panel_top + 18
-    heading, detail = _layout_panel_text(
-        draw, headline, subtitle, width - 44, panel_h - 18 - 16,
-    )
+    box_w, box_h = _panel_box(settings)
+    heading, detail = _layout_panel_text(draw, headline, subtitle, box_w, box_h)
     _draw_text_block(draw, heading, (text_x, text_y))
     _draw_text_block(draw, detail, (text_x, text_y + heading["height"] + 12))
 

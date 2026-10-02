@@ -1,0 +1,15 @@
+{
+  "headline": "Light rain possible today.",
+  "subtitle": "Light rain possible 01:00-05:00. A light layer should be enough.",
+  "bullets": [
+    "Light rain possible 01:00-05:00.",
+    "High 24C / Low 18C",
+    "Only light rain risk."
+  ],
+  "rain_window": "Light rain possible 01:00-05:00",
+  "rain_level": "light",
+  "temp_range": "18C-24C",
+  "tomorrow_preview": "Tomorrow: Partly cloudy, 19-25C",
+  "illustration_prompt": "Minimal weather poster for Light drizzle with rain hint=40%",
+  "layout_emphasis": {"rain": "medium", "temperature": "medium"}
+}
