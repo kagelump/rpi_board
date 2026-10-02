@@ -462,6 +462,19 @@ Run preflight checks:
 .venv/bin/python3 scripts/ops/preflight.py
 ```
 
+Preflight reports two classes of check. `required` checks gate `--strict`
+success (systemd runs the preflight with `--strict`); `optional` diagnostics are
+informational and never fail a strict preflight. The human-readable summary
+prints `required=`, `optional=` and `overall=`, where `overall=` mirrors
+required readiness and therefore agrees with the process exit status. The JSON
+summary exposes `ok` (every check passed), `strict_ok` (required readiness) and
+`optional_ok` (optional diagnostics).
+
+`openrouter_https_reachability` is an unauthenticated, non-mutating GET to
+`https://openrouter.ai`: any HTTP status (including the root page's 403) proves
+DNS, TCP and TLS reachability and is reported as reachable. It does not
+authenticate or validate API usability.
+
 Manual full run:
 
 ```bash

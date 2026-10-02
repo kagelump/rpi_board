@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+"""Environment preflight for the weather board.
+
+Checks are split into two classes:
+
+* ``required`` readiness checks gate ``--strict`` success (systemd's
+  ``ExecStartPre`` uses ``--strict``).
+* ``optional`` diagnostics are reported for operators but never fail a strict
+  preflight.
+
+The human-readable summary prints ``required=``, ``optional=`` and ``overall=``;
+``overall`` mirrors required readiness so it always agrees with the process
+exit status under ``--strict``. JSON keeps the historical ``ok``/``strict_ok``
+keys and adds ``optional_ok`` for the same distinction.
+"""
 import argparse
 import importlib
 import json
@@ -91,13 +105,38 @@ def _check_dns():
         return False, f"DNS resolution failed: {error}"
 
 
-def _check_openrouter_https(timeout):
+def _check_openrouter_https_reachability(timeout):
+    """Non-mutating HTTPS reachability probe for openrouter.ai.
+
+    Issues an unauthenticated GET (``urlopen`` defaults to GET and no API key
+    or other credential is attached). Any HTTP status -- including the 403 that
+    openrouter.ai currently returns for its root page -- proves that DNS
+    resolution, the TCP connection, and the TLS handshake succeeded, so it is
+    reported as reachable. ``urlopen`` raises ``HTTPError`` for non-2xx
+    responses and ``HTTPError`` subclasses ``URLError``, so it must be handled
+    first. This probe deliberately reports transport reachability only; it does
+    not authenticate or assert API usability.
+    """
     ctx = ssl.create_default_context()
     try:
         with urllib.request.urlopen("https://openrouter.ai", timeout=timeout, context=ctx) as response:
-            return 200 <= response.status < 500, f"HTTPS status={response.status}"
+            return True, f"HTTPS reachability probe: reachable (HTTP status={response.status})"
+    except urllib.error.HTTPError as error:
+        status = error.code
+        try:
+            error.close()
+        except Exception:
+            pass
+        return True, f"HTTPS reachability probe: reachable (HTTP status={status})"
     except urllib.error.URLError as error:
-        return False, f"HTTPS request failed: {error}"
+        reason = getattr(error, "reason", None) or error
+        return False, f"HTTPS reachability probe: unreachable (no HTTP response: {reason})"
+    except OSError as error:
+        return False, f"HTTPS reachability probe: unreachable (no HTTP response: {error})"
+
+
+# Backwards-compatible private alias for callers/tests that used the old name.
+_check_openrouter_https = _check_openrouter_https_reachability
 
 
 def _run_checks(settings):
@@ -154,31 +193,77 @@ def _run_checks(settings):
     dns_ok, dns_detail = _check_dns()
     checks.append({"name": "openrouter_dns", "ok": dns_ok, "required": False, "detail": dns_detail})
 
-    https_ok, https_detail = _check_openrouter_https(settings["pipeline"]["image_timeout_seconds"])
-    checks.append({"name": "openrouter_https", "ok": https_ok, "required": False, "detail": https_detail})
+    https_ok, https_detail = _check_openrouter_https_reachability(settings["pipeline"]["image_timeout_seconds"])
+    checks.append(
+        {
+            "name": "openrouter_https_reachability",
+            "ok": https_ok,
+            "required": False,
+            "detail": https_detail,
+        }
+    )
     return checks
+
+
+def _summarize(checks):
+    """Split checks into required readiness and optional diagnostics.
+
+    ``strict_ok`` (a.k.a. required readiness) is what gates ``--strict``
+    success. ``optional_ok`` is diagnostic health only and must never fail a
+    strict preflight. ``ok`` remains true only when every check passes, matching
+    the historical JSON contract.
+    """
+    required_ok = all(item["ok"] for item in checks if item.get("required", True))
+    optional_ok = all(item["ok"] for item in checks if not item.get("required", True))
+    return {"ok": required_ok and optional_ok, "strict_ok": required_ok, "optional_ok": optional_ok}
+
+
+def _format_human(checks, summary):
+    lines = []
+    for item in checks:
+        status = "PASS" if item["ok"] else "FAIL"
+        scope = "required" if item.get("required", True) else "optional"
+        lines.append(f"[{status}] {item['name']} ({scope}): {item['detail']}")
+    # ``overall`` tracks required readiness so it always agrees with the exit
+    # status of ``--strict``. Optional diagnostics are reported separately and
+    # never produce an unexplained overall FAIL alongside a zero exit status.
+    lines.append(f"required={'PASS' if summary['strict_ok'] else 'FAIL'}")
+    lines.append(f"optional={'PASS' if summary['optional_ok'] else 'FAIL'}")
+    lines.append(f"overall={'PASS' if summary['strict_ok'] else 'FAIL'}")
+    return "\n".join(lines)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Run Raspberry Pi weather board preflight checks.")
-    parser.add_argument("--strict", action="store_true", help="Exit non-zero if any check fails.")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero if any required check fails (optional diagnostics do not gate success).",
+    )
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
     args = parser.parse_args()
 
     settings = load_settings()
     checks = _run_checks(settings)
-    ok = all(item["ok"] for item in checks)
-    strict_ok = all(item["ok"] for item in checks if item.get("required", True))
+    summary = _summarize(checks)
 
     if args.json:
-        print(json.dumps({"ok": ok, "strict_ok": strict_ok, "checks": checks}, ensure_ascii=True, indent=2))
+        print(
+            json.dumps(
+                {
+                    "ok": summary["ok"],
+                    "strict_ok": summary["strict_ok"],
+                    "optional_ok": summary["optional_ok"],
+                    "checks": checks,
+                },
+                ensure_ascii=True,
+                indent=2,
+            )
+        )
     else:
-        for item in checks:
-            status = "PASS" if item["ok"] else "FAIL"
-            print(f"[{status}] {item['name']}: {item['detail']}")
-        print(f"overall={'PASS' if ok else 'FAIL'}")
+        print(_format_human(checks, summary))
 
-    if args.strict and not strict_ok:
+    if args.strict and not summary["strict_ok"]:
         raise SystemExit(1)
 
 
