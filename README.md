@@ -13,7 +13,11 @@ The board is designed as a **morning poster**: a generated weather illustration 
 - Image generation via fal or OpenRouter (optional).
 - Art guardrail: after generation, rejects baked-in text, collage/photo-in-frame
   art, and art that leans on colours the 4-ink panel cannot show (off-palette),
-  regenerating within a bounded retry. See `scripts/openrouter/art_guardrail.py`.
+  regenerating within a bounded retry. If every attempt is explicitly rejected,
+  the flagged candidate is never published: the run reuses a previously
+  accepted hero or falls back to the deterministic pictogram, and the run is
+  marked degraded with the rejection reasons. See
+  `scripts/openrouter/art_guardrail.py`.
 - Full-screen poster layout with minimal text.
 - Local preview mode and Raspberry Pi hardware mode.
 - Eval framework (`scripts/eval/`): A/B prompt variants and compare image models
@@ -111,9 +115,14 @@ Key sections:
   - `image_guardrail_timeout_seconds` (default `15`): vision-check timeout.
   - `image_guardrail_max_off_palette_pct` (default `0.15`): reject art with more
     than this fraction of pixels in colours the panel cannot show.
-  Each check fails open, so the guardrail never blocks a board from rendering.
-  Adds ~1 vision call (+ a possible regen) per refresh; set the flag to `false`
-  to disable.
+  Each check fails open, so the guardrail never blocks a board from rendering:
+  when the vision check is unavailable (no key, timeout, network error) the
+  image is published but recorded as *unverified*, never as accepted. When every
+  attempt is explicitly rejected, no rejected bytes are written; the run keeps a
+  previously accepted hero if one is recorded, otherwise `compose_board` draws
+  its deterministic pictogram, and the run status is degraded with the rejection
+  reasons. Adds ~1 vision call (+ a possible regen) per refresh; set the flag to
+  `false` to disable.
 - `pipeline.brief_timeout_seconds` (default `20`): per-attempt timeout for the
   brief model. It bounds DNS/connect and each socket read.
 - `pipeline.brief_total_budget_seconds` (default `60`): wall-clock budget for
@@ -175,8 +184,12 @@ This orchestrates:
 
 By default a re-run reuses caches: the brief is kept when inputs are unchanged
 within `regen_min_interval_seconds`, the hero is kept when the brief was cached,
-and holidays are read from an on-disk cache. To bypass all of these and
-regenerate everything (weather is always fetched fresh regardless):
+and holidays are read from an on-disk cache. A cached hero is only reused when
+`runtime/image_style_state.json` records a matching *accepted* validation verdict
+for the file on disk; legacy state without that record, a rejected candidate, an
+unverified candidate, and a candidate generated while the guardrail was disabled
+are regenerated instead of reused. To bypass all of these and regenerate
+everything (weather is always fetched fresh regardless):
 
 ```bash
 ./scripts/display/update_display.sh --force   # or: make force

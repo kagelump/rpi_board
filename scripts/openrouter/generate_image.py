@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import base64
+import hashlib
 import json
 import random
 import re
@@ -10,7 +11,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
-from scripts.common import ROOT, absolute_path, get_fal_api_key, get_openrouter_api_key, load_settings, read_json, write_json
+from scripts.common import ROOT, absolute_path, get_fal_api_key, get_openrouter_api_key, load_settings, read_json, utc_now_iso, write_json
 from scripts.history.store import record_current_log, record_current_snapshot
 from scripts.openrouter.network import describe_network_error, urlopen_with_context
 from scripts.openrouter.art_guardrail import inspect_art
@@ -447,61 +448,273 @@ def _off_palette_pct(image_bytes):
         return None
 
 
+# Hero validation states that are allowed to become a reuse candidate. Only
+# "accepted" qualifies: the image must actually have passed validation before it
+# can be reused. A "disabled" guardrail (intentionally unchecked), an
+# "unverified" candidate (guardrail unavailable), and an explicit "rejected"
+# candidate all lack a passing verdict, so they are regenerated instead of being
+# silently reused. Disabled generation is still distinguishable from those in
+# the recorded validation provenance and logs.
+_REUSABLE_HERO_STATUSES = {"accepted"}
+
+_RETRY_PROMPT_CLAUSES = {
+    "has_text": (
+        "The previous attempt was rejected for baked-in lettering. Draw NO text "
+        "of any kind anywhere in the image: no letters, words, numbers, "
+        "percentages, signs, labels, logos, or watermarks."
+    ),
+    "is_collage": (
+        "The previous attempt was rejected as a collage or framed image. Produce "
+        "ONE unified illustration edge to edge with a single aesthetic; never "
+        "frame, inset, or nest one image inside a border, grid, or block."
+    ),
+}
+_OFF_PALETTE_RETRY_CLAUSE = (
+    "The previous attempt used colours the panel cannot show. Use only white, "
+    "black, red, and yellow, with no grey, blue, green, or other hues."
+)
+
+
+def _sha256_bytes(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def _file_sha256(path):
+    try:
+        return _sha256_bytes(path.read_bytes())
+    except OSError:
+        return None
+
+
+def _hero_reuse_eligible(style_state, target_date, hero_path):
+    """True only when the on-disk hero is a recorded, accepted artifact.
+
+    ``image_style_state.json`` records the validation outcome for the hero it
+    describes in ``hero_validation``. Legacy state written before that record
+    existed, a disabled candidate (guardrail off, never validated), an unverified
+    candidate (guardrail unavailable), and an explicitly rejected candidate are
+    all ineligible: only artwork that actually passed validation may be reused.
+    The recorded target date and image hash must also match so a stale or
+    unrelated record cannot vouch for the file on disk.
+    """
+    record = style_state.get("hero_validation")
+    if not isinstance(record, dict):
+        return False
+    if record.get("status") not in _REUSABLE_HERO_STATUSES:
+        return False
+    if record.get("target_date") != target_date:
+        return False
+    expected_sha = record.get("image_sha256")
+    if not expected_sha or not hero_path.exists():
+        return False
+    return _file_sha256(hero_path) == expected_sha
+
+
+def _hero_validation_record(status, *, target_date, style, palette, provider,
+                            image_bytes, attempts, reasons):
+    """Provenance for the hero currently on disk, written into style state."""
+    return {
+        "status": status,
+        "target_date": target_date,
+        "style": style,
+        "palette": palette,
+        "provider": provider,
+        "image_byte_size": len(image_bytes) if image_bytes else None,
+        "image_sha256": _sha256_bytes(image_bytes) if image_bytes else None,
+        "attempts": [dict(item) for item in (attempts or [])],
+        "reasons": list(reasons or []),
+        "recorded_at": utc_now_iso(),
+    }
+
+
+def _retry_prompt(prompt, reasons):
+    """Append targeted corrections for the previous explicit rejection.
+
+    This addresses the actual rejection instead of adding weather wording or
+    percentages, which can themselves encourage baked-in captions.
+    """
+    clauses = []
+    for reason in reasons or []:
+        clause = _RETRY_PROMPT_CLAUSES.get(reason)
+        if clause:
+            clauses.append(clause)
+    if any(str(reason).startswith("off_palette=") for reason in reasons or []):
+        clauses.append(_OFF_PALETTE_RETRY_CLAUSE)
+    if not clauses:
+        return prompt
+    return prompt + "\n\nRetry correction:\n- " + "\n- ".join(clauses)
+
+
 def _generate_with_guardrail(settings, prompt, provider):
-    """Generate art, then (if enabled) reject baked-in text, collage frames, or art
-    that leans on colours the e-ink panel cannot show, and regenerate up to a
-    bounded number of retries. Keeps the last attempt if every try is flagged -- a
-    flawed image still beats a blank board. Each check fails open, so the guardrail
-    never prevents a board from rendering."""
+    """Generate art and return a structured guardrail outcome.
+
+    ``status`` is one of:
+
+    * ``accepted``   -- validation ran and passed;
+    * ``unverified`` -- validation was unavailable (no key/network error), so the
+      fail-open policy keeps the image but records it as unverified;
+    * ``rejected``   -- every attempt was explicitly rejected; ``image_bytes`` is
+      ``None`` so the flagged candidate is never published;
+    * ``disabled``   -- the guardrail is off and the image is passed through.
+
+    Unavailable validation is deliberately distinct from an explicit rejection:
+    it never blocks rendering, while a rejection returns no bytes so the caller
+    can fall back to previously accepted art or the deterministic pictogram.
+    """
     pipeline = settings.get("pipeline", {})
     enabled = pipeline.get("enable_image_guardrail", False)
     if not enabled:
-        return _call_image_api(settings, prompt, provider)
+        image_bytes = _call_image_api(settings, prompt, provider)
+        return {
+            "status": "disabled",
+            "image_bytes": image_bytes,
+            "reasons": [],
+            "attempts": [{"attempt": 1, "verdict": {"status": "disabled"},
+                          "reasons": [], "image_byte_size": len(image_bytes)}],
+        }
 
     max_retries = int(pipeline.get("image_guardrail_max_retries", 1))
     max_off_palette = float(pipeline.get("image_guardrail_max_off_palette_pct", 0.15))
-    last_bytes = None
+    attempts = []
+    rejected_reasons = []
     for attempt in range(max_retries + 1):
-        image_bytes = _call_image_api(settings, prompt, provider)
-        last_bytes = image_bytes
-        reasons = []
+        current_prompt = prompt if not attempts else _retry_prompt(prompt, attempts[-1]["reasons"])
+        image_bytes = _call_image_api(settings, current_prompt, provider)
         verdict = inspect_art(image_bytes, settings)  # vision: text / collage
-        if not verdict.get("ok", True):
-            reasons += [k for k in ("has_text", "is_collage") if verdict.get(k)]
+        inspection = verdict.get("status")
+        if inspection is None:
+            # Verdict dicts from older callers omit ``status``; fall back to the
+            # ``ok``/flag shape so the guardrail still behaves sensibly.
+            vision_reasons = [k for k in ("has_text", "is_collage") if verdict.get(k)]
+            if not vision_reasons and not verdict.get("ok", True):
+                vision_reasons = ["rejected"]
+            if vision_reasons:
+                inspection = "rejected"
+            elif verdict.get("skipped") or verdict.get("error"):
+                inspection = "unverified"
+            else:
+                inspection = "accepted"
+        else:
+            vision_reasons = (
+                [k for k in ("has_text", "is_collage") if verdict.get(k)]
+                if inspection == "rejected" else []
+            )
+        reasons = list(vision_reasons)
         off = _off_palette_pct(image_bytes)  # deterministic: off-palette colour
         if off is not None and off > max_off_palette:
             reasons.append(f"off_palette={off * 100:.0f}%")
+        record = {
+            "attempt": attempt + 1,
+            "status": inspection,
+            "verdict": verdict,
+            "off_palette_pct": off,
+            "reasons": reasons,
+            "image_byte_size": len(image_bytes),
+        }
+        attempts.append(record)
         record_current_log(
             "generate_image", "guardrail_attempt",
             "Guardrail passed" if not reasons else "Guardrail rejected image",
             level="info" if not reasons else "warning",
-            data={
-                "attempt": attempt + 1,
-                "verdict": verdict,
-                "off_palette_pct": off,
-                "reasons": reasons,
-                "image_byte_size": len(image_bytes),
-            },
+            data=record,
         )
         if not reasons:
             if attempt:
                 print(f"[image] guardrail passed on attempt {attempt + 1}")
-            return image_bytes
+            status = "unverified" if inspection == "unverified" else "accepted"
+            if status == "unverified":
+                print("[image] guardrail unavailable; keeping image as unverified")
+            return {"status": status, "image_bytes": image_bytes,
+                    "reasons": [], "attempts": attempts}
+        for reason in reasons:
+            if reason not in rejected_reasons:
+                rejected_reasons.append(reason)
         print(f"[image] guardrail rejected attempt {attempt + 1} ({', '.join(reasons)})")
-    print("[image] guardrail retries exhausted; keeping last image")
-    return last_bytes
+    print("[image] guardrail retries exhausted; refusing to publish the rejected image")
+    return {"status": "rejected", "image_bytes": None,
+            "reasons": rejected_reasons, "attempts": attempts}
 
 
-def _report_image_failure(output_abs, detail):
-    """On generation failure keep the last good hero (reuse) rather than blanking.
+def _handle_guardrail_exhaustion(settings, style_state, output_abs, *,
+                                 target_date, daypart_role, style, palette,
+                                 provider, outcome, prior_hero_eligible):
+    """Record explicit-rejection exhaustion and choose the fallback hero.
 
-    Only when no prior hero exists do we fall through to a blank, which
-    compose_board then replaces with a code-drawn pictogram.
+    A previously accepted hero is kept only when its recorded validation still
+    matches; otherwise the hero is removed so ``compose_board`` draws its
+    deterministic pictogram. The error-level log carries the explicit rejection
+    reasons so an otherwise successful update is visibly degraded.
     """
-    if output_abs.exists():
-        print(f"image-fallback-reuse (kept previous hero): {detail}")
+    reasons = list(outcome.get("reasons") or [])
+    detail = ", ".join(reasons) if reasons else "guardrail rejected every attempt"
+    fallback = "previous_accepted_hero" if prior_hero_eligible else "deterministic_pictogram"
+    record_current_log(
+        "generate_image", "image_guardrail_exhausted",
+        f"Image guardrail rejected every attempt ({detail}); using fallback art",
+        level="error",
+        data={
+            "target_date": target_date,
+            "daypart_role": daypart_role,
+            "style": style["name"],
+            "palette": palette["name"],
+            "provider": provider,
+            "reasons": reasons,
+            "attempts": outcome.get("attempts", []),
+            "fallback": fallback,
+        },
+    )
+    if prior_hero_eligible:
+        # The rejected candidate was never written, so the accepted prior hero
+        # and its validation record are still on disk and can be reused.
+        record_current_log(
+            "generate_image", "hero_fallback_reuse",
+            "Kept the prior accepted hero after guardrail exhaustion",
+            level="warning",
+            data={"reasons": reasons, "validation": style_state.get("hero_validation")},
+        )
+        print(f"image-fallback-reuse (kept validated hero): {detail}")
     else:
+        if output_abs.exists():
+            output_abs.unlink()
+        style_state["hero_prompt"] = None
+        style_state["hero_validation"] = _hero_validation_record(
+            "rejected", target_date=target_date, style=style["name"],
+            palette=palette["name"], provider=provider, image_bytes=None,
+            attempts=outcome.get("attempts", []), reasons=reasons,
+        )
+        record_current_log(
+            "generate_image", "hero_fallback_pictogram",
+            "No validated hero available; using the deterministic pictogram",
+            level="warning",
+            data={"reasons": reasons},
+        )
         print(f"image-fallback-blank: {detail}")
+    _save_style_state(settings, style_state)
+
+
+def _handle_generation_failure(settings, style_state, output_abs, detail, *,
+                               target_date, style, palette, provider, eligible):
+    """Apply the fallback after an image API failure.
+
+    The failed candidate was never written. The previous hero is kept only when
+    its recorded validation accepts it (and it belongs to this target day);
+    otherwise it is removed so ``compose_board`` uses the deterministic
+    pictogram instead of republishing unvalidated or stale art.
+    """
+    if output_abs.exists() and eligible:
+        print(f"image-fallback-reuse (kept validated previous hero): {detail}")
+        _save_style_state(settings, style_state)
+        return
+    if output_abs.exists():
+        output_abs.unlink()
+    style_state["hero_prompt"] = None
+    style_state["hero_validation"] = _hero_validation_record(
+        "unverified", target_date=target_date, style=style["name"],
+        palette=palette["name"], provider=provider, image_bytes=None,
+        attempts=[], reasons=[],
+    )
+    _save_style_state(settings, style_state)
+    print(f"image-fallback-blank: {detail}")
 
 
 def main():
@@ -558,6 +771,12 @@ def main():
         },
     )
 
+    # Only reuse a cached hero whose recorded validation proves it was accepted.
+    # Legacy state with no ``hero_validation`` record, an unverified candidate,
+    # and a rejected candidate are all ineligible so flagged art cannot become
+    # the accepted reuse candidate.
+    prior_hero_eligible = _hero_reuse_eligible(style_state, target_date, output_abs)
+
     # Decide whether to reuse the existing hero or regenerate it.
     reuse_reason = None
     if output_abs.exists() and not args.force and not new_target_day:
@@ -572,7 +791,7 @@ def main():
             prev_prompt = style_state.get("hero_prompt")
             if prev_prompt and _prompt_similar(prev_prompt, illustration_prompt, threshold):
                 reuse_reason = "afternoon prompt ~ unchanged"
-    if reuse_reason is not None:
+    if reuse_reason is not None and prior_hero_eligible:
         _save_style_state(settings, style_state)
         record_current_log(
             "generate_image", "hero_reused", reuse_reason,
@@ -580,10 +799,23 @@ def main():
                 "target_date": target_date,
                 "style": style["name"],
                 "palette": palette["name"],
+                "validation": style_state.get("hero_validation"),
             },
         )
         print(f"image-skip-reuse: keeping existing hero ({reuse_reason})")
         return
+    if reuse_reason is not None:
+        record_current_log(
+            "generate_image", "hero_reuse_rejected",
+            f"Cached hero is not eligible for reuse ({reuse_reason}); regenerating",
+            level="warning",
+            data={
+                "target_date": target_date,
+                "reuse_reason": reuse_reason,
+                "validation": style_state.get("hero_validation"),
+            },
+        )
+        print(f"image-regenerate: cached hero has no recorded acceptance ({reuse_reason})")
 
     template_path = ROOT / "config" / "prompt_templates" / "weather_image.txt"
     template = template_path.read_text(encoding="utf-8")
@@ -604,14 +836,43 @@ def main():
     print(f"[image] provider={provider}")
 
     try:
-        image_bytes = _generate_with_guardrail(settings, prompt, provider)
+        outcome = _generate_with_guardrail(settings, prompt, provider)
+        status = outcome.get("status")
+        if status == "rejected":
+            _handle_guardrail_exhaustion(
+                settings, style_state, output_abs,
+                target_date=target_date, daypart_role=daypart_role,
+                style=style, palette=palette, provider=provider,
+                outcome=outcome, prior_hero_eligible=prior_hero_eligible,
+            )
+            return
+        image_bytes = outcome["image_bytes"]
         output_abs.write_bytes(image_bytes)
-        # Record the prompt behind the current art so the afternoon refresh can
-        # tell whether re-rendering would actually look different.
+        # Record the prompt and validation verdict behind the current art so the
+        # afternoon refresh and the cache-reuse paths can trust it.
         style_state["hero_prompt"] = illustration_prompt
+        style_state["hero_validation"] = _hero_validation_record(
+            status, target_date=target_date, style=style["name"],
+            palette=palette["name"], provider=provider, image_bytes=image_bytes,
+            attempts=outcome.get("attempts", []), reasons=outcome.get("reasons", []),
+        )
         _save_style_state(settings, style_state)
+        if status == "unverified":
+            generated_message = (
+                "Wrote a new hero image without validation (guardrail unavailable)"
+            )
+            generated_level = "warning"
+        elif status == "disabled":
+            generated_message = (
+                "Wrote a new hero image without validation (guardrail disabled)"
+            )
+            generated_level = "info"
+        else:
+            generated_message = "Wrote a new hero image"
+            generated_level = "info"
         record_current_log(
-            "generate_image", "image_generated", "Wrote a new hero image",
+            "generate_image", "image_generated", generated_message,
+            level=generated_level,
             data={
                 "target_date": target_date,
                 "style": style["name"],
@@ -619,11 +880,12 @@ def main():
                 "provider": provider,
                 "byte_size": len(image_bytes),
                 "output_path": str(output_abs),
+                "validation_status": status,
+                "guardrail_attempts": outcome.get("attempts", []),
             },
         )
         print(output_path)
     except urllib.error.URLError as error:
-        _save_style_state(settings, style_state)
         detail = describe_network_error(error)
         record_current_log(
             "generate_image", "image_generation_failed", detail, level="error",
@@ -634,9 +896,12 @@ def main():
                 "provider": provider,
             },
         )
-        _report_image_failure(output_abs, detail)
+        _handle_generation_failure(
+            settings, style_state, output_abs, detail,
+            target_date=target_date, style=style, palette=palette,
+            provider=provider, eligible=prior_hero_eligible,
+        )
     except (KeyError, json.JSONDecodeError, RuntimeError) as error:
-        _save_style_state(settings, style_state)
         record_current_log(
             "generate_image", "image_generation_failed", str(error), level="error",
             data={
@@ -646,7 +911,11 @@ def main():
                 "provider": provider,
             },
         )
-        _report_image_failure(output_abs, str(error))
+        _handle_generation_failure(
+            settings, style_state, output_abs, str(error),
+            target_date=target_date, style=style, palette=palette,
+            provider=provider, eligible=prior_hero_eligible,
+        )
 
 
 if __name__ == "__main__":

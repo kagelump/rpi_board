@@ -40,11 +40,21 @@ def _guardrail_model(settings):
 
 
 def inspect_art(image_bytes, settings):
-    """Return {ok, has_text, is_collage, note}. Fails open on any error."""
+    """Return a verdict with ``ok``, ``status``, ``has_text``, ``is_collage``, ``note``.
+
+    ``status`` separates the three outcomes the caller must treat differently:
+
+    * ``accepted``   -- the vision check ran and found no baked-in text/collage;
+    * ``rejected``   -- the vision check ran and flagged the image;
+    * ``unverified`` -- the check could not run (no model/key, timeout, network
+      error). The legacy ``ok=True`` fail-open behaviour is preserved so the
+      guardrail never blocks a render, but the caller records it as unverified
+      rather than accepted.
+    """
     model = _guardrail_model(settings)
     api_key = get_openrouter_api_key(settings)
     if not model or not api_key:
-        return {"ok": True, "skipped": "no model or key"}
+        return {"ok": True, "status": "unverified", "skipped": "no model or key"}
 
     timeout = settings.get("pipeline", {}).get("image_guardrail_timeout_seconds", 15)
     url = settings["openrouter"]["base_url"].rstrip("/") + "/chat/completions"
@@ -77,12 +87,14 @@ def inspect_art(image_bytes, settings):
             content = content.split("```", 2)[1].lstrip("json").strip()
         verdict = json.loads(content)
     except Exception as error:  # noqa: BLE001 - guardrail must fail open
-        return {"ok": True, "error": str(error)}
+        return {"ok": True, "status": "unverified", "error": str(error)}
 
     has_text = bool(verdict.get("has_text"))
     is_collage = bool(verdict.get("is_collage"))
+    rejected = has_text or is_collage
     return {
-        "ok": not (has_text or is_collage),
+        "ok": not rejected,
+        "status": "rejected" if rejected else "accepted",
         "has_text": has_text,
         "is_collage": is_collage,
         "note": verdict.get("note", ""),
