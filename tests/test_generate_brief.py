@@ -1,13 +1,19 @@
 """Tests for pure helpers in scripts/openrouter/generate_brief.py"""
+import io
 import json
+import time
+import urllib.error
 from pathlib import Path
 
 import pytest
 
 from scripts.openrouter.generate_brief import (
     _brief_model_attempts,
+    _brief_retry_backoff_seconds,
     _brief_schema_violations,
+    _brief_total_budget_seconds,
     _brief_violations,
+    _call_openrouter,
     _enrich_payload,
     _is_valid_brief,
     _load_recent_history,
@@ -18,6 +24,7 @@ from scripts.openrouter.generate_brief import (
     _select_text_model,
     _time_frame,
 )
+from scripts.openrouter.network import DeadlineExceeded, NetworkRequestError, WallClockDeadline
 
 
 def _full_brief(**overrides):
@@ -166,7 +173,7 @@ class TestRequestBriefWithFallback:
         calls = []
         monkeypatch.setattr(
             "scripts.openrouter.generate_brief._call_openrouter",
-            lambda settings, prompt, model_override=None: calls.append(model_override) or self._valid(),
+            lambda settings, prompt, model_override=None, **kwargs: calls.append(model_override) or self._valid(),
         )
         monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_log", lambda *args, **kwargs: None)
         monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_snapshot", lambda *args, **kwargs: None)
@@ -181,7 +188,7 @@ class TestRequestBriefWithFallback:
         calls = []
         outcomes = iter([RuntimeError("online failed"), RuntimeError("offline failed"), self._valid()])
 
-        def fake_call(settings, prompt, model_override=None):
+        def fake_call(settings, prompt, model_override=None, **kwargs):
             calls.append(model_override)
             outcome = next(outcomes)
             if isinstance(outcome, Exception):
@@ -214,7 +221,7 @@ class TestRequestBriefWithFallback:
         calls = []
         logs = []
 
-        def always_fail(settings, prompt, model_override=None):
+        def always_fail(settings, prompt, model_override=None, **kwargs):
             calls.append(model_override)
             raise RuntimeError("unavailable")
 
@@ -507,7 +514,7 @@ class TestArchivedIssue6Response:
         calls = []
         monkeypatch.setattr(
             "scripts.openrouter.generate_brief._call_openrouter",
-            lambda s, p, model_override=None: calls.append(model_override) or dict(ARCHIVED_RESPONSE),
+            lambda s, p, model_override=None, **kwargs: calls.append(model_override) or dict(ARCHIVED_RESPONSE),
         )
         events = []
         monkeypatch.setattr(
@@ -568,6 +575,18 @@ class TestRenderPrompt:
         embedded = json.loads(result.split("INPUT_JSON:\n", 1)[1])
         assert embedded["brief"]["headline"] == "Rain today."
 
+    def test_ordered_facts_not_duplicated_inside_input_json(self):
+        facts = [{"id": "x", "source": "yahoo", "text": "Rainy", "value": "Rainy"}]
+        payload = self._payload(ordered_facts=facts)
+        payload["brief_context"]["conflicts"] = ["temp mismatch"]
+        result = _render_prompt("TEMPLATE", payload)
+        embedded = json.loads(result.split("INPUT_JSON:\n", 1)[1])
+        # ORDERED_FACTS carries the facts; INPUT_JSON keeps the rest.
+        assert "ordered_facts" not in embedded["brief_context"]
+        assert embedded["brief_context"]["conflicts"] == ["temp mismatch"]
+        # And the source payload was not mutated.
+        assert payload["brief_context"]["ordered_facts"] == facts
+
     def test_empty_facts_still_valid_json(self):
         result = _render_prompt("T", self._payload())
         facts_json = result.split("ORDERED_FACTS:\n", 1)[1].split("\n\nINPUT_JSON:")[0]
@@ -581,3 +600,453 @@ class TestRenderPrompt:
         # Should not contain raw multibyte chars (ensure_ascii encodes them as \\uXXXX)
         assert "雨" not in result
         assert r"\u96e8" in result or "\\u" in result
+
+
+# ---------------------------------------------------------------------------
+# Brief stage wall-clock budget (issue #2)
+# ---------------------------------------------------------------------------
+
+class _FakeClock:
+    def __init__(self, start=0.0):
+        self.now = float(start)
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += float(seconds)
+        return self.now
+
+
+class TestBriefStageBudget:
+    def _valid(self):
+        return {
+            "headline": "Rain by 3pm",
+            "subtitle": "Bring an umbrella.",
+            "illustration_prompt": "Rain over a city street.",
+            "mood": "stormy",
+            "accent": "yellow",
+            "event_ref": "",
+        }
+
+    def _settings(self, **pipeline):
+        base = {
+            "brief_timeout_seconds": 8,
+            "brief_total_budget_seconds": 12,
+            "brief_offline_retry_count": 2,
+            "brief_retry_backoff_seconds": 2,
+            "brief_retry_backoff_max_seconds": 4,
+        }
+        base.update(pipeline)
+        return {
+            "openrouter": {"text_model": "provider/model", "brief_temperature": 0.5},
+            "context": {"events_mode": "online_model"},
+            "pipeline": base,
+            "display": {"width": 960, "height": 640, "panel_fraction": 0.25},
+        }
+
+    def _capture_logs(self, monkeypatch):
+        events = []
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief.record_current_log",
+            lambda component, event_type, message, **kwargs: events.append(
+                (event_type, kwargs.get("level"), kwargs.get("data", {}))
+            ),
+        )
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief.record_current_snapshot",
+            lambda *args, **kwargs: None,
+        )
+        return events
+
+    def test_dns_failures_back_off_and_respect_total_budget(self, monkeypatch):
+        clock = _FakeClock()
+        calls = []
+        delays = []
+        events = self._capture_logs(monkeypatch)
+
+        def fake_call(settings, prompt, model_override=None, **kwargs):
+            calls.append(model_override)
+            clock.advance(5)
+            raise NetworkRequestError("temporary DNS failure", category="dns")
+
+        def fake_sleep(seconds):
+            delays.append(seconds)
+            clock.advance(seconds)
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief._call_openrouter", fake_call)
+        candidate, metadata = _request_brief_with_fallback(
+            self._settings(),
+            "prompt",
+            "sig",
+            deadline=WallClockDeadline(12, clock=clock),
+            clock=clock,
+            sleep_fn=fake_sleep,
+        )
+
+        assert candidate is None
+        assert calls == ["provider/model:online", "provider/model"]
+        # One bounded, positive backoff between attempts; never an immediate retry.
+        assert delays == [2.0]
+        assert metadata["category"] == "dns"
+        assert metadata["budget_exhausted"] is True
+        assert metadata["elapsed_seconds"] == 5
+        assert clock.now == 12  # never overruns the shared budget
+        assert any(event == "brief_retry_backoff" for event, _, _ in events)
+        assert any(event == "brief_budget_exhausted" for event, _, _ in events)
+
+    def test_attempt_timeout_is_clamped_to_remaining_budget(self, monkeypatch):
+        clock = _FakeClock()
+        captured = {}
+        self._capture_logs(monkeypatch)
+
+        def fake_call(settings, prompt, model_override=None, timeout=None, deadline=None, **kwargs):
+            captured["timeout"] = timeout
+            captured["deadline"] = deadline
+            return self._valid()
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief._call_openrouter", fake_call)
+        candidate, metadata = _request_brief_with_fallback(
+            self._settings(brief_total_budget_seconds=3, brief_timeout_seconds=8),
+            "prompt",
+            "sig",
+            clock=clock,
+        )
+
+        assert candidate == self._valid()
+        assert metadata["kind"] == "accepted"
+        assert captured["timeout"] == 3.0
+        assert captured["deadline"] == 3.0
+
+    def test_expired_budget_skips_all_attempts(self, monkeypatch):
+        clock = _FakeClock()
+        calls = []
+        events = self._capture_logs(monkeypatch)
+
+        def fake_call(*args, **kwargs):
+            calls.append(args)
+            return self._valid()
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief._call_openrouter", fake_call)
+        deadline = WallClockDeadline(5, clock=clock)
+        clock.advance(6)
+
+        candidate, metadata = _request_brief_with_fallback(
+            self._settings(), "prompt", "sig", deadline=deadline, clock=clock
+        )
+
+        assert candidate is None
+        assert calls == []
+        assert metadata["category"] == "budget_exhausted"
+        assert metadata["budget_exhausted"] is True
+        exhausted = [data for event, _, data in events if event == "brief_budget_exhausted"]
+        assert len(exhausted) == 1
+        assert exhausted[0]["total_elapsed_seconds"] == 6
+
+    def test_read_timeouts_are_categorized_logged_and_backed_off(self, monkeypatch):
+        clock = _FakeClock()
+        calls = []
+        delays = []
+        events = self._capture_logs(monkeypatch)
+
+        def fake_call(settings, prompt, model_override=None, **kwargs):
+            calls.append(model_override)
+            clock.advance(0.2)
+            raise NetworkRequestError("The read operation timed out", category="read_timeout")
+
+        def fake_sleep(seconds):
+            delays.append(seconds)
+            clock.advance(seconds)
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief._call_openrouter", fake_call)
+        candidate, metadata = _request_brief_with_fallback(
+            self._settings(brief_total_budget_seconds=60),
+            "prompt",
+            "sig",
+            clock=clock,
+            sleep_fn=fake_sleep,
+        )
+
+        assert candidate is None
+        assert calls == ["provider/model:online", "provider/model", "provider/model"]
+        assert delays == [2.0, 4.0]  # exponential, capped
+        failure_logs = [
+            data
+            for event, _, data in events
+            if event in ("brief_attempt_failed", "brief_request_failed")
+        ]
+        assert len(failure_logs) == 3
+        assert all(data["failure_category"] == "read_timeout" for data in failure_logs)
+        assert all(data["attempt_elapsed_seconds"] == 0.2 for data in failure_logs)
+        assert failure_logs[0]["will_retry"] is True
+        assert failure_logs[-1]["will_retry"] is False
+
+    def test_invalid_briefs_retry_immediately(self, monkeypatch):
+        clock = _FakeClock()
+        calls = []
+        delays = []
+        events = self._capture_logs(monkeypatch)
+
+        def fake_call(settings, prompt, model_override=None, **kwargs):
+            calls.append(model_override)
+            clock.advance(0.1)
+            return dict(ARCHIVED_RESPONSE)
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief._call_openrouter", fake_call)
+        candidate, metadata = _request_brief_with_fallback(
+            self._settings(brief_total_budget_seconds=60),
+            "prompt",
+            "sig",
+            clock=clock,
+            sleep_fn=lambda seconds: delays.append(seconds),
+        )
+
+        assert candidate is None and metadata["kind"] == "invalid"
+        assert calls == ["provider/model:online", "provider/model", "provider/model"]
+        # Schema-invalid replies are cheap to re-sample: no backoff delay.
+        assert delays == []
+        rejected = [
+            data for event, _, data in events if event in ("brief_attempt_rejected", "brief_rejected")
+        ]
+        assert all(data["attempt_elapsed_seconds"] == 0.1 for data in rejected)
+
+    def test_backoff_helpers_are_bounded(self):
+        assert _brief_total_budget_seconds({}) == 60.0
+        settings = self._settings()
+        assert _brief_retry_backoff_seconds(settings, 1) == 2
+        assert _brief_retry_backoff_seconds(settings, 2) == 4
+        assert _brief_retry_backoff_seconds(settings, 3) == 4  # capped
+
+
+    def test_per_attempt_timeout_retries_while_stage_budget_remains(self, monkeypatch):
+        clock = _FakeClock()
+        calls = []
+        delays = []
+        events = self._capture_logs(monkeypatch)
+
+        def fake_call(settings, prompt, model_override=None, **kwargs):
+            calls.append(model_override)
+            clock.advance(1.0)
+            if len(calls) == 1:
+                raise DeadlineExceeded("attempt exceeded its per-attempt timeout", scope="attempt")
+            return self._valid()
+
+        def fake_sleep(seconds):
+            delays.append(seconds)
+            clock.advance(seconds)
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief._call_openrouter", fake_call)
+        candidate, metadata = _request_brief_with_fallback(
+            self._settings(
+                brief_total_budget_seconds=60,
+                brief_timeout_seconds=8,
+                brief_retry_backoff_seconds=2,
+                brief_retry_backoff_max_seconds=4,
+            ),
+            "prompt",
+            "sig",
+            clock=clock,
+            sleep_fn=fake_sleep,
+        )
+
+        assert candidate == self._valid()
+        assert metadata["kind"] == "accepted"
+        assert calls == ["provider/model:online", "provider/model"]
+        assert delays == [2.0]
+        failures = [data for event, _, data in events if event == "brief_attempt_failed"]
+        assert failures and failures[0]["failure_category"] == "attempt_timeout"
+        assert failures[0]["will_retry"] is True
+        assert failures[0]["retryable"] is True
+        assert failures[0]["budget_exhausted"] is False
+        assert all(event != "brief_budget_exhausted" for event, _, _ in events)
+
+    def test_stage_budget_exhaustion_stops_retries_and_returns_fallback(self, monkeypatch):
+        clock = _FakeClock()
+        calls = []
+        delays = []
+        events = self._capture_logs(monkeypatch)
+
+        def fake_call(settings, prompt, model_override=None, **kwargs):
+            calls.append(model_override)
+            clock.advance(10.0)
+            raise DeadlineExceeded("the whole stage ran out of time", scope="stage")
+
+        def fake_sleep(seconds):  # pragma: no cover - must never be called
+            delays.append(seconds)
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief._call_openrouter", fake_call)
+        candidate, metadata = _request_brief_with_fallback(
+            self._settings(brief_total_budget_seconds=5, brief_timeout_seconds=8),
+            "prompt",
+            "sig",
+            clock=clock,
+            sleep_fn=fake_sleep,
+        )
+
+        assert candidate is None
+        assert calls == ["provider/model:online"]  # no retries once the budget is gone
+        assert delays == []
+        assert metadata["category"] == "budget_exhausted"
+        assert metadata["budget_exhausted"] is True
+        assert metadata["retryable"] is False
+        assert any(event == "brief_budget_exhausted" for event, _, _ in events)
+
+
+class TestCallOpenrouterFailureWrapping:
+    def _settings(self):
+        return {
+            "openrouter": {
+                "base_url": "https://openrouter.ai/api/v1",
+                "text_model": "provider/model",
+                "brief_temperature": 0.5,
+            },
+            "pipeline": {"brief_timeout_seconds": 8},
+        }
+
+    def test_read_timeout_is_wrapped_with_category(self, monkeypatch):
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief.get_openrouter_api_key", lambda settings: "test-key"
+        )
+
+        def raiser(*args, **kwargs):
+            raise TimeoutError("The read operation timed out")
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief.fetch_bytes_with_deadline", raiser)
+        with pytest.raises(NetworkRequestError) as excinfo:
+            _call_openrouter(self._settings(), "prompt")
+        assert excinfo.value.category == "read_timeout"
+        assert excinfo.value.retryable is True
+
+    def test_stage_deadline_is_wrapped_as_budget_exhaustion(self, monkeypatch):
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief.get_openrouter_api_key", lambda settings: "test-key"
+        )
+
+        def raiser(*args, **kwargs):
+            raise DeadlineExceeded("stage too slow", scope="stage")
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief.fetch_bytes_with_deadline", raiser)
+        with pytest.raises(NetworkRequestError) as excinfo:
+            _call_openrouter(self._settings(), "prompt", deadline=123.0, deadline_scope="stage")
+        assert excinfo.value.category == "budget_exhausted"
+        assert excinfo.value.retryable is False
+        assert "stage budget" in str(excinfo.value)
+
+    def test_attempt_deadline_is_wrapped_as_retryable_timeout(self, monkeypatch):
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief.get_openrouter_api_key", lambda settings: "test-key"
+        )
+
+        def raiser(*args, **kwargs):
+            raise DeadlineExceeded("attempt too slow", scope="attempt")
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief.fetch_bytes_with_deadline", raiser)
+        with pytest.raises(NetworkRequestError) as excinfo:
+            _call_openrouter(
+                self._settings(), "prompt", timeout=2.5, deadline=123.0, deadline_scope="attempt"
+            )
+        assert excinfo.value.category == "attempt_timeout"
+        assert excinfo.value.retryable is True
+        assert "per-attempt" in str(excinfo.value)
+
+    def test_http_error_body_is_never_read_on_caller_thread(self, monkeypatch):
+        """A stalling HTTPError body must not extend the brief deadline."""
+        reads = []
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief.get_openrouter_api_key", lambda settings: "test-key"
+        )
+
+        class StallingBody(io.RawIOBase):
+            def readable(self):
+                return True
+
+            def read(self, *args, **kwargs):
+                reads.append(1)
+                time.sleep(2.0)
+                return b"late"
+
+        def raiser(*args, **kwargs):
+            raise urllib.error.HTTPError(
+                url="https://openrouter.ai/api/v1",
+                code=502,
+                msg="Bad Gateway",
+                hdrs=None,
+                fp=StallingBody(),
+            )
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief.fetch_bytes_with_deadline", raiser)
+        start = time.monotonic()
+        with pytest.raises(NetworkRequestError) as excinfo:
+            _call_openrouter(
+                self._settings(), "prompt", timeout=8.0, deadline=time.monotonic() + 1.0
+            )
+        assert time.monotonic() - start < 1.0
+        assert reads == []  # body was never consumed on the caller thread
+        assert excinfo.value.category == "http"
+
+    def test_timeout_and_deadline_reach_the_fetch_helper(self, monkeypatch):
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief.get_openrouter_api_key", lambda settings: "test-key"
+        )
+        captured = {}
+
+        def fake_fetch(request, *, timeout, settings, deadline=None, **kwargs):
+            captured["timeout"] = timeout
+            captured["deadline"] = deadline
+            return b'{"choices": [{"message": {"content": "{}"}}]}'
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief.fetch_bytes_with_deadline", fake_fetch)
+        result = _call_openrouter(self._settings(), "prompt", timeout=2.5, deadline=123.0)
+        assert result == {}
+        assert captured == {"timeout": 2.5, "deadline": 123.0}
+
+
+class TestTricklingBriefResponseBudget:
+    def test_trickle_cannot_defeat_stage_budget(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+        class TrickleResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                end = time.monotonic() + 2.0
+                while time.monotonic() < end:
+                    time.sleep(0.01)
+                return b"{}"
+
+        monkeypatch.setattr(
+            "scripts.openrouter.network.urlopen_with_context", lambda *a, **k: TrickleResponse()
+        )
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief.record_current_log", lambda *a, **k: None
+        )
+        monkeypatch.setattr(
+            "scripts.openrouter.generate_brief.record_current_snapshot", lambda *a, **k: None
+        )
+        settings = {
+            "openrouter": {
+                "base_url": "https://openrouter.ai/api/v1",
+                "text_model": "provider/model",
+                "brief_temperature": 0.5,
+            },
+            "context": {"events_mode": "online_model"},
+            "pipeline": {
+                "brief_timeout_seconds": 0.4,
+                "brief_total_budget_seconds": 0.6,
+                "brief_offline_retry_count": 2,
+            },
+        }
+        start = time.monotonic()
+        candidate, metadata = _request_brief_with_fallback(settings, "prompt", "sig")
+        elapsed = time.monotonic() - start
+
+        assert candidate is None
+        assert metadata["budget_exhausted"] is True
+        # A per-attempt timeout may be retried, but the shared stage budget then
+        # stops further attempts, so the final category is one of these two.
+        assert metadata["category"] in ("attempt_timeout", "budget_exhausted")
+        assert elapsed < 2.0  # never near the 2s trickle nor unbounded retries

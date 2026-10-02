@@ -114,6 +114,25 @@ Key sections:
   Each check fails open, so the guardrail never blocks a board from rendering.
   Adds ~1 vision call (+ a possible regen) per refresh; set the flag to `false`
   to disable.
+- `pipeline.brief_timeout_seconds` (default `20`): per-attempt timeout for the
+  brief model. It bounds DNS/connect and each socket read.
+- `pipeline.brief_total_budget_seconds` (default `60`): wall-clock budget for
+  the entire brief stage, including every model attempt, response-body read,
+  and retry delay. When it expires the pipeline publishes the deterministic
+  brief instead of stalling.
+- `pipeline.brief_offline_retry_count` (default `2`): bounded retries of the
+  non-online model after an online failure (online -> offline semantics are
+  unchanged).
+- `pipeline.brief_retry_backoff_seconds` / `pipeline.brief_retry_backoff_max_seconds`
+  (defaults `1.5` / `6`): capped exponential backoff between transient network
+  retries (DNS/connect/TLS/read-timeout) so failures are not retried
+  immediately; schema-invalid replies still retry right away.
+- Brief-stage logs record each attempt's `attempt_elapsed_seconds` and
+  `failure_category` (`dns`, `connect`, `tls`, `read_timeout`, `http`,
+  `attempt_timeout`, or `budget_exhausted`), plus a `brief_budget_exhausted`
+  event when the shared stage budget runs out. A per-attempt timeout is
+  retryable while stage budget remains; exhaustion stops retries and publishes
+  the deterministic fallback. Retry delays are clamped to the remaining budget.
 - `openrouter.text_model`: model for text brief.
 - `openrouter.image_model`: image generation model (default: `google/gemini-3.1-flash-image-preview`).
 - `openrouter.image_tool_model`: model used to invoke OpenRouter image server tool (default: `openai/gpt-5.2`).

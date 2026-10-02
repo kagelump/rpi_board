@@ -91,10 +91,11 @@ def _city_settings(base, city, city_dir):
     s.setdefault("context", {})["location_descriptor"] = city.get("location_descriptor", city["label"])
     # No live web grounding during eval, for a clean and repeatable A/B.
     s["context"]["events_mode"] = "off"
-    # The Pi runs a tight brief timeout (8s) to protect the refresh cadence; an
-    # eval should give the model room so timeouts don't masquerade as prompt
-    # quality (a timeout silently falls back to deterministic text).
-    s["pipeline"]["brief_timeout_seconds"] = max(s["pipeline"].get("brief_timeout_seconds", 8), 45)
+    # The Pi bounds brief generation with a per-attempt timeout inside a
+    # wall-clock stage budget; an eval should give the model room so timeouts
+    # don't masquerade as prompt quality (a timeout falls back to deterministic
+    # text). Eval calls the model directly, so only the per-attempt cap applies.
+    s["pipeline"]["brief_timeout_seconds"] = max(s["pipeline"].get("brief_timeout_seconds", 20), 45)
     s["pipeline"]["image_timeout_seconds"] = max(s["pipeline"].get("image_timeout_seconds", 20), 60)
     rt = {}
     for key in (

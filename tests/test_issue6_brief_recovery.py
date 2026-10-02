@@ -104,7 +104,7 @@ def test_archived_response_is_rejected_before_artwork(monkeypatch, tmp_path):
     settings = _settings(tmp_path)
     calls = []
 
-    def fake_call(settings, prompt, model_override=None):
+    def fake_call(settings, prompt, model_override=None, **kwargs):
         calls.append(model_override)
         return dict(ARCHIVED_RESPONSE)
 
@@ -173,7 +173,7 @@ def test_exhaustion_falls_back_to_renderable_brief_and_completes(tmp_path, monke
     # Exhaust the model attempts with the archived response.
     monkeypatch.setattr(
         "scripts.openrouter.generate_brief._call_openrouter",
-        lambda s, p, model_override=None: dict(ARCHIVED_RESPONSE),
+        lambda s, p, model_override=None, **kwargs: dict(ARCHIVED_RESPONSE),
     )
     monkeypatch.setattr(
         "scripts.openrouter.generate_brief.record_current_snapshot", lambda *a, **k: None
@@ -273,7 +273,7 @@ def _run_main(tmp_path, monkeypatch, deterministic_brief):
     settings = _main_settings(tmp_path, deterministic_brief)
     monkeypatch.setattr(gb, "load_settings", lambda: settings)
     monkeypatch.setattr(gb, "_call_openrouter",
-                        lambda s, p, model_override=None: dict(ARCHIVED_RESPONSE))
+                        lambda s, p, model_override=None, **kwargs: dict(ARCHIVED_RESPONSE))
     monkeypatch.setattr(gb, "record_current_log", lambda *a, **k: None)
     monkeypatch.setattr(gb, "record_current_snapshot", lambda *a, **k: None)
     monkeypatch.setattr(sys, "argv", ["generate_brief.py"])
@@ -323,3 +323,27 @@ def test_main_downgrades_unrenderable_deterministic_fallback(tmp_path, monkeypat
     assert written["brief"]["headline"] == "Weather update"
     assert written["brief"]["subtitle"] == "Check the forecast before heading out."
     fit_panel_copy(settings, written["brief"]["headline"], written["brief"]["subtitle"])
+
+
+def test_main_publishes_deterministic_fallback_when_budget_exhausted(tmp_path, monkeypatch):
+    """A zero/expired brief budget falls straight through to the fallback."""
+    settings = _main_settings(tmp_path, dict(DETERMINISTIC_FALLBACK))
+    settings["pipeline"]["brief_total_budget_seconds"] = 0
+    calls = []
+
+    monkeypatch.setattr(gb, "load_settings", lambda: settings)
+    monkeypatch.setattr(
+        gb, "_call_openrouter",
+        lambda *a, **k: calls.append(1) or dict(ARCHIVED_RESPONSE),
+    )
+    monkeypatch.setattr(gb, "record_current_log", lambda *a, **k: None)
+    monkeypatch.setattr(gb, "record_current_snapshot", lambda *a, **k: None)
+    monkeypatch.setattr(sys, "argv", ["generate_brief.py"])
+
+    gb.main()
+
+    written = json.loads(Path(settings["runtime"]["brief_file"]).read_text(encoding="utf-8"))
+    assert calls == []  # budget of zero means no model attempt is started
+    assert written["brief_source"] == "deterministic_fallback_error"
+    assert written["brief"]["headline"] == DETERMINISTIC_FALLBACK["headline"]
+    assert written["brief"]["subtitle"] == DETERMINISTIC_FALLBACK["subtitle"]

@@ -2,7 +2,7 @@
 import argparse
 import json
 import sys
-import urllib.error
+import time
 import urllib.request
 from datetime import date
 from pathlib import Path
@@ -10,7 +10,15 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import ROOT, get_openrouter_api_key, load_settings, read_json, write_json
 from scripts.history.store import record_current_log, record_current_snapshot
-from scripts.openrouter.network import describe_network_error, urlopen_with_context
+from scripts.openrouter.network import (
+    DeadlineExceeded,
+    NetworkRequestError,
+    WallClockDeadline,
+    classify_network_error,
+    describe_network_error,
+    failure_category,
+    fetch_bytes_with_deadline,
+)
 from scripts.ops.render_gate import compute_signature, should_regenerate
 from scripts.render.compose_board import fit_panel_copy
 
@@ -375,23 +383,36 @@ def _enrich_payload(payload, settings):
 
 def _render_prompt(template, payload):
     ordered_facts = payload.get("brief_context", {}).get("ordered_facts", [])
+    # ORDERED_FACTS is rendered separately below, so drop the duplicate copy
+    # from INPUT_JSON. This trims the repeated payload the model has to read
+    # without removing anything the template references.
+    input_payload = payload
+    brief_context = payload.get("brief_context")
+    if isinstance(brief_context, dict) and "ordered_facts" in brief_context:
+        input_payload = dict(payload)
+        input_payload["brief_context"] = {
+            key: value for key, value in brief_context.items() if key != "ordered_facts"
+        }
     return (
         template
         + "\n\nORDERED_FACTS:\n"
         + json.dumps(ordered_facts, ensure_ascii=True)
         + "\n\nINPUT_JSON:\n"
-        + json.dumps(payload, ensure_ascii=True)
+        + json.dumps(input_payload, ensure_ascii=True)
     )
 
 
-def _call_openrouter(settings, prompt, model_override=None):
+def _call_openrouter(
+    settings, prompt, model_override=None, *, timeout=None, deadline=None, deadline_scope="attempt"
+):
     api_key = get_openrouter_api_key(settings)
     if not api_key:
         raise RuntimeError(
             "OpenRouter key not found. Set OPENROUTER_API_KEY or place a key in "
             "~/.openrouter.key or ~/.config/openrouter/api_key"
         )
-    timeout = settings["pipeline"]["brief_timeout_seconds"]
+    if timeout is None:
+        timeout = settings["pipeline"]["brief_timeout_seconds"]
     url = settings["openrouter"]["base_url"].rstrip("/") + "/chat/completions"
     model = model_override or settings["openrouter"]["text_model"]
     temperature = settings["openrouter"].get("brief_temperature", 0.85)
@@ -410,11 +431,52 @@ def _call_openrouter(settings, prompt, model_override=None):
             "Content-Type": "application/json",
         },
     )
+    # ``timeout`` bounds each socket operation; ``deadline`` bounds the whole
+    # open+read even when the peer trickles bytes to dodge the read timeout.
+    # ``deadline_scope`` records whether that deadline is the shared stage
+    # budget ("stage") or just this attempt's slice of it ("attempt"), so the
+    # failure text/category and retry policy match what actually expired.
     try:
-        with urlopen_with_context(request, timeout=timeout, settings=settings) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.URLError as error:
-        raise RuntimeError(f"openrouter brief request failed: {describe_network_error(error)}") from error
+        raw = fetch_bytes_with_deadline(
+            request,
+            timeout=timeout,
+            settings=settings,
+            deadline=deadline,
+            scope=deadline_scope,
+        )
+    except DeadlineExceeded as error:
+        scope = getattr(error, "scope", deadline_scope)
+        if scope == "stage" or deadline_scope == "stage":
+            raise NetworkRequestError(
+                "openrouter brief request exceeded the brief stage budget",
+                category="budget_exhausted",
+                retryable=False,
+                original=error,
+            ) from error
+        raise NetworkRequestError(
+            "openrouter brief attempt exceeded its per-attempt timeout"
+            + (f" ({timeout:.2f}s)" if isinstance(timeout, (int, float)) else ""),
+            category="attempt_timeout",
+            retryable=True,
+            original=error,
+        ) from error
+    except NetworkRequestError:
+        raise
+    except OSError as error:
+        # Never read an HTTP error body on the caller thread. ``read_body=False``
+        # formats just the status, so a slow/trickling error body can never run
+        # past the stage deadline while an error is being described.
+        raise NetworkRequestError(
+            f"openrouter brief request failed: {describe_network_error(error, read_body=False)}",
+            category=classify_network_error(error),
+            retryable=True,
+            original=error,
+        ) from error
+
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"openrouter brief response was not valid JSON: {error}") from error
 
     content = payload["choices"][0]["message"]["content"]
     if not isinstance(content, str) or not content.strip():
@@ -422,58 +484,218 @@ def _call_openrouter(settings, prompt, model_override=None):
     return json.loads(content)
 
 
-def _request_brief_with_fallback(settings, prompt, signature, model_override=None):
+# Wall-clock budget for one complete brief stage: every model attempt, every
+# response-body read, and every retry delay must fit inside this window. The
+# deterministic fallback is effectively instant and runs after the budget.
+DEFAULT_BRIEF_TOTAL_BUDGET_SECONDS = 60.0
+DEFAULT_BRIEF_RETRY_BACKOFF_SECONDS = 1.5
+DEFAULT_BRIEF_RETRY_BACKOFF_MAX_SECONDS = 6.0
+DEFAULT_BRIEF_TIMEOUT_SECONDS = 20.0
+
+# Network failures get bounded backoff so a dead resolver/route is not hammered
+# immediately. Schema/response failures are cheap to re-sample and stay
+# immediate, matching the existing retry semantics.
+_BACKOFF_FAILURE_CATEGORIES = frozenset(
+    {"dns", "connect", "tls", "read_timeout", "timeout", "attempt_timeout", "http", "network"}
+)
+
+
+def _coerce_seconds(value, default):
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return default
+    return seconds if seconds >= 0 else default
+
+
+def _brief_total_budget_seconds(settings):
+    return _coerce_seconds(
+        settings.get("pipeline", {}).get("brief_total_budget_seconds"),
+        DEFAULT_BRIEF_TOTAL_BUDGET_SECONDS,
+    )
+
+
+def _brief_configured_timeout_seconds(settings):
+    return _coerce_seconds(
+        settings.get("pipeline", {}).get("brief_timeout_seconds"),
+        DEFAULT_BRIEF_TIMEOUT_SECONDS,
+    )
+
+
+def _brief_retry_backoff_seconds(settings, attempt_index):
+    """Exponential, capped backoff for the next retry (attempt_index is 1-based)."""
+    pipeline = settings.get("pipeline", {})
+    base = _coerce_seconds(
+        pipeline.get("brief_retry_backoff_seconds"), DEFAULT_BRIEF_RETRY_BACKOFF_SECONDS
+    )
+    cap = _coerce_seconds(
+        pipeline.get("brief_retry_backoff_max_seconds"), DEFAULT_BRIEF_RETRY_BACKOFF_MAX_SECONDS
+    )
+    if base <= 0 or cap <= 0:
+        return 0.0
+    return min(cap, base * (2 ** max(0, attempt_index - 1)))
+
+
+def _request_brief_with_fallback(
+    settings,
+    prompt,
+    signature,
+    model_override=None,
+    *,
+    deadline=None,
+    clock=time.monotonic,
+    sleep_fn=time.sleep,
+):
     """Request a valid brief, falling back from online to non-online attempts.
 
-    Intermediate failures are warnings so a later successful fallback does not
-    mark the overall history run degraded. Only exhaustion records an error.
-    Returns ``(candidate, metadata)``; candidate is ``None`` on exhaustion.
+    The whole stage -- every attempt, body read, and retry delay -- is bounded by
+    a configurable wall-clock budget (``pipeline.brief_total_budget_seconds``).
+    Each attempt is additionally bounded by the configured per-attempt timeout,
+    but never by more than what is left of that shared budget. Intermediate
+    failures are warnings so a later successful fallback does not mark the run
+    degraded; only exhaustion records an error. Returns ``(candidate, metadata)``;
+    candidate is ``None`` on exhaustion or an expired budget.
     """
     models = _brief_model_attempts(settings, override=model_override)
-    last_failure = {"kind": "error", "error_type": "RuntimeError", "message": "No model attempts configured"}
+    configured_timeout = _brief_configured_timeout_seconds(settings)
+    if deadline is None:
+        deadline = WallClockDeadline(_brief_total_budget_seconds(settings), clock=clock)
+
+    last_failure = {
+        "kind": "error",
+        "error_type": "RuntimeError",
+        "message": "No model attempts configured",
+        "category": "config",
+        "budget_exhausted": False,
+    }
 
     for index, model_name in enumerate(models, start=1):
         is_fallback = index > 1
-        has_more = index < len(models)
+        remaining = deadline.remaining_seconds
+        if remaining <= 0:
+            if index == 1:
+                # The budget expired before anything ran; there is no more
+                # specific failure to report.
+                last_failure = {
+                    "kind": "error",
+                    "error_type": "BudgetExhausted",
+                    "message": (
+                        "brief generation exceeded its total wall-clock budget "
+                        "before an attempt could start"
+                    ),
+                    "category": "budget_exhausted",
+                    "budget_exhausted": True,
+                }
+            else:
+                # Keep the underlying failure category; only flag the budget.
+                last_failure["budget_exhausted"] = True
+            break
+
+        # Bound this attempt by both the per-attempt timeout and the shared
+        # stage deadline. ``stage_limited`` records which budget is binding so a
+        # DeadlineExceeded is described -- and retried -- accurately.
+        stage_limited = remaining <= configured_timeout
+        attempt_budget = min(configured_timeout, remaining)
+        attempt_deadline = clock() + attempt_budget
+        deadline_scope = "stage" if stage_limited else "attempt"
         request_data = {
             "model": model_name,
             "attempt": index,
             "attempt_count": len(models),
             "fallback": is_fallback,
-            "temperature": settings["openrouter"].get("brief_temperature", 0.85),
+            "temperature": settings.get("openrouter", {}).get("brief_temperature", 0.85),
             "signature": signature,
-            "timeout_seconds": settings["pipeline"]["brief_timeout_seconds"],
+            "timeout_seconds": round(attempt_budget, 3),
+            "configured_timeout_seconds": configured_timeout,
+            "budget_remaining_seconds": round(remaining, 3),
+            "budget_seconds": deadline.total_seconds,
         }
         record_current_log(
             "generate_brief", "model_request", f"Requesting brief from {model_name}",
             data=request_data,
         )
-        print(f"[brief] requesting OpenRouter model={model_name} attempt={index}/{len(models)}")
+        print(
+            f"[brief] requesting OpenRouter model={model_name} attempt={index}/{len(models)} "
+            f"timeout={attempt_budget:.2f}s budget_left={remaining:.2f}s"
+        )
 
+        started = clock()
         try:
             candidate = _normalize_brief_punct(
-                _call_openrouter(settings, prompt, model_override=model_name)
+                _call_openrouter(
+                    settings,
+                    prompt,
+                    model_override=model_name,
+                    timeout=attempt_budget,
+                    deadline=attempt_deadline,
+                    deadline_scope=deadline_scope,
+                )
             )
             record_current_snapshot("brief_model_response", candidate)
+            elapsed = clock() - started
+            record_current_log(
+                "generate_brief", "brief_attempt_succeeded",
+                f"Model {model_name} returned a brief",
+                data={**request_data, "attempt_elapsed_seconds": round(elapsed, 3)},
+            )
         except Exception as error:  # noqa: BLE001 - retry model/network/response failures
+            elapsed = clock() - started
+            category = failure_category(error)
+            retryable = bool(getattr(error, "retryable", True))
+            # The stage budget is exhausted when the shared deadline has passed
+            # or the failure itself was a stage-budget timeout. A per-attempt
+            # timeout that still leaves stage budget stays retryable.
+            budget_exhausted = category == "budget_exhausted" or deadline.expired
+            if budget_exhausted:
+                # Retryability metadata must match the policy: no retry happens
+                # once the shared stage budget is gone, even if the underlying
+                # attempt timeout was otherwise retryable.
+                retryable = False
+            will_retry = (index < len(models)) and not budget_exhausted and retryable
             last_failure = {
                 "kind": "error",
                 "error_type": type(error).__name__,
                 "message": str(error),
+                "category": category,
+                "elapsed_seconds": round(elapsed, 3),
+                "budget_exhausted": budget_exhausted,
+                "retryable": retryable,
             }
-            event_type = "brief_attempt_failed" if has_more else "brief_request_failed"
+            event_type = "brief_attempt_failed" if will_retry else "brief_request_failed"
             record_current_log(
                 "generate_brief", event_type, str(error),
-                level="warning" if has_more else "error",
+                level="warning" if will_retry else "error",
                 data={
                     **request_data,
                     "error_type": type(error).__name__,
-                    "will_retry": has_more,
+                    "failure_category": category,
+                    "attempt_elapsed_seconds": round(elapsed, 3),
+                    "will_retry": will_retry,
+                    "retryable": retryable,
+                    "budget_exhausted": budget_exhausted,
                 },
             )
-            if has_more:
-                print(f"[brief] attempt {index} failed ({type(error).__name__}: {error}); retrying")
-            continue
+            if will_retry:
+                print(
+                    f"[brief] attempt {index} failed "
+                    f"({category}: {error}); backing off/retrying"
+                )
+                backoff = _brief_retry_backoff_seconds(settings, index)
+                if category in _BACKOFF_FAILURE_CATEGORIES and backoff > 0:
+                    backoff = min(backoff, max(0.0, deadline.remaining_seconds))
+                    if backoff > 0:
+                        record_current_log(
+                            "generate_brief", "brief_retry_backoff",
+                            f"Backing off {backoff:.2f}s before retrying after {category}",
+                            data={
+                                **request_data,
+                                "failure_category": category,
+                                "backoff_seconds": round(backoff, 3),
+                            },
+                        )
+                        sleep_fn(backoff)
+                continue
+            break
 
         violations = _brief_violations(candidate, settings)
         if not violations:
@@ -485,26 +707,52 @@ def _request_brief_with_fallback(settings, prompt, signature, model_override=Non
                 "fallback": is_fallback,
             }
 
+        elapsed = clock() - started
         detail = "; ".join(violations)
+        budget_exhausted = deadline.expired
+        will_retry = (index < len(models)) and not budget_exhausted
         last_failure = {
             "kind": "invalid",
             "candidate": candidate,
             "violations": violations,
+            "elapsed_seconds": round(elapsed, 3),
+            "budget_exhausted": budget_exhausted,
         }
-        event_type = "brief_attempt_rejected" if has_more else "brief_rejected"
+        event_type = "brief_attempt_rejected" if will_retry else "brief_rejected"
         record_current_log(
             "generate_brief", event_type,
             f"Model brief violated the output contract: {detail}",
-            level="warning" if has_more else "error",
+            level="warning" if will_retry else "error",
             data={
                 **request_data,
                 "candidate": candidate,
                 "violations": violations,
-                "will_retry": has_more,
+                "attempt_elapsed_seconds": round(elapsed, 3),
+                "failure_category": "invalid_response",
+                "will_retry": will_retry,
+                "budget_exhausted": budget_exhausted,
             },
         )
-        if has_more:
+        if will_retry:
             print(f"[brief] attempt {index} rejected ({detail}); retrying")
+        else:
+            break
+
+    if deadline.expired or last_failure.get("budget_exhausted"):
+        last_failure["budget_exhausted"] = True
+        record_current_log(
+            "generate_brief", "brief_budget_exhausted",
+            "Brief stage exhausted its total wall-clock budget",
+            level="warning",
+            data={
+                "total_elapsed_seconds": round(deadline.elapsed_seconds, 3),
+                "budget_seconds": deadline.total_seconds,
+                "configured_timeout_seconds": configured_timeout,
+                "attempt_count": len(models),
+                "error_type": last_failure.get("error_type"),
+                "failure_category": last_failure.get("category"),
+            },
+        )
 
     return None, last_failure
 
@@ -605,6 +853,8 @@ def main():
             level="warning",
             data={
                 "violations": attempt.get("violations", []),
+                "failure_category": "invalid_response",
+                "budget_exhausted": attempt.get("budget_exhausted", False),
                 "headline": transformed["brief"].get("headline", ""),
                 "subtitle": transformed["brief"].get("subtitle", ""),
             },
@@ -617,11 +867,18 @@ def main():
             "generate_brief", "brief_fallback_deterministic",
             "OpenRouter brief attempts failed; using a renderable deterministic brief",
             level="warning",
-            data={"error_type": attempt.get("error_type"), "message": attempt.get("message")},
+            data={
+                "error_type": attempt.get("error_type"),
+                "message": attempt.get("message"),
+                "failure_category": attempt.get("category"),
+                "budget_exhausted": attempt.get("budget_exhausted", False),
+                "attempt_elapsed_seconds": attempt.get("elapsed_seconds"),
+            },
         )
         print(
             "[brief] OpenRouter attempts failed "
-            f"({attempt.get('error_type')}: {attempt.get('message')}); using deterministic fallback."
+            f"({attempt.get('category') or attempt.get('error_type')}: "
+            f"{attempt.get('message')}); using deterministic fallback."
         )
 
     write_json(output_path, transformed)
