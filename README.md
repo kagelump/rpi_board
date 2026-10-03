@@ -123,7 +123,10 @@ Key sections:
   previously accepted hero if one is recorded, otherwise `compose_board` draws
   its deterministic pictogram, and the run status is degraded with the rejection
   reasons. Adds ~1 vision call (+ a possible regen) per refresh; set the flag to
-  `false` to disable.
+  `false` to disable. While disabled, generated art is recorded as *disabled*
+  and is reusable only while the guardrail stays off (see
+  [Force a full refresh](#force-a-full-refresh)); disabled mode performs no art
+  QA at all.
 - `pipeline.brief_timeout_seconds` (default `35`): per-attempt wall-clock cap
   for the non-online brief model. It is sized above the measured useful
   response latency (23s) with headroom, while still rejecting the known-slow
@@ -195,12 +198,22 @@ This orchestrates:
 
 By default a re-run reuses caches: the brief is kept when inputs are unchanged
 within `regen_min_interval_seconds`, the hero is kept when the brief was cached,
-and holidays are read from an on-disk cache. A cached hero is only reused when
-`runtime/image_style_state.json` records a matching *accepted* validation verdict
-for the file on disk; legacy state without that record, a rejected candidate, an
-unverified candidate, and a candidate generated while the guardrail was disabled
-are regenerated instead of reused. To bypass all of these and regenerate
-everything (weather is always fetched fresh regardless):
+and holidays are read from an on-disk cache. A cached hero is reused only when
+`runtime/image_style_state.json` records a matching validation verdict for the
+file on disk:
+
+- *accepted* art is always reusable;
+- art generated while the guardrail was disabled is reusable only while the
+  guardrail stays disabled (a same-date, hash-matched `disabled` record), so
+  turning validation on forces a fresh, validated generation;
+- legacy state without a record, *rejected* candidates, *unverified* candidates
+  (a check was unavailable), and any date/hash mismatch are regenerated.
+
+Reusing `disabled` art trades validation for cost: it skips the image-generation
+call on unchanged refreshes, but that art never had QA (no text, collage, or
+off-palette check). Enable `pipeline.enable_image_guardrail` when validated art
+matters. To bypass all caches and regenerate everything (weather is always
+fetched fresh regardless):
 
 ```bash
 ./scripts/display/update_display.sh --force   # or: make force

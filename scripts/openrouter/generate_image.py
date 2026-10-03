@@ -452,14 +452,20 @@ def _off_palette_pct(image_bytes):
         return None
 
 
-# Hero validation states that are allowed to become a reuse candidate. Only
-# "accepted" qualifies: the image must actually have passed validation before it
-# can be reused. A "disabled" guardrail (intentionally unchecked), an
-# "unverified" candidate (vision guardrail or palette analyzer unavailable), and
-# an explicit "rejected" candidate all lack a passing verdict, so they are
-# regenerated instead of being silently reused. Disabled generation is still
-# distinguishable from those in the recorded validation provenance and logs.
+# Hero validation states that may become a reuse candidate.
+#
+# * "accepted" -- the image passed every validation check. Always reusable.
+# * "disabled" -- the guardrail was off, so the image was intentionally never
+#   validated. It is reusable only while the guardrail is *still* off: turning
+#   validation on must invalidate it, forcing a fresh (validated) generation
+#   instead of silently promoting unvalidated art to accepted.
+#
+# "unverified" (a check could not run) and explicit "rejected" candidates never
+# become reusable, and neither does legacy state without a provenance record.
+# Disabled generation stays distinguishable from those in the recorded
+# validation provenance and logs.
 _REUSABLE_HERO_STATUSES = {"accepted"}
+_DISABLED_HERO_STATUS = "disabled"
 
 _RETRY_PROMPT_CLAUSES = {
     "has_text": (
@@ -490,21 +496,29 @@ def _file_sha256(path):
         return None
 
 
-def _hero_reuse_eligible(style_state, target_date, hero_path):
-    """True only when the on-disk hero is a recorded, accepted artifact.
+def _hero_reuse_eligible(style_state, target_date, hero_path,
+                         guardrail_enabled=True):
+    """True only when the on-disk hero is safe to reuse under current policy.
 
     ``image_style_state.json`` records the validation outcome for the hero it
-    describes in ``hero_validation``. Legacy state written before that record
-    existed, a disabled candidate (guardrail off, never validated), an unverified
-    candidate (guardrail unavailable), and an explicitly rejected candidate are
-    all ineligible: only artwork that actually passed validation may be reused.
-    The recorded target date and image hash must also match so a stale or
-    unrelated record cannot vouch for the file on disk.
+    describes in ``hero_validation``. An ``accepted`` hero is always reusable. A
+    ``disabled`` hero (guardrail off, never validated) is reusable only while
+    the guardrail is still disabled, so enabling validation forces a fresh,
+    validated generation. Legacy state written before that record existed, an
+    ``unverified`` candidate (a check was unavailable), and an explicitly
+    rejected candidate are all ineligible -- unlike disabled art they cannot be
+    trusted even in opt-out mode. The recorded target date and image hash must
+    also match so a stale or unrelated record cannot vouch for the file on disk.
     """
     record = style_state.get("hero_validation")
     if not isinstance(record, dict):
         return False
-    if record.get("status") not in _REUSABLE_HERO_STATUSES:
+    status = record.get("status")
+    if status == _DISABLED_HERO_STATUS:
+        # Unvalidated art may only be reused while validation stays off.
+        if guardrail_enabled:
+            return False
+    elif status not in _REUSABLE_HERO_STATUSES:
         return False
     if record.get("target_date") != target_date:
         return False
@@ -792,11 +806,17 @@ def main():
         },
     )
 
-    # Only reuse a cached hero whose recorded validation proves it was accepted.
+    # Only reuse a cached hero whose recorded validation is safe under the
+    # current policy: accepted art is always reusable, while a disabled
+    # (never-validated) hero is reusable only while the guardrail stays disabled.
     # Legacy state with no ``hero_validation`` record, an unverified candidate,
-    # and a rejected candidate are all ineligible so flagged art cannot become
+    # and a rejected candidate are always ineligible so flagged art cannot become
     # the accepted reuse candidate.
-    prior_hero_eligible = _hero_reuse_eligible(style_state, target_date, output_abs)
+    guardrail_enabled = bool(
+        settings.get("pipeline", {}).get("enable_image_guardrail", False))
+    prior_hero_eligible = _hero_reuse_eligible(
+        style_state, target_date, output_abs,
+        guardrail_enabled=guardrail_enabled)
 
     # Decide whether to reuse the existing hero or regenerate it.
     reuse_reason = None

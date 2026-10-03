@@ -1,4 +1,5 @@
-"""Tests for image style/palette rotation and issue #3 guardrail/fallback behavior."""
+"""Tests for image style/palette rotation and guardrail/fallback/reuse policy
+(issues #3, #9, and #11)."""
 import hashlib
 import io
 import json
@@ -190,18 +191,29 @@ class TestHeroReuseEligibility:
         hero = tmp_path / "hero.png"
         data = _png_bytes()
         hero.write_bytes(data)
-        assert gi._hero_reuse_eligible(self._record("rejected", data), "2026-10-01", hero) is False
+        record = self._record("rejected", data)
+        for guardrail_enabled in (True, False):
+            assert gi._hero_reuse_eligible(
+                record, "2026-10-01", hero,
+                guardrail_enabled=guardrail_enabled) is False
 
     def test_unverified_is_not_eligible(self, tmp_path):
         hero = tmp_path / "hero.png"
         data = _png_bytes()
         hero.write_bytes(data)
-        assert gi._hero_reuse_eligible(self._record("unverified", data), "2026-10-01", hero) is False
+        record = self._record("unverified", data)
+        for guardrail_enabled in (True, False):
+            assert gi._hero_reuse_eligible(
+                record, "2026-10-01", hero,
+                guardrail_enabled=guardrail_enabled) is False
 
     def test_legacy_state_without_validation_is_not_eligible(self, tmp_path):
         hero = tmp_path / "hero.png"
         hero.write_bytes(_png_bytes())
-        assert gi._hero_reuse_eligible({"hero_prompt": "old"}, "2026-10-01", hero) is False
+        for guardrail_enabled in (True, False):
+            assert gi._hero_reuse_eligible(
+                {"hero_prompt": "old"}, "2026-10-01", hero,
+                guardrail_enabled=guardrail_enabled) is False
 
     def test_hash_mismatch_is_not_eligible(self, tmp_path):
         hero = tmp_path / "hero.png"
@@ -216,13 +228,37 @@ class TestHeroReuseEligibility:
         record = self._record("accepted", data, target_date="2026-09-30")
         assert gi._hero_reuse_eligible(record, "2026-10-01", hero) is False
 
-    def test_disabled_guardrail_is_not_eligible(self, tmp_path):
-        # A disabled guardrail never validated the image, so it must not be
-        # treated as previously accepted artwork for reuse.
+    def test_disabled_is_eligible_while_guardrail_stays_disabled(self, tmp_path):
+        # Issue #11: a disabled verdict never passed validation, but while the
+        # guardrail is still off the unchanged art may be reused instead of
+        # paying for a fresh generation on every cached refresh.
         hero = tmp_path / "hero.png"
         data = _png_bytes()
         hero.write_bytes(data)
-        assert gi._hero_reuse_eligible(self._record("disabled", data), "2026-10-01", hero) is False
+        assert gi._hero_reuse_eligible(
+            self._record("disabled", data), "2026-10-01", hero,
+            guardrail_enabled=False) is True
+
+    def test_disabled_is_not_eligible_once_guardrail_is_enabled(self, tmp_path):
+        # Issue #11: turning validation back on invalidates unvalidated art so
+        # it is regenerated and actually validated before it can be trusted.
+        hero = tmp_path / "hero.png"
+        data = _png_bytes()
+        hero.write_bytes(data)
+        assert gi._hero_reuse_eligible(
+            self._record("disabled", data), "2026-10-01", hero,
+            guardrail_enabled=True) is False
+
+    def test_disabled_with_stale_date_or_hash_is_not_eligible(self, tmp_path):
+        hero = tmp_path / "hero.png"
+        data = _png_bytes()
+        hero.write_bytes(data)
+        stale = self._record("disabled", data, target_date="2026-09-30")
+        assert gi._hero_reuse_eligible(
+            stale, "2026-10-01", hero, guardrail_enabled=False) is False
+        mismatched = self._record("disabled", b"other", sha=_sha(b"other"))
+        assert gi._hero_reuse_eligible(
+            mismatched, "2026-10-01", hero, guardrail_enabled=False) is False
 
 
 class TestDisabledGuardrailMain:
@@ -256,32 +292,60 @@ class TestDisabledGuardrailMain:
         assert generated[0]["data"]["validation_status"] == "disabled"
         assert "disabled" in generated[0]["message"]
 
-    def test_cached_brief_regenerates_disabled_hero(self, tmp_path, monkeypatch):
+    def test_cached_brief_reuses_disabled_hero_while_guardrail_disabled(
+            self, tmp_path, monkeypatch):
+        """Issue #11: while the guardrail is off, a same-date, hash-matched
+        ``disabled`` hero is reused on a cached refresh instead of paying to
+        regenerate unchanged art."""
         settings = _main_settings(tmp_path, guardrail=False)
         _write_brief(settings, brief_source="cached")
         disabled_bytes = _png_bytes((11, 22, 33))
         _hero_path(settings).write_bytes(disabled_bytes)
-        # A "disabled" verdict never passed validation, so it must not satisfy
-        # the accepted-artwork reuse criterion even on a cached brief.
         _seed_style_state(settings, status="disabled", hero_bytes=disabled_bytes)
 
-        new_bytes = _png_bytes((44, 55, 66))
-        calls = {"n": 0}
-
         def fake_call(s, p, pr):
-            calls["n"] += 1
-            return new_bytes
+            raise AssertionError("reusable disabled hero must not regenerate")
 
         monkeypatch.setattr(gi, "_call_image_api", fake_call)
         logs = []
         _run_main(monkeypatch, settings, logs)
 
+        assert _hero_path(settings).read_bytes() == disabled_bytes
+        assert any(entry["event_type"] == "hero_reused" for entry in logs)
+        assert not any(entry["event_type"] == "hero_reuse_rejected" for entry in logs)
+        state = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+        assert state["hero_validation"]["status"] == "disabled"
+
+    def test_enabling_guardrail_regenerates_prior_disabled_hero(
+            self, tmp_path, monkeypatch):
+        """Issue #11: a ``disabled`` hero is not reusable once the guardrail is
+        enabled, so it must be regenerated and actually validated."""
+        settings = _main_settings(tmp_path, guardrail=True)
+        _write_brief(settings, brief_source="cached")
+        disabled_bytes = _png_bytes((11, 22, 33))
+        _hero_path(settings).write_bytes(disabled_bytes)
+        _seed_style_state(settings, status="disabled", hero_bytes=disabled_bytes)
+
+        validated_bytes = _png_bytes((44, 55, 66))
+        calls = {"n": 0}
+
+        def fake_call(s, p, pr):
+            calls["n"] += 1
+            return validated_bytes
+
+        monkeypatch.setattr(gi, "_call_image_api", fake_call)
+        monkeypatch.setattr(gi, "inspect_art",
+                            lambda b, s: {"ok": True, "status": "accepted"})
+        monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
+        logs = []
+        _run_main(monkeypatch, settings, logs)
+
         assert calls["n"] == 1
-        assert _hero_path(settings).read_bytes() == new_bytes
+        assert _hero_path(settings).read_bytes() == validated_bytes
         assert any(entry["event_type"] == "hero_reuse_rejected" for entry in logs)
         assert not any(entry["event_type"] == "hero_reused" for entry in logs)
         state = json.loads(_state_path(settings).read_text(encoding="utf-8"))
-        assert state["hero_validation"]["status"] == "disabled"
+        assert state["hero_validation"]["status"] == "accepted"
 
 
 class TestExhaustedRejectionMain:
