@@ -441,7 +441,11 @@ def _call_image_api(settings, prompt, provider):
 
 def _off_palette_pct(image_bytes):
     """Fraction of art in hues the 4-ink panel cannot show (blue/green/etc).
-    Deterministic and cheap (no API). Returns None if analysis fails."""
+
+    Deterministic and cheap (no API). The return value is tri-state for the
+    guardrail: a float is a completed measurement, while ``None`` means the
+    analyzer raised and the palette could not be verified. ``None`` must be
+    treated as unavailable validation (not as a within-budget measurement)."""
     try:
         return analyze_palette(image_bytes)["off_palette_pct"]
     except Exception:  # noqa: BLE001 - never let the gate break generation
@@ -451,10 +455,10 @@ def _off_palette_pct(image_bytes):
 # Hero validation states that are allowed to become a reuse candidate. Only
 # "accepted" qualifies: the image must actually have passed validation before it
 # can be reused. A "disabled" guardrail (intentionally unchecked), an
-# "unverified" candidate (guardrail unavailable), and an explicit "rejected"
-# candidate all lack a passing verdict, so they are regenerated instead of being
-# silently reused. Disabled generation is still distinguishable from those in
-# the recorded validation provenance and logs.
+# "unverified" candidate (vision guardrail or palette analyzer unavailable), and
+# an explicit "rejected" candidate all lack a passing verdict, so they are
+# regenerated instead of being silently reused. Disabled generation is still
+# distinguishable from those in the recorded validation provenance and logs.
 _REUSABLE_HERO_STATUSES = {"accepted"}
 
 _RETRY_PROMPT_CLAUSES = {
@@ -550,9 +554,10 @@ def _generate_with_guardrail(settings, prompt, provider):
 
     ``status`` is one of:
 
-    * ``accepted``   -- validation ran and passed;
-    * ``unverified`` -- validation was unavailable (no key/network error), so the
-      fail-open policy keeps the image but records it as unverified;
+    * ``accepted``   -- every validation check ran and passed;
+    * ``unverified`` -- a check was unavailable (vision no key/network error, or
+      the palette analyzer raised), so the fail-open policy keeps the image but
+      records it as unverified and therefore non-reusable;
     * ``rejected``   -- every attempt was explicitly rejected; ``image_bytes`` is
       ``None`` so the flagged candidate is never published;
     * ``disabled``   -- the guardrail is off and the image is passed through.
@@ -601,13 +606,19 @@ def _generate_with_guardrail(settings, prompt, provider):
             )
         reasons = list(vision_reasons)
         off = _off_palette_pct(image_bytes)  # deterministic: off-palette colour
-        if off is not None and off > max_off_palette:
+        # Palette analysis is tri-state: a measured fraction means the check ran,
+        # while ``None`` means the analyzer raised and the colour budget could not
+        # be verified. An unverifiable palette may still fail open so the board
+        # renders, but it must never become a reusable ``accepted`` hero.
+        palette_analyzed = off is not None
+        if palette_analyzed and off > max_off_palette:
             reasons.append(f"off_palette={off * 100:.0f}%")
         record = {
             "attempt": attempt + 1,
             "status": inspection,
             "verdict": verdict,
             "off_palette_pct": off,
+            "palette_status": "analyzed" if palette_analyzed else "unavailable",
             "reasons": reasons,
             "image_byte_size": len(image_bytes),
         }
@@ -621,9 +632,19 @@ def _generate_with_guardrail(settings, prompt, provider):
         if not reasons:
             if attempt:
                 print(f"[image] guardrail passed on attempt {attempt + 1}")
-            status = "unverified" if inspection == "unverified" else "accepted"
+            # Vision passed. Only a measured, within-budget palette lets the
+            # candidate become reusable; an unavailable vision check *or* an
+            # unavailable palette analyzer leaves it explicitly unverified.
+            status = (
+                "accepted"
+                if inspection == "accepted" and palette_analyzed
+                else "unverified"
+            )
             if status == "unverified":
-                print("[image] guardrail unavailable; keeping image as unverified")
+                if not palette_analyzed:
+                    print("[image] palette analysis unavailable; keeping image as unverified")
+                else:
+                    print("[image] guardrail unavailable; keeping image as unverified")
             return {"status": status, "image_bytes": image_bytes,
                     "reasons": [], "attempts": attempts}
         for reason in reasons:
@@ -859,7 +880,8 @@ def main():
         _save_style_state(settings, style_state)
         if status == "unverified":
             generated_message = (
-                "Wrote a new hero image without validation (guardrail unavailable)"
+                "Wrote a new hero image without complete validation "
+                "(guardrail or palette analysis unavailable)"
             )
             generated_level = "warning"
         elif status == "disabled":

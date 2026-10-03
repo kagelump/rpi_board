@@ -102,6 +102,7 @@ class TestGenerateWithGuardrail:
         monkeypatch.setattr(gi, "_call_image_api",
                             lambda s, p, pr: (calls.__setitem__("n", calls["n"] + 1), b"good")[1])
         monkeypatch.setattr(gi, "inspect_art", lambda b, s: {"ok": True, "status": "accepted"})
+        monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
         out = gi._generate_with_guardrail(self._settings(), "p", "fal")
         assert out["status"] == "accepted"
         assert out["image_bytes"] == b"good"
@@ -121,6 +122,7 @@ class TestGenerateWithGuardrail:
             {"ok": True, "status": "accepted"},
         ]
         monkeypatch.setattr(gi, "inspect_art", lambda b, s: verdicts.pop(0))
+        monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
         out = gi._generate_with_guardrail(self._settings(image_guardrail_max_retries=1), "p", "fal")
         assert out["status"] == "accepted"
         assert out["image_bytes"] == b"good"
@@ -180,6 +182,23 @@ class TestGenerateWithGuardrail:
         out = gi._generate_with_guardrail(self._settings(), "p", "fal")
         assert out["status"] == "unverified"
         assert out["image_bytes"] == b"img"
+
+    def test_palette_analysis_error_is_unverified_not_accepted(self, monkeypatch):
+        # Issue #9: a palette analyzer exception must not fall through to an
+        # accepted, reusable hero even when the vision check passes.
+        monkeypatch.setattr(gi, "_call_image_api", lambda s, p, pr: b"img")
+        monkeypatch.setattr(gi, "inspect_art", lambda b, s: {"ok": True, "status": "accepted"})
+
+        def boom(image):
+            raise RuntimeError("analyzer exploded")
+
+        monkeypatch.setattr(gi, "analyze_palette", boom)
+        out = gi._generate_with_guardrail(self._settings(), "p", "fal")
+        assert out["status"] == "unverified"
+        assert out["image_bytes"] == b"img"
+        assert out["reasons"] == []
+        assert out["attempts"][0]["palette_status"] == "unavailable"
+        assert out["attempts"][0]["off_palette_pct"] is None
 
     def test_off_palette_retry_correction_mentions_palette(self, monkeypatch):
         blue, red = _png((0, 0, 255)), _png((220, 0, 0))

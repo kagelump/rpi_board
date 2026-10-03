@@ -496,6 +496,54 @@ class TestUnavailableValidationMain:
         assert not [entry for entry in logs if entry["event_type"] == "image_guardrail_exhausted"]
 
 
+class TestPaletteUnavailableMain:
+    def test_palette_analysis_error_publishes_unverified_and_is_not_reused(
+            self, tmp_path, monkeypatch):
+        """Issue #9: when ``analyze_palette()`` raises while vision passes, the
+        candidate still renders (fail-open) but is recorded unverified and can
+        never be reused as accepted art on a later cached refresh."""
+        settings = _main_settings(tmp_path)
+        _write_brief(settings)
+        image_bytes = _png_bytes((12, 34, 56))
+        monkeypatch.setattr(gi, "_call_image_api", lambda s, p, pr: image_bytes)
+        monkeypatch.setattr(gi, "inspect_art", lambda b, s: {"ok": True, "status": "accepted"})
+
+        def boom(image):
+            raise RuntimeError("palette analyzer unavailable")
+
+        monkeypatch.setattr(gi, "analyze_palette", boom)
+        logs = []
+        _run_main(monkeypatch, settings, logs)
+
+        # Fail-open: the candidate is still written, but never as accepted.
+        assert _hero_path(settings).read_bytes() == image_bytes
+        state = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+        assert state["hero_validation"]["status"] == "unverified"
+        assert state["hero_validation"]["status"] != "accepted"
+        assert gi._hero_reuse_eligible(state, "2026-10-01", _hero_path(settings)) is False
+        generated = [entry for entry in logs if entry["event_type"] == "image_generated"]
+        assert generated and generated[0]["level"] == "warning"
+        assert generated[0]["data"]["validation_status"] == "unverified"
+        assert not [entry for entry in logs if entry["event_type"] == "image_guardrail_exhausted"]
+
+        # A cached refresh must regenerate rather than reuse the unverified art.
+        _write_brief(settings, brief_source="cached")
+        calls = []
+        monkeypatch.setattr(
+            gi, "_call_image_api",
+            lambda s, p, pr: calls.append(1) or b"regenerated")
+        monkeypatch.setattr(gi, "analyze_palette", lambda b: {"off_palette_pct": 0.0})
+        second_logs = []
+        _run_main(monkeypatch, settings, second_logs)
+
+        assert calls == [1]
+        assert any(entry["event_type"] == "hero_reuse_rejected" for entry in second_logs)
+        assert not any(entry["event_type"] == "hero_reused" for entry in second_logs)
+        regenerated_state = json.loads(
+            _state_path(settings).read_text(encoding="utf-8"))
+        assert regenerated_state["hero_validation"]["status"] == "accepted"
+
+
 class TestRunStatusDegraded:
     def test_exhaustion_marks_generation_run_degraded_with_reasons(
             self, tmp_path, monkeypatch):

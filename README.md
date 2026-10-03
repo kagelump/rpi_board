@@ -116,8 +116,9 @@ Key sections:
   - `image_guardrail_max_off_palette_pct` (default `0.15`): reject art with more
     than this fraction of pixels in colours the panel cannot show.
   Each check fails open, so the guardrail never blocks a board from rendering:
-  when the vision check is unavailable (no key, timeout, network error) the
-  image is published but recorded as *unverified*, never as accepted. When every
+  when the vision check is unavailable (no key, timeout, network error) or the
+  palette analyzer raises, the image is published but recorded as *unverified*,
+  never as accepted (and never eligible for accepted-art reuse). When every
   attempt is explicitly rejected, no rejected bytes are written; the run keeps a
   previously accepted hero if one is recorded, otherwise `compose_board` draws
   its deterministic pictogram, and the run status is degraded with the rejection
