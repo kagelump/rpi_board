@@ -11,6 +11,7 @@ from scripts.openrouter.network import (
     DeadlineExceeded,
     NetworkRequestError,
     WallClockDeadline,
+    build_ssl_context,
     classify_network_error,
     describe_network_error,
     failure_category,
@@ -46,6 +47,46 @@ class TestProxyHint:
         result = proxy_hint()
         assert "HTTP_PROXY" in result
         assert "HTTPS_PROXY" in result
+
+
+# ---------------------------------------------------------------------------
+# build_ssl_context
+# ---------------------------------------------------------------------------
+
+class TestBuildSslContext:
+    def test_configured_ca_bundle_file_is_loaded(self, monkeypatch, tmp_path):
+        ca_bundle = tmp_path / "custom-ca.pem"
+        ca_bundle.write_text("dummy CA bundle contents")
+        loaded = []
+
+        class FakeContext:
+            def load_verify_locations(self, **kwargs):
+                loaded.append(kwargs)
+
+        monkeypatch.setattr(ssl, "create_default_context", lambda: FakeContext())
+        ctx = build_ssl_context({"openrouter": {"ca_bundle_file": str(ca_bundle)}})
+
+        assert isinstance(ctx, FakeContext)
+        assert loaded == [{"cafile": str(ca_bundle)}]
+
+    def test_missing_ca_bundle_falls_back_to_certifi(self, monkeypatch, tmp_path):
+        # A configured but nonexistent path must not be handed to OpenSSL; the
+        # builder falls back to certifi (a dev/test requirement) or the default
+        # trust store.
+        missing = tmp_path / "nope.pem"
+        loaded = []
+
+        class FakeContext:
+            def load_verify_locations(self, **kwargs):
+                loaded.append(kwargs)
+
+        monkeypatch.setattr(ssl, "create_default_context", lambda: FakeContext())
+        ctx = build_ssl_context({"openrouter": {"ca_bundle_file": str(missing)}})
+
+        assert isinstance(ctx, FakeContext)
+        assert loaded, "expected a certifi/default trust store load"
+        assert loaded[0].get("cafile")
+        assert loaded[0]["cafile"] != str(missing)
 
 
 # ---------------------------------------------------------------------------

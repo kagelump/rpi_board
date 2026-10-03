@@ -104,7 +104,7 @@ def _patch_urlopen(monkeypatch, outcome):
 class TestOpenrouterHttpsReachability:
     def test_successful_response_reports_reachability(self, monkeypatch):
         calls = _patch_urlopen(monkeypatch, _FakeResponse(200))
-        ok, detail = _check_openrouter_https_reachability(20)
+        ok, detail = _check_openrouter_https_reachability(20, {})
         assert ok is True
         assert "reachability probe" in detail
         assert "reachable" in detail
@@ -116,11 +116,64 @@ class TestOpenrouterHttpsReachability:
         # headers/credentials attached.
         assert "data" not in calls["kwargs"]
         assert "headers" not in calls["kwargs"]
+        # The runtime trust-store builder produced the context used on the wire.
+        assert isinstance(calls["kwargs"]["context"], ssl.SSLContext)
+
+    def test_configured_ca_bundle_is_honored_by_probe(self, monkeypatch, tmp_path):
+        # End-to-end (no live network): a configured CA bundle must reach the
+        # runtime SSL-context builder and the resulting context must be the one
+        # handed to urllib. ``load_verify_locations`` receives the configured
+        # path, proving openrouter.ca_bundle_file is honored by the probe.
+        ca_bundle = tmp_path / "corporate-ca.pem"
+        ca_bundle.write_text("-----BEGIN CERTIFICATE-----\nnot-a-real-cert\n-----END CERTIFICATE-----\n")
+
+        loaded = []
+
+        class FakeContext:
+            def load_verify_locations(self, **kwargs):
+                loaded.append(kwargs)
+
+        monkeypatch.setattr(ssl, "create_default_context", lambda: FakeContext())
+
+        calls = _patch_urlopen(monkeypatch, _FakeResponse(200))
+        settings = {"openrouter": {"ca_bundle_file": str(ca_bundle)}}
+        ok, detail = _check_openrouter_https_reachability(20, settings)
+
+        assert ok is True
+        assert "HTTP status=200" in detail
+        assert loaded, "runtime SSL-context builder did not load a CA file"
+        assert loaded[0].get("cafile") == str(ca_bundle)
+        assert isinstance(calls["kwargs"]["context"], FakeContext)
+        # Still an unauthenticated, non-mutating probe.
+        assert "data" not in calls["kwargs"]
+        assert "headers" not in calls["kwargs"]
+
+    def test_probe_delegates_to_shared_context_builder(self, monkeypatch):
+        # The probe must use scripts.openrouter.network.build_ssl_context rather
+        # than constructing its own default context; settings must be forwarded
+        # unchanged and the returned context used for the request.
+        sentinel = object()
+        seen = {}
+
+        def fake_build_ssl_context(passed_settings):
+            seen["settings"] = passed_settings
+            return sentinel
+
+        monkeypatch.setattr(preflight, "build_ssl_context", fake_build_ssl_context)
+        calls = _patch_urlopen(monkeypatch, _FakeResponse(200))
+        settings = {"openrouter": {"ca_bundle_file": "/somewhere/ca.pem"}}
+
+        ok, detail = _check_openrouter_https_reachability(20, settings)
+
+        assert ok is True
+        assert "HTTP status=200" in detail
+        assert seen["settings"] is settings
+        assert calls["kwargs"]["context"] is sentinel
 
     def test_http_403_is_reachable_not_transport_failure(self, monkeypatch):
         error = urllib.error.HTTPError("https://openrouter.ai", 403, "Forbidden", None, None)
         _patch_urlopen(monkeypatch, error)
-        ok, detail = _check_openrouter_https_reachability(20)
+        ok, detail = _check_openrouter_https_reachability(20, {})
         assert ok is True
         assert "reachability probe" in detail
         assert "reachable" in detail
@@ -132,7 +185,7 @@ class TestOpenrouterHttpsReachability:
     def test_http_error_status_other_than_403_is_reachable(self, monkeypatch):
         error = urllib.error.HTTPError("https://openrouter.ai", 503, "Service Unavailable", None, None)
         _patch_urlopen(monkeypatch, error)
-        ok, detail = _check_openrouter_https_reachability(20)
+        ok, detail = _check_openrouter_https_reachability(20, {})
         assert ok is True
         assert "HTTP status=503" in detail
 
@@ -147,7 +200,7 @@ class TestOpenrouterHttpsReachability:
     )
     def test_transport_failures_are_unreachable(self, monkeypatch, reason):
         _patch_urlopen(monkeypatch, urllib.error.URLError(reason))
-        ok, detail = _check_openrouter_https_reachability(20)
+        ok, detail = _check_openrouter_https_reachability(20, {})
         assert ok is False
         assert "reachability probe" in detail
         assert "unreachable" in detail
@@ -156,14 +209,14 @@ class TestOpenrouterHttpsReachability:
     def test_bare_oserror_during_send_is_unreachable(self, monkeypatch):
         # urlopen usually wraps OSError in URLError, but tolerate a direct one.
         _patch_urlopen(monkeypatch, socket.gaierror(-2, "Name or service not known"))
-        ok, detail = _check_openrouter_https_reachability(20)
+        ok, detail = _check_openrouter_https_reachability(20, {})
         assert ok is False
         assert "unreachable" in detail
         assert "no HTTP response" in detail
 
     def test_legacy_helper_alias_still_works(self, monkeypatch):
         _patch_urlopen(monkeypatch, _FakeResponse(204))
-        ok, detail = preflight._check_openrouter_https(20)
+        ok, detail = preflight._check_openrouter_https(20, {})
         assert ok is True
         assert "HTTP status=204" in detail
 
@@ -179,7 +232,10 @@ class TestRunChecks:
         monkeypatch.setattr(
             preflight,
             "_check_openrouter_https_reachability",
-            lambda timeout: (True, "HTTPS reachability probe: reachable (HTTP status=200)"),
+            lambda timeout, settings: (
+                True,
+                "HTTPS reachability probe: reachable (HTTP status=200)",
+            ),
         )
         checks = _run_checks(load_settings())
         by_name = {item["name"]: item for item in checks}

@@ -484,7 +484,9 @@ summary exposes `ok` (every check passed), `strict_ok` (required readiness) and
 `openrouter_https_reachability` is an unauthenticated, non-mutating GET to
 `https://openrouter.ai`: any HTTP status (including the root page's 403) proves
 DNS, TCP and TLS reachability and is reported as reachable. It does not
-authenticate or validate API usability.
+authenticate or validate API usability. The probe uses the same TLS trust
+configuration as runtime OpenRouter requests, so `openrouter.ca_bundle_file`
+(and the certifi fallback) applies to it as well.
 
 Manual full run:
 

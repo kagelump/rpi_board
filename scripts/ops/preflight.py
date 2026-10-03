@@ -18,7 +18,6 @@ import importlib
 import json
 import os
 import socket
-import ssl
 import sys
 import urllib.error
 import urllib.request
@@ -26,6 +25,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import get_openrouter_api_key, load_settings
+from scripts.openrouter.network import build_ssl_context
 
 
 def validate_config(settings):
@@ -105,7 +105,7 @@ def _check_dns():
         return False, f"DNS resolution failed: {error}"
 
 
-def _check_openrouter_https_reachability(timeout):
+def _check_openrouter_https_reachability(timeout, settings):
     """Non-mutating HTTPS reachability probe for openrouter.ai.
 
     Issues an unauthenticated GET (``urlopen`` defaults to GET and no API key
@@ -116,8 +116,13 @@ def _check_openrouter_https_reachability(timeout):
     responses and ``HTTPError`` subclasses ``URLError``, so it must be handled
     first. This probe deliberately reports transport reachability only; it does
     not authenticate or assert API usability.
+
+    The TLS context comes from the same runtime builder used by production
+    OpenRouter requests (:func:`scripts.openrouter.network.build_ssl_context`),
+    so a configured ``openrouter.ca_bundle_file`` (and the certifi fallback) is
+    honored here too.
     """
-    ctx = ssl.create_default_context()
+    ctx = build_ssl_context(settings)
     try:
         with urllib.request.urlopen("https://openrouter.ai", timeout=timeout, context=ctx) as response:
             return True, f"HTTPS reachability probe: reachable (HTTP status={response.status})"
@@ -193,7 +198,9 @@ def _run_checks(settings):
     dns_ok, dns_detail = _check_dns()
     checks.append({"name": "openrouter_dns", "ok": dns_ok, "required": False, "detail": dns_detail})
 
-    https_ok, https_detail = _check_openrouter_https_reachability(settings["pipeline"]["image_timeout_seconds"])
+    https_ok, https_detail = _check_openrouter_https_reachability(
+        settings["pipeline"]["image_timeout_seconds"], settings
+    )
     checks.append(
         {
             "name": "openrouter_https_reachability",
