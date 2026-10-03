@@ -282,3 +282,132 @@ class TestBuildAggregatedContext:
         result = build_aggregated_context(_SETTINGS, _OM_PAYLOAD, {}, {})
         # Yahoo is missing, so "yahoo:all" should appear
         assert any("yahoo" in s for s in result["missing_sections"])
+
+
+# ---------------------------------------------------------------------------
+# _detect_conflicts date awareness (issue #17)
+# ---------------------------------------------------------------------------
+
+class TestDetectConflictsDateAware:
+    def test_conflicts_record_the_matching_open_meteo_date(self):
+        yahoo = {
+            "today_tomorrow": [
+                {"date_label": "10\u67082\u65e5", "temp_max_c": 25},
+                {"date_label": "10\u67083\u65e5", "temp_max_c": 15},
+            ]
+        }
+        om = {
+            "raw": {
+                "daily": {
+                    "time": ["2026-10-02", "2026-10-03", "2026-10-04"],
+                    "temperature_2m_max": [20.0, 20.0, 20.0],
+                }
+            }
+        }
+        conflicts = _detect_conflicts(yahoo, om)
+        assert [(c["date"], c["delta"]) for c in conflicts] == [
+            ("2026-10-02", 5.0),
+            ("2026-10-03", 5.0),
+        ]
+        assert all(c["metric"] == "temp_max_c" for c in conflicts)
+
+    def test_run_day_only_conflict_is_dated_to_run_day(self):
+        # Only Yahoo's run-day row (Oct 2) disagrees; the target (Oct 3) matches.
+        yahoo = {
+            "today_tomorrow": [
+                {"date_label": "10\u67082\u65e5", "temp_max_c": 26},
+                {"date_label": "10\u67083\u65e5", "temp_max_c": 19},
+            ]
+        }
+        om = {
+            "raw": {
+                "daily": {
+                    "time": ["2026-10-02", "2026-10-03", "2026-10-04"],
+                    "temperature_2m_max": [20.0, 20.0, 21.0],
+                }
+            }
+        }
+        conflicts = _detect_conflicts(yahoo, om)
+        assert len(conflicts) == 1
+        assert conflicts[0]["date"] == "2026-10-02"
+        assert conflicts[0]["metric"] == "temp_max_c"
+
+    def test_selection_is_by_date_not_array_position(self):
+        # Yahoo rows are deliberately out of order; each still matches its own
+        # Open-Meteo day by month/day rather than by position.
+        yahoo = {
+            "today_tomorrow": [
+                {"date_label": "10\u67084\u65e5", "temp_max_c": 30},
+                {"date_label": "10\u67083\u65e5", "temp_max_c": 10},
+            ]
+        }
+        om = {
+            "raw": {
+                "daily": {
+                    "time": ["2026-10-02", "2026-10-03", "2026-10-04"],
+                    "temperature_2m_max": [20.0, 20.0, 20.0],
+                }
+            }
+        }
+        conflicts = {c["date"]: c for c in _detect_conflicts(yahoo, om)}
+        assert set(conflicts) == {"2026-10-03", "2026-10-04"}
+        assert conflicts["2026-10-03"]["delta"] == 10.0
+        assert conflicts["2026-10-04"]["delta"] == 10.0
+
+    def test_month_year_boundary_matches_correct_year(self):
+        yahoo = {
+            "today_tomorrow": [
+                {"date_label": "12\u670831\u65e5", "temp_max_c": 5},
+                {"date_label": "1\u67081\u65e5", "temp_max_c": 10},
+            ]
+        }
+        om = {
+            "raw": {
+                "daily": {
+                    "time": ["2026-12-31", "2027-01-01", "2027-01-02"],
+                    "temperature_2m_max": [12.0, 20.0, 20.0],
+                }
+            }
+        }
+        conflicts = _detect_conflicts(yahoo, om)
+        assert [(c["date"], c["delta"]) for c in conflicts] == [
+            ("2026-12-31", 7.0),
+            ("2027-01-01", 10.0),
+        ]
+
+    def test_legacy_unparseable_labels_stay_undated(self):
+        # When no row can be matched to a date, the legacy positional comparison
+        # is retained but must stay undated so a next-day board can drop it.
+        yahoo = {"today_tomorrow": [{"date_label": "Today", "temp_max_c": 5}]}
+        om = {
+            "raw": {
+                "daily": {
+                    "time": ["2026-10-02"],
+                    "temperature_2m_max": [18.0],
+                }
+            }
+        }
+        conflicts = _detect_conflicts(yahoo, om)
+        assert len(conflicts) == 1
+        assert "date" not in conflicts[0]
+        assert conflicts[0]["metric"] == "today.temp_max_c"
+
+    def test_parseable_rows_with_no_matching_date_are_not_compared(self):
+        # Yahoo and Open-Meteo describe different date windows. Even though
+        # positions could be compared, the dates do not line up, so no conflict
+        # is reported rather than attaching one day's value to another.
+        yahoo = {
+            "today_tomorrow": [
+                {"date_label": "10\u67082\u65e5", "temp_max_c": 30},
+                {"date_label": "10\u67083\u65e5", "temp_max_c": 30},
+            ]
+        }
+        om = {
+            "raw": {
+                "daily": {
+                    "time": ["2026-10-05", "2026-10-06"],
+                    "temperature_2m_max": [20.0, 20.0],
+                }
+            }
+        }
+        assert _detect_conflicts(yahoo, om) == []

@@ -15,6 +15,8 @@ from scripts.weather.transform_weather import (
     _headline,
     _hourly_rows,
     _is_ascii_text,
+    _normalize_yahoo_date,
+    _parse_yahoo_month_day,
     _rain_rows_by_intensity,
     _rain_window,
     _remaining_hourly_rows,
@@ -769,3 +771,448 @@ class TestDeterministicIllustrationPrompt:
         )
         assert subject == "the day's wild weather over a quiet city skyline"
         assert _has_caption_material(subject) is False
+
+
+# ---------------------------------------------------------------------------
+# Yahoo target-date alignment (issue #17)
+# ---------------------------------------------------------------------------
+
+def _open_meteo_raw(daily_dates, daily_codes=None):
+    """Open-Meteo raw payload with a full hourly series for every daily date."""
+    if daily_codes is None:
+        daily_codes = [0] * len(daily_dates)
+    series = [_hourly_series(day) for day in daily_dates]
+    raw = {
+        "timezone": "Asia/Tokyo",
+        "daily": {
+            "time": list(daily_dates),
+            "weather_code": list(daily_codes),
+            "temperature_2m_max": [20.0] * len(daily_dates),
+            "temperature_2m_min": [10.0] * len(daily_dates),
+            "precipitation_probability_max": [0] * len(daily_dates),
+            "precipitation_sum": [0.0] * len(daily_dates),
+        },
+        "hourly": {},
+    }
+    for field in series[0]:
+        raw["hourly"][field] = [
+            value for day_series in series for value in day_series[field]
+        ]
+    return raw
+
+
+def _yahoo_row(date_label, condition="Clear sky", weekday="Fri"):
+    return {
+        "date_label": date_label,
+        "weekday": weekday,
+        "condition": condition,
+        "temp_min_c": 15,
+        "temp_max_c": 22,
+        "precipitation_windows": [],
+        "wind": "",
+        "wave": "",
+    }
+
+
+def _yahoo_context(daily_dates, yahoo_rows, index_days=None, ordered_facts=None,
+                   daily_codes=None):
+    return {
+        "sources": {
+            "open_meteo": {
+                "payload": {
+                    "location": {"timezone": "Asia/Tokyo", "latitude": 35.6, "longitude": 139.6},
+                    "raw": _open_meteo_raw(daily_dates, daily_codes),
+                }
+            },
+            "yahoo": {
+                "payload": {
+                    "today_tomorrow": yahoo_rows,
+                    "indices": {"days": index_days or []},
+                    "alerts": [],
+                }
+            },
+        },
+        "source_priority": ["yahoo", "open_meteo"],
+        "ordered_facts": ordered_facts or [],
+        "conflicts": [],
+        "missing_sections": [],
+    }
+
+
+class TestYahooDateNormalization:
+    def test_parses_japanese_and_slash_labels(self):
+        assert _parse_yahoo_month_day("10\u67082\u65e5") == (10, 2)
+        assert _parse_yahoo_month_day("10\u67082\u65e5\uff08\u91d1\uff09") == (10, 2)
+        assert _parse_yahoo_month_day("4/23(\u6728)") == (4, 23)
+        # A dash-separated ISO label still resolves the month/day, not the year.
+        assert _parse_yahoo_month_day("2026-10-03") == (10, 3)
+
+    def test_rejects_invalid_or_absent_labels(self):
+        assert _parse_yahoo_month_day("Today") is None
+        assert _parse_yahoo_month_day("13\u67081\u65e5") is None
+        assert _parse_yahoo_month_day("2\u670830\u65e5") is None
+        assert _parse_yahoo_month_day(None) is None
+
+    def test_resolves_nearest_year_across_boundaries(self):
+        reference = datetime(2026, 12, 31).date()
+        assert _normalize_yahoo_date({"date_label": "1\u67081\u65e5"}, reference) == "2027-01-01"
+        reference = datetime(2027, 1, 1).date()
+        assert _normalize_yahoo_date({"date_label": "12\u670831\u65e5"}, reference) == "2026-12-31"
+
+    def test_explicit_iso_date_wins(self):
+        reference = datetime(2026, 12, 31).date()
+        item = {"date_label": "1\u67081\u65e5", "date_iso": "2030-01-01"}
+        assert _normalize_yahoo_date(item, reference) == "2030-01-01"
+
+    def test_unparseable_label_returns_none(self):
+        assert _normalize_yahoo_date({"date_label": "Today"}, datetime(2026, 10, 2).date()) is None
+
+
+class TestYahooTargetDateAlignment:
+    NOW_EVENING = datetime(2026, 10, 2, 21, 0, tzinfo=_TZ)
+    NOW_MORNING = datetime(2026, 10, 2, 8, 0, tzinfo=_TZ)
+    NOW_MIDDAY = datetime(2026, 10, 2, 13, 0, tzinfo=_TZ)
+
+    def test_evening_rollover_selects_target_day_and_omits_missing_following(self):
+        ctx = _yahoo_context(
+            ["2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05"],
+            [
+                _yahoo_row("10\u67082\u65e5", condition="Cloudy"),
+                _yahoo_row("10\u67083\u65e5", condition="Rainy"),
+            ],
+        )
+        result = build_payload(ctx, now_local=self.NOW_EVENING)
+
+        assert result["day_context"]["target_date_iso"] == "2026-10-03"
+        assert result["today"]["daily_summary"]["date"] == "2026-10-03"
+        assert result["today"]["yahoo_summary"]["date_label"] == "10\u67083\u65e5"
+        assert result["today"]["yahoo_summary"]["date_iso"] == "2026-10-03"
+        assert result["today"]["yahoo_summary"]["condition"] == "Rainy"
+        # Yahoo only supplied Oct 2 and Oct 3, so there is no Oct 4 row.
+        assert result["tomorrow"]["yahoo_summary"] == {}
+        assert result["brief"]["headline"] == "Rainy expected today."
+
+    def test_evening_rollover_keeps_following_day_when_supplied(self):
+        ctx = _yahoo_context(
+            ["2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05"],
+            [
+                _yahoo_row("10\u67082\u65e5", condition="Cloudy"),
+                _yahoo_row("10\u67083\u65e5", condition="Rainy"),
+                _yahoo_row("10\u67084\u65e5", condition="Sunny"),
+            ],
+        )
+        result = build_payload(ctx, now_local=self.NOW_EVENING)
+
+        assert result["today"]["yahoo_summary"]["date_iso"] == "2026-10-03"
+        assert result["tomorrow"]["yahoo_summary"]["date_iso"] == "2026-10-04"
+        assert result["tomorrow"]["yahoo_summary"]["condition"] == "Sunny"
+
+    def test_explicit_forecast_target_tomorrow(self, monkeypatch):
+        monkeypatch.setenv("FORECAST_TARGET", "tomorrow")
+        ctx = _yahoo_context(
+            ["2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05"],
+            [
+                _yahoo_row("10\u67082\u65e5", condition="Cloudy"),
+                _yahoo_row("10\u67083\u65e5", condition="Rainy"),
+                _yahoo_row("10\u67084\u65e5", condition="Sunny"),
+            ],
+        )
+        # A morning clock still targets tomorrow because of FORECAST_TARGET.
+        result = build_payload(ctx, now_local=self.NOW_MORNING)
+
+        assert result["day_context"]["target_date_iso"] == "2026-10-03"
+        assert result["today"]["daily_summary"]["date"] == "2026-10-03"
+        assert result["today"]["yahoo_summary"]["date_iso"] == "2026-10-03"
+        assert result["tomorrow"]["yahoo_summary"]["date_iso"] == "2026-10-04"
+
+    def test_missing_following_day_yahoo_is_empty(self):
+        ctx = _yahoo_context(
+            ["2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05"],
+            [
+                _yahoo_row("10\u67082\u65e5"),
+                _yahoo_row("10\u67083\u65e5"),
+            ],
+        )
+        result = build_payload(ctx, now_local=self.NOW_EVENING)
+        assert result["tomorrow"]["yahoo_summary"] == {}
+
+    def test_month_year_boundary_evening(self):
+        ctx = _yahoo_context(
+            ["2026-12-31", "2027-01-01", "2027-01-02"],
+            [
+                _yahoo_row("12\u670831\u65e5", condition="Cold"),
+                _yahoo_row("1\u67081\u65e5", condition="Clear"),
+            ],
+        )
+        result = build_payload(
+            ctx, now_local=datetime(2026, 12, 31, 21, 0, tzinfo=_TZ)
+        )
+
+        assert result["day_context"]["target_date_iso"] == "2027-01-01"
+        assert result["today"]["daily_summary"]["date"] == "2027-01-01"
+        assert result["today"]["yahoo_summary"]["date_iso"] == "2027-01-01"
+        assert result["today"]["yahoo_summary"]["condition"] == "Clear"
+        assert result["tomorrow"]["yahoo_summary"] == {}
+
+    def test_month_year_boundary_same_day(self):
+        ctx = _yahoo_context(
+            ["2026-12-31", "2027-01-01", "2027-01-02"],
+            [
+                _yahoo_row("12\u670831\u65e5", condition="Cold"),
+                _yahoo_row("1\u67081\u65e5", condition="Clear"),
+            ],
+        )
+        result = build_payload(
+            ctx, now_local=datetime(2026, 12, 31, 8, 0, tzinfo=_TZ)
+        )
+
+        assert result["today"]["yahoo_summary"]["date_iso"] == "2026-12-31"
+        assert result["tomorrow"]["yahoo_summary"]["date_iso"] == "2027-01-01"
+
+    def test_selection_is_by_date_not_array_position(self):
+        # Yahoo rows are deliberately out of order: row 0 is Oct 4, row 1 is the
+        # Oct 3 target. Position-based selection would attach the wrong day.
+        ctx = _yahoo_context(
+            ["2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05"],
+            [
+                _yahoo_row("10\u67084\u65e5", condition="Sunny"),
+                _yahoo_row("10\u67083\u65e5", condition="Rainy"),
+            ],
+        )
+        result = build_payload(ctx, now_local=self.NOW_EVENING)
+
+        assert result["today"]["yahoo_summary"]["date_iso"] == "2026-10-03"
+        assert result["today"]["yahoo_summary"]["condition"] == "Rainy"
+        assert result["tomorrow"]["yahoo_summary"]["date_iso"] == "2026-10-04"
+        assert result["tomorrow"]["yahoo_summary"]["condition"] == "Sunny"
+
+    def test_same_day_morning_and_afternoon_unchanged(self):
+        ctx = _yahoo_context(
+            ["2026-10-02", "2026-10-03", "2026-10-04"],
+            [
+                _yahoo_row("10\u67082\u65e5", condition="Cloudy"),
+                _yahoo_row("10\u67083\u65e5", condition="Rainy"),
+            ],
+        )
+        for now in (self.NOW_MORNING, self.NOW_MIDDAY):
+            result = build_payload(ctx, now_local=now)
+            assert result["today"]["daily_summary"]["date"] == "2026-10-02"
+            assert result["today"]["yahoo_summary"]["date_iso"] == "2026-10-02"
+            assert result["tomorrow"]["yahoo_summary"]["date_iso"] == "2026-10-03"
+
+    def test_indices_follow_target_date_not_first_row(self):
+        ctx = _yahoo_context(
+            ["2026-10-02", "2026-10-03", "2026-10-04"],
+            [
+                _yahoo_row("10\u67082\u65e5", condition="Cloudy"),
+                _yahoo_row("10\u67083\u65e5", condition="Rainy"),
+            ],
+            index_days=[
+                {
+                    "date_label": "10\u67082\u65e5\uff08\u91d1\uff09",
+                    "items": {"\u5098": {"score_text": "90", "note": "Run-day umbrella"}},
+                },
+                {
+                    "date_label": "10\u67083\u65e5\uff08\u571f\uff09",
+                    "items": {"\u5098": {"score_text": "60", "note": "Target umbrella"}},
+                },
+            ],
+        )
+        result = build_payload(ctx, now_local=self.NOW_EVENING)
+
+        assert result["brief"]["subtitle"] == "Target umbrella"
+        assert "Run-day umbrella" not in result["brief"]["subtitle"]
+
+    def test_run_day_only_indices_omitted_for_advice_and_facts(self):
+        facts = [
+            {"id": "yahoo.today_tomorrow.0.condition", "source": "yahoo",
+             "text": "10\u67082\u65e5(\u91d1): Cloudy", "value": "Cloudy"},
+            {"id": "yahoo.today_tomorrow.1.condition", "source": "yahoo",
+             "text": "10\u67083\u65e5(\u571f): Rainy", "value": "Rainy"},
+            {"id": "yahoo.indices.0.\u5098", "source": "yahoo",
+             "text": "10\u67082\u65e5\uff08\u91d1\uff09 \u5098=90 (Run-day umbrella)",
+             "value": {"note": "Run-day umbrella"}},
+            {"id": "yahoo.indices.1.\u5098", "source": "yahoo",
+             "text": "10\u67083\u65e5\uff08\u571f\uff09 \u5098=60 (Target umbrella)",
+             "value": {"note": "Target umbrella"}},
+            {"id": "yahoo.alerts.0", "source": "yahoo",
+             "text": "Warning: Strong wind", "value": {"level": "Warning"}},
+            {"id": "open_meteo.daily.1", "source": "open_meteo",
+             "text": "2026-10-03 ...", "value": {"date": "2026-10-03"}},
+        ]
+        ctx = _yahoo_context(
+            ["2026-10-02", "2026-10-03", "2026-10-04"],
+            [
+                _yahoo_row("10\u67082\u65e5", condition="Cloudy"),
+                _yahoo_row("10\u67083\u65e5", condition="Rainy"),
+            ],
+            index_days=[
+                {"date_label": "10\u67082\u65e5\uff08\u91d1\uff09",
+                 "items": {"\u5098": {"note": "Run-day umbrella"}}},
+                {"date_label": "10\u67083\u65e5\uff08\u571f\uff09",
+                 "items": {"\u5098": {"note": "Target umbrella"}}},
+            ],
+            ordered_facts=facts,
+        )
+        result = build_payload(ctx, now_local=self.NOW_EVENING)
+        kept = result["brief_context"]["ordered_facts"]
+        kept_ids = [fact["id"] for fact in kept]
+
+        assert result["brief_context"]["target_date_iso"] == "2026-10-03"
+        assert "yahoo.today_tomorrow.1.condition" in kept_ids
+        assert "yahoo.indices.1.\u5098" in kept_ids
+        assert "yahoo.alerts.0" in kept_ids
+        assert "open_meteo.daily.1" in kept_ids
+        assert "yahoo.today_tomorrow.0.condition" not in kept_ids
+        assert "yahoo.indices.0.\u5098" not in kept_ids
+        # Target-day facts carry an explicit ISO date for the prompt.
+        for fact in kept:
+            if fact["id"] == "yahoo.indices.1.\u5098":
+                assert fact["date_iso"] == "2026-10-03"
+            if fact["id"] == "yahoo.today_tomorrow.1.condition":
+                assert fact["date_iso"] == "2026-10-03"
+
+    def test_same_day_ordered_index_fact_with_unparseable_label_is_kept(self):
+        facts = [
+            {"id": "yahoo.indices.0.umbrella", "source": "yahoo",
+             "text": "Today umbrella=60", "value": {"note": "Carry it"}},
+        ]
+        ctx = _yahoo_context(
+            ["2026-10-02", "2026-10-03"],
+            [_yahoo_row("Today"), _yahoo_row("Tomorrow")],
+            index_days=[{"date_label": "Today", "items": {"umbrella": {"note": "Carry it"}}}],
+            ordered_facts=facts,
+        )
+        result = build_payload(ctx, now_local=self.NOW_MORNING)
+        assert [f["id"] for f in result["brief_context"]["ordered_facts"]] == [
+            "yahoo.indices.0.umbrella"
+        ]
+
+    def test_unparseable_dates_are_not_guessed_for_next_day_board(self):
+        ctx = _yahoo_context(
+            ["2026-10-02", "2026-10-03", "2026-10-04"],
+            [_yahoo_row("Today", condition="Cloudy"), _yahoo_row("Tomorrow", condition="Rainy")],
+            index_days=[{"date_label": "Today", "items": {"umbrella": {"note": "Carry it"}}}],
+        )
+        result = build_payload(ctx, now_local=self.NOW_EVENING)
+
+        assert result["day_context"]["target_date_iso"] == "2026-10-03"
+        assert result["today"]["yahoo_summary"] == {}
+        assert result["tomorrow"]["yahoo_summary"] == {}
+        # No target-day index is available, so no Yahoo index note is injected.
+        assert result["brief"]["subtitle"] != "Carry it"
+
+    def test_unparseable_dates_keep_same_day_position(self):
+        ctx = _yahoo_context(
+            ["2026-10-02", "2026-10-03"],
+            [_yahoo_row("Today", condition="Cloudy"), _yahoo_row("Tomorrow", condition="Rainy")],
+        )
+        result = build_payload(ctx, now_local=self.NOW_MORNING)
+
+        assert result["today"]["yahoo_summary"]["condition"] == "Cloudy"
+        assert result["tomorrow"]["yahoo_summary"]["condition"] == "Rainy"
+        assert "date_iso" not in result["today"]["yahoo_summary"]
+
+
+# ---------------------------------------------------------------------------
+# Conflict date safety (issue #17)
+# ---------------------------------------------------------------------------
+
+class TestConflictDateSafety:
+    NOW_EVENING = datetime(2026, 10, 2, 21, 0, tzinfo=_TZ)
+    NOW_MORNING = datetime(2026, 10, 2, 8, 0, tzinfo=_TZ)
+
+    def _context(self, conflicts):
+        ctx = _yahoo_context(
+            ["2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05"],
+            [
+                _yahoo_row("10\u67082\u65e5", condition="Cloudy"),
+                _yahoo_row("10\u67083\u65e5", condition="Rainy"),
+                _yahoo_row("10\u67084\u65e5", condition="Sunny"),
+            ],
+        )
+        ctx["conflicts"] = conflicts
+        return ctx
+
+    def test_next_day_board_keeps_only_target_dated_conflict(self):
+        run_day = {"metric": "temp_max_c", "date": "2026-10-02",
+                   "yahoo": 26, "open_meteo": 20, "delta": 6.0}
+        target = {"metric": "temp_max_c", "date": "2026-10-03",
+                  "yahoo": 15, "open_meteo": 20, "delta": 5.0}
+        following = {"metric": "temp_max_c", "date": "2026-10-04",
+                     "yahoo": 15, "open_meteo": 20, "delta": 5.0}
+        result = build_payload(
+            self._context([run_day, target, following]), now_local=self.NOW_EVENING
+        )
+        assert result["brief_context"]["conflicts"] == [target]
+
+    def test_next_day_board_drops_undated_legacy_conflict(self):
+        legacy = {"metric": "today.temp_max_c", "yahoo": 26,
+                  "open_meteo": 20, "delta": 6.0}
+        result = build_payload(self._context([legacy]), now_local=self.NOW_EVENING)
+        assert result["brief_context"]["conflicts"] == []
+
+    def test_next_day_board_drops_non_dict_conflict(self):
+        result = build_payload(
+            self._context(["temp mismatch"]), now_local=self.NOW_EVENING
+        )
+        assert result["brief_context"]["conflicts"] == []
+
+    def test_same_day_board_keeps_undated_legacy_conflict(self):
+        legacy = {"metric": "today.temp_max_c", "yahoo": 26,
+                  "open_meteo": 20, "delta": 6.0}
+        result = build_payload(self._context([legacy]), now_local=self.NOW_MORNING)
+        assert result["brief_context"]["conflicts"] == [legacy]
+
+    def test_same_day_board_still_drops_other_dated_conflict(self):
+        other = {"metric": "temp_max_c", "date": "2026-10-01",
+                 "yahoo": 26, "open_meteo": 20, "delta": 6.0}
+        result = build_payload(self._context([other]), now_local=self.NOW_MORNING)
+        assert result["brief_context"]["conflicts"] == []
+
+    def test_evening_pipeline_conflicts_follow_target_date(self):
+        from scripts.weather.aggregate_weather_sources import build_aggregated_context
+
+        daily_dates = ["2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05"]
+        open_meteo_payload = {
+            "location": {"timezone": "Asia/Tokyo"},
+            "raw": _open_meteo_raw(daily_dates),
+        }
+        yahoo_payload = {
+            "today_tomorrow": [
+                _yahoo_row("10\u67082\u65e5", condition="Cloudy"),
+                _yahoo_row("10\u67083\u65e5", condition="Rainy"),
+                _yahoo_row("10\u67084\u65e5", condition="Sunny"),
+            ],
+            "indices": {"days": []},
+            "alerts": [],
+        }
+        # Give each Yahoo row a large mismatch against Open-Meteo's 20C max.
+        for row, temp in zip(yahoo_payload["today_tomorrow"], [30, 25, 15]):
+            row["temp_max_c"] = temp
+        settings = {
+            "location": {"timezone": "Asia/Tokyo"},
+            "pipeline": {"source_order": ["yahoo", "open_meteo"]},
+        }
+        aggregated = build_aggregated_context(
+            settings, open_meteo_payload, yahoo_payload, {}
+        )
+        # Aggregate itself resolves each conflict to its real calendar date.
+        assert {c["date"] for c in aggregated["conflicts"]} == {
+            "2026-10-02", "2026-10-03", "2026-10-04",
+        }
+
+        result = build_payload(aggregated, now_local=self.NOW_EVENING)
+        conflicts = result["brief_context"]["conflicts"]
+        assert [c["date"] for c in conflicts] == ["2026-10-03"]
+        assert conflicts[0]["delta"] == 5.0
+
+    def test_same_day_board_keeps_target_dated_conflict(self):
+        target = {"metric": "temp_max_c", "date": "2026-10-02",
+                  "yahoo": 26, "open_meteo": 20, "delta": 6.0}
+        run_day = {"metric": "temp_max_c", "date": "2026-10-01",
+                   "yahoo": 30, "open_meteo": 20, "delta": 10.0}
+        result = build_payload(
+            self._context([run_day, target]), now_local=self.NOW_MORNING
+        )
+        assert result["brief_context"]["conflicts"] == [target]

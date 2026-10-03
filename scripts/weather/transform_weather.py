@@ -2,6 +2,7 @@
 import argparse
 import math
 import os
+import re
 import sys
 from datetime import datetime, time as dtime, timedelta
 from pathlib import Path
@@ -9,6 +10,12 @@ from zoneinfo import ZoneInfo
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import load_settings, read_json, write_json
+# Yahoo date parsing is shared with the aggregator; re-exported here for the
+# transform tests that exercise it directly.
+from scripts.weather.date_utils import (
+    normalize_yahoo_date as _normalize_yahoo_date,
+    parse_yahoo_month_day as _parse_yahoo_month_day,
+)
 
 
 WEATHER_LABELS = {
@@ -419,24 +426,169 @@ def _bullets(today, rain_window, rain_level, yahoo_today, yahoo_indices):
     return bullets[:3]
 
 
-def _first_yahoo_today(context):
-    yahoo = context.get("sources", {}).get("yahoo", {}).get("payload", {})
-    items = yahoo.get("today_tomorrow", [])
-    return items[0] if items else {}
+_YAHOO_FORECAST_FACT_ID = re.compile(r"^yahoo\.today_tomorrow\.(\d+)\.")
+_YAHOO_INDEX_FACT_ID = re.compile(r"^yahoo\.indices\.(\d+)\.")
 
 
-def _first_yahoo_tomorrow(context):
-    yahoo = context.get("sources", {}).get("yahoo", {}).get("payload", {})
-    items = yahoo.get("today_tomorrow", [])
-    return items[1] if len(items) > 1 else {}
+def _yahoo_payload(context):
+    payload = context.get("sources", {}).get("yahoo", {}).get("payload", {})
+    return payload if isinstance(payload, dict) else {}
 
 
-def _first_yahoo_index_items(context):
-    yahoo = context.get("sources", {}).get("yahoo", {}).get("payload", {})
-    days = yahoo.get("indices", {}).get("days", [])
-    if not days:
+def _annotate_yahoo_item(item, reference_date):
+    """Return a copy of a Yahoo row carrying its resolved ``date_iso``."""
+    if not isinstance(item, dict) or not item:
         return {}
-    return days[0].get("items", {})
+    enriched = dict(item)
+    date_iso = _normalize_yahoo_date(item, reference_date)
+    if date_iso:
+        enriched["date_iso"] = date_iso
+    return enriched
+
+
+def _select_yahoo_forecasts(context, target_s, following_s, reference_date, allow_positional_fallback):
+    """Select the Yahoo forecast rows for the target and following dates.
+
+    Rows are chosen by their resolved date whenever any row carries a usable
+    date. Row position is used only for same-day boards whose labels cannot be
+    parsed, where Yahoo's today/tomorrow tabs are unambiguous by definition. A
+    next-day board never guesses by position: an unresolvable or absent row is
+    returned as ``{}``.
+    """
+    items = _yahoo_payload(context).get("today_tomorrow", [])
+    if not isinstance(items, list):
+        items = []
+    resolved = [(item, _normalize_yahoo_date(item, reference_date)) for item in items]
+    resolved = [(item, date_iso) for item, date_iso in resolved if date_iso is not None]
+
+    today = {}
+    tomorrow = {}
+    if resolved:
+        for item, date_iso in resolved:
+            if date_iso == target_s and not today:
+                today = item
+            elif date_iso == following_s and not tomorrow:
+                tomorrow = item
+    elif allow_positional_fallback:
+        if items:
+            today = items[0]
+        if len(items) > 1:
+            tomorrow = items[1]
+    return _annotate_yahoo_item(today, reference_date), _annotate_yahoo_item(tomorrow, reference_date)
+
+
+def _select_yahoo_index_items(context, target_s, reference_date, allow_positional_fallback):
+    """Return the Yahoo index items whose date matches the board target.
+
+    Run-day-only index rows are dropped for a next-day board. As with the
+    forecast rows, a same-day board may fall back to the first tab when labels
+    are unparseable, but a next-day board never guesses by position.
+    """
+    days = _yahoo_payload(context).get("indices", {}).get("days", [])
+    if not isinstance(days, list):
+        days = []
+    resolved = [(day, _normalize_yahoo_date(day, reference_date)) for day in days]
+    resolved = [(day, date_iso) for day, date_iso in resolved if date_iso is not None]
+    if resolved:
+        for day, date_iso in resolved:
+            if date_iso == target_s:
+                items = day.get("items", {})
+                return dict(items) if isinstance(items, dict) else {}
+        return {}
+    if allow_positional_fallback and days:
+        items = days[0].get("items", {})
+        return dict(items) if isinstance(items, dict) else {}
+    return {}
+
+
+def _fact_with_date(fact, date_iso):
+    enriched = dict(fact)
+    enriched["date_iso"] = date_iso
+    return enriched
+
+
+def _filter_ordered_facts(ordered_facts, context, target_s, following_s, reference_date, allow_positional_fallback):
+    """Drop Yahoo facts whose resolved date is outside the board's window.
+
+    The brief prompt treats ORDERED_FACTS as ground truth. An evening board must
+    therefore not carry the run day's Yahoo forecast or run-day-only index rows.
+    Facts with an unresolvable date are kept only for same-day boards, where
+    Yahoo's fixed tabs are unambiguous; a next-day board drops them rather than
+    present run-day data as target-day context.
+    """
+    if not ordered_facts:
+        return []
+    items = _yahoo_payload(context).get("today_tomorrow", [])
+    if not isinstance(items, list):
+        items = []
+    index_days = _yahoo_payload(context).get("indices", {}).get("days", [])
+    if not isinstance(index_days, list):
+        index_days = []
+    forecast_dates = {idx: _normalize_yahoo_date(item, reference_date) for idx, item in enumerate(items)}
+    index_dates = {idx: _normalize_yahoo_date(day, reference_date) for idx, day in enumerate(index_days)}
+
+    kept = []
+    for fact in ordered_facts:
+        if not isinstance(fact, dict) or fact.get("source") != "yahoo":
+            kept.append(fact)
+            continue
+        fact_id = fact.get("id", "")
+        if not isinstance(fact_id, str):
+            kept.append(fact)
+            continue
+        forecast_match = _YAHOO_FORECAST_FACT_ID.match(fact_id)
+        if forecast_match:
+            date_iso = forecast_dates.get(int(forecast_match.group(1)))
+            if date_iso is None:
+                if allow_positional_fallback:
+                    kept.append(fact)
+            elif date_iso in (target_s, following_s):
+                kept.append(_fact_with_date(fact, date_iso))
+            continue
+        index_match = _YAHOO_INDEX_FACT_ID.match(fact_id)
+        if index_match:
+            day_idx = int(index_match.group(1))
+            date_iso = index_dates.get(day_idx)
+            if date_iso is None:
+                if allow_positional_fallback and day_idx == 0:
+                    kept.append(fact)
+            elif date_iso == target_s:
+                kept.append(_fact_with_date(fact, date_iso))
+            continue
+        # Alerts and any other Yahoo facts are not date-scoped; keep them.
+        kept.append(fact)
+    return kept
+
+
+def _filter_conflicts(conflicts, target_s, same_day):
+    """Keep only date-safe conflicts for the board's target day.
+
+    ``aggregate_weather_sources._detect_conflicts`` compares Yahoo's run-day
+    forecast tab with Open-Meteo row 0. That comparison is only meaningful for
+    a same-day board: an evening board must never serialize the run-day
+    comparison under a target-day ``today`` label. Conflicts that carry an
+    explicit date are kept only when that date is the target; undated legacy
+    conflicts are kept only for a same-day board, where the run day *is* the
+    target.
+    """
+    if not conflicts:
+        return []
+    kept = []
+    for conflict in conflicts:
+        if not isinstance(conflict, dict):
+            # Unknown shape: only a same-day board can trust the legacy run-day
+            # comparison, so a next-day board drops it rather than guess.
+            if same_day:
+                kept.append(conflict)
+            continue
+        date_iso = conflict.get("date") or conflict.get("date_iso")
+        if date_iso:
+            if str(date_iso)[:10] == target_s:
+                kept.append(conflict)
+            continue
+        if same_day:
+            kept.append(conflict)
+    return kept
 
 
 def build_payload(context, now_local=None):
@@ -485,10 +637,26 @@ def build_payload(context, now_local=None):
         advising_hourly = today_hourly
         advice_daily = today_daily
     rain_level, rain_window = _rain_window(advising_hourly)
-    yahoo_today = _first_yahoo_today(context)
-    yahoo_tomorrow = _first_yahoo_tomorrow(context)
-    yahoo_indices = _first_yahoo_index_items(context)
-    yahoo_alerts = context.get("sources", {}).get("yahoo", {}).get("payload", {}).get("alerts", [])
+    # Same-day boards may keep Yahoo's fixed today/tomorrow tabs when labels are
+    # unparseable; a next-day board must never guess by position.
+    reference_date = now_local.date()
+    allow_positional_fallback = offset == 0
+    yahoo_today, yahoo_tomorrow = _select_yahoo_forecasts(
+        context, target_s, following_s, reference_date, allow_positional_fallback
+    )
+    yahoo_indices = _select_yahoo_index_items(
+        context, target_s, reference_date, allow_positional_fallback
+    )
+    ordered_facts = _filter_ordered_facts(
+        context.get("ordered_facts", []),
+        context,
+        target_s,
+        following_s,
+        reference_date,
+        allow_positional_fallback,
+    )
+    yahoo_alerts = _yahoo_payload(context).get("alerts", [])
+    conflicts = _filter_conflicts(context.get("conflicts", []), target_s, same_day)
 
     # Calendar context (date label, weekday, season) describes the *forecast*
     # day, but part_of_day stays tied to the actual run time so each refresh can
@@ -527,9 +695,10 @@ def build_payload(context, now_local=None):
         "today": {"daily_summary": advice_daily, "hourly": today_hourly, "yahoo_summary": yahoo_today},
         "tomorrow": {"daily_summary": tomorrow_daily, "yahoo_summary": yahoo_tomorrow},
         "brief_context": {
+            "target_date_iso": target_s,
             "source_priority": context.get("source_priority", []),
-            "ordered_facts": context.get("ordered_facts", []),
-            "conflicts": context.get("conflicts", []),
+            "ordered_facts": ordered_facts,
+            "conflicts": conflicts,
             "missing_sections": context.get("missing_sections", []),
         },
         "brief": brief,

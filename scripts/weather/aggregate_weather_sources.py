@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import load_settings, read_json, write_json
+from scripts.weather.date_utils import parse_yahoo_month_day
 
 
 MULTISOURCE_SCHEMA_VERSION = "1.0"
@@ -102,12 +103,86 @@ def _open_meteo_facts(payload):
     return facts
 
 
+def _yahoo_row_date_match(day, daily_times):
+    """Match a Yahoo forecast row to an Open-Meteo day by month/day.
+
+    Yahoo labels carry no year, so the Open-Meteo series supplies it. Returns
+    ``(index, ISO date)`` for the first matching day, else ``None``.
+    """
+    parsed = parse_yahoo_month_day(day.get("date_label"))
+    if parsed is None:
+        return None
+    month, day_num = parsed
+    for idx, date_s in enumerate(daily_times):
+        if not isinstance(date_s, str):
+            continue
+        try:
+            stamp = datetime.fromisoformat(date_s).date()
+        except ValueError:
+            continue
+        if (stamp.month, stamp.day) == (month, day_num):
+            return idx, stamp.isoformat()
+    return None
+
+
 def _detect_conflicts(yahoo_payload, open_meteo_payload):
+    """Detect temperature conflicts between matching Yahoo and Open-Meteo days.
+
+    When Yahoo labels can be resolved, each row is compared against the
+    Open-Meteo row for the *same* calendar date and the conflict records that
+    date. A positional run-day comparison is used only when date matching is
+    impossible (unparseable labels or no Open-Meteo dates); that conflict stays
+    undated so a next-day board can discard it. When both sides carry dates that
+    simply do not line up, no conflict is reported rather than guessing.
+    """
     conflicts = []
-    yahoo_today = yahoo_payload.get("today_tomorrow", [{}])[0]
     daily = open_meteo_payload.get("raw", {}).get("daily", {})
-    if daily.get("temperature_2m_max"):
-        open_meteo_max = daily["temperature_2m_max"][0]
+    max_list = daily.get("temperature_2m_max") or []
+    daily_times = daily.get("time") or []
+    yahoo_rows = yahoo_payload.get("today_tomorrow") or []
+
+    dated_rows = []
+    parseable_rows = 0
+    for row in yahoo_rows:
+        if not isinstance(row, dict):
+            continue
+        if parse_yahoo_month_day(row.get("date_label")) is not None:
+            parseable_rows += 1
+        match = _yahoo_row_date_match(row, daily_times)
+        if match is not None:
+            dated_rows.append((row, match[0], match[1]))
+
+    if dated_rows:
+        for row, idx, date_iso in dated_rows:
+            if idx >= len(max_list):
+                continue
+            open_meteo_max = max_list[idx]
+            yahoo_max = row.get("temp_max_c")
+            if yahoo_max is None or open_meteo_max is None:
+                continue
+            delta = abs(float(yahoo_max) - float(open_meteo_max))
+            if delta >= 3:
+                conflicts.append(
+                    {
+                        "metric": "temp_max_c",
+                        "date": date_iso,
+                        "yahoo": yahoo_max,
+                        "open_meteo": open_meteo_max,
+                        "delta": round(delta, 1),
+                    }
+                )
+        return conflicts
+
+    if daily_times and parseable_rows:
+        # Yahoo labels and Open-Meteo dates both exist but none line up: do not
+        # guess by position, which would compare different calendar days.
+        return conflicts
+
+    # Legacy payloads with unparseable labels or no Open-Meteo dates: compare
+    # the run-day tabs positionally. The conflict stays undated on purpose.
+    yahoo_today = yahoo_rows[0] if yahoo_rows and isinstance(yahoo_rows[0], dict) else {}
+    if max_list:
+        open_meteo_max = max_list[0]
         yahoo_max = yahoo_today.get("temp_max_c")
         if yahoo_max is not None and open_meteo_max is not None:
             delta = abs(float(yahoo_max) - float(open_meteo_max))
