@@ -6,7 +6,9 @@ import pytest
 
 from scripts.weather.transform_weather import (
     WEATHER_LABELS,
+    _DETERMINISTIC_SCENES,
     _bullets,
+    _deterministic_illustration_prompt,
     _daily_summary,
     _day_context,
     _daypart_role,
@@ -25,6 +27,19 @@ from scripts.weather.transform_weather import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+def _has_caption_material(text):
+    """True when a deterministic subject reads like a caption/label."""
+    lowered = text.lower()
+    return (
+        any(ch.isdigit() for ch in text)
+        or "%" in text
+        or "poster" in lowered
+        or "hint" in lowered
+        or "forecast" in lowered
+        or "report" in lowered
+    )
+
 
 # Minimal Open-Meteo "raw" payload using a safely-past date so
 # build_payload always falls back to today_idx=0 / tomorrow_idx=1.
@@ -659,9 +674,11 @@ class TestSameDayFallbackRain:
         assert summary["weather_code"] == 0
         assert summary["condition"] == "Clear sky"
         assert summary["rain_prob_max_pct"] == 5
-        assert "poster for Clear sky" in result["brief"]["illustration_prompt"]
-        assert "rain hint=5%" in result["brief"]["illustration_prompt"]
-        assert "rain hint=80%" not in result["brief"]["illustration_prompt"]
+        subject = result["brief"]["illustration_prompt"]
+        assert subject == _DETERMINISTIC_SCENES[0]
+        # The fallback image subject is a scene, never caption material:
+        # no numbers/percentages and no poster/forecast wording.
+        assert _has_caption_material(subject) is False
         assert result["brief"]["layout_emphasis"]["rain"] == "medium"
 
     def test_rain_in_the_current_hour_is_retained(self):
@@ -718,3 +735,37 @@ class TestSameDayFallbackRain:
         assert local["brief"]["rain_window"] == "No rain expected"
         assert utc["brief"]["rain_window"] == local["brief"]["rain_window"]
         assert utc["day_context"]["run_date_iso"] == "2026-10-01"
+
+
+# ---------------------------------------------------------------------------
+# Deterministic fallback image subject (issue #16, AC3)
+# ---------------------------------------------------------------------------
+
+class TestDeterministicIllustrationPrompt:
+    """The fallback brief feeds image generation when every model fails."""
+
+    def test_every_mapped_condition_gets_a_caption_free_scene(self):
+        for code, scene in _DETERMINISTIC_SCENES.items():
+            condition = WEATHER_LABELS.get(code, f"Code {code}")
+            subject = _deterministic_illustration_prompt(
+                {"weather_code": code, "condition": condition}
+            )
+            assert subject == scene
+            assert subject.isascii()
+            assert _has_caption_material(subject) is False
+
+    def test_unknown_numeric_label_does_not_leak_digits(self):
+        # Open-Meteo can report a code with no label; never echo "Code 1234"
+        # into the art subject, which would hand the image model lettering.
+        subject = _deterministic_illustration_prompt(
+            {"weather_code": 1234, "condition": "Code 1234"}
+        )
+        assert subject == "the day's weather over a quiet city skyline"
+        assert _has_caption_material(subject) is False
+
+    def test_unknown_text_label_still_yields_a_scene(self):
+        subject = _deterministic_illustration_prompt(
+            {"weather_code": 1234, "condition": "Wild Weather"}
+        )
+        assert subject == "the day's wild weather over a quiet city skyline"
+        assert _has_caption_material(subject) is False

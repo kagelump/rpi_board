@@ -34,6 +34,61 @@ WEATHER_LABELS = {
 }
 
 
+# Caption-free deterministic art subjects. When every model attempt fails the
+# deterministic brief is handed straight to image generation, so its subject
+# must describe a scene, never lettering material: no numbers, no percentages,
+# and no poster/forecast wording that invites a baked-in caption. The
+# downstream no-text guardrail and retry correction still apply.
+_DETERMINISTIC_SCENES = {
+    0: "a wide clear sky with low sunlight raking across quiet rooftops",
+    1: "thin bright clouds drifting over a calm city skyline",
+    2: "ragged clouds crossing a pale sky above a street",
+    3: "layered clouds pressing over a still street",
+    45: "fog swallowing the far end of a riverside path",
+    48: "frost-fog curling along a quiet morning street",
+    51: "fine drizzle beading on a leaf and a wet railing",
+    53: "steady drizzle drawing thin streaks down a window",
+    55: "dense drizzle blurring a line of streetlights",
+    56: "freezing drizzle glazing a bare branch",
+    57: "freezing drizzle coating a cold railing",
+    61: "light rain dimpling puddles along a narrow lane",
+    63: "steady rain sweeping across an empty crossing",
+    65: "heavy rain hammering a flooded street under dark clouds",
+    66: "freezing rain sheening a slick street",
+    67: "freezing rain glazing a dark road",
+    71: "soft snow settling over a hushed side street",
+    73: "steady snow drifting past a row of shopfronts",
+    75: "thick snow piling on a bare tree at a quiet corner",
+    77: "snow grains skittering across a quiet lane",
+    80: "a sudden shower breaking over a startled city street",
+    81: "quick showers swept sideways across a park path",
+    82: "violent rain lashing a bent tree beside the road",
+    85: "snow showers drifting over a low skyline",
+    86: "heavy snow showers burying a park bench",
+    95: "a black storm sky split by one sharp bolt over the skyline",
+    96: "hail stinging a street beneath a bruised sky",
+    99: "violent hail hammering a torn skyline",
+}
+
+
+def _deterministic_illustration_prompt(daily):
+    """Return a scene-only subject for the deterministic fallback brief.
+
+    The fallback has no creative director, so it maps the local weather code
+    to a plain visual scene. It never emits numbers, percentages, or poster
+    wording, so a deterministic failure cannot feed caption material into the
+    primary image subject. Unknown or numeric condition labels fall back to a
+    generic scene rather than echoing the label.
+    """
+    code = daily.get("weather_code")
+    if code in _DETERMINISTIC_SCENES:
+        return _DETERMINISTIC_SCENES[code]
+    condition = str(daily.get("condition") or "").strip().lower()
+    if condition and not any(ch.isdigit() for ch in condition):
+        return f"the day's {condition} over a quiet city skyline"
+    return "the day's weather over a quiet city skyline"
+
+
 def _is_ascii_text(text):
     if not isinstance(text, str):
         return False
@@ -457,10 +512,7 @@ def build_payload(context, now_local=None):
             f"Tomorrow: {tomorrow_daily['condition']}, "
             f"{tomorrow_daily['temp_min_c']:.0f}-{tomorrow_daily['temp_max_c']:.0f}C"
         ),
-        "illustration_prompt": (
-            f"Minimal weather poster for {advice_daily['condition']} with "
-            f"rain hint={advice_daily['rain_prob_max_pct']}%"
-        ),
+        "illustration_prompt": _deterministic_illustration_prompt(advice_daily),
         "layout_emphasis": {
             "rain": "high" if advice_daily["rain_prob_max_pct"] >= 60 else "medium",
             "temperature": "high" if today_daily["temp_max_c"] >= 30 or today_daily["temp_min_c"] <= 5 else "medium",

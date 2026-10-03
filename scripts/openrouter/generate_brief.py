@@ -487,10 +487,15 @@ def _call_openrouter(
 # Wall-clock budget for one complete brief stage: every model attempt, every
 # response-body read, and every retry delay must fit inside this window. The
 # deterministic fallback is effectively instant and runs after the budget.
-DEFAULT_BRIEF_TOTAL_BUDGET_SECONDS = 60.0
+DEFAULT_BRIEF_TOTAL_BUDGET_SECONDS = 100.0
 DEFAULT_BRIEF_RETRY_BACKOFF_SECONDS = 1.5
 DEFAULT_BRIEF_RETRY_BACKOFF_MAX_SECONDS = 6.0
-DEFAULT_BRIEF_TIMEOUT_SECONDS = 20.0
+# Per-attempt wall-clock caps. The non-online model is the reliable useful
+# path and gets a cap above the measured useful-response latency; the
+# optional ":online" web-search attempt gets a shorter cap so it can never
+# starve the non-online attempts inside the shared stage budget.
+DEFAULT_BRIEF_TIMEOUT_SECONDS = 35.0
+DEFAULT_BRIEF_ONLINE_TIMEOUT_SECONDS = 20.0
 
 # Network failures get bounded backoff so a dead resolver/route is not hammered
 # immediately. Schema/response failures are cheap to re-sample and stay
@@ -536,6 +541,44 @@ def _brief_retry_backoff_seconds(settings, attempt_index):
     return min(cap, base * (2 ** max(0, attempt_index - 1)))
 
 
+def _brief_online_timeout_seconds(settings):
+    return _coerce_seconds(
+        settings.get("pipeline", {}).get("brief_online_timeout_seconds"),
+        DEFAULT_BRIEF_ONLINE_TIMEOUT_SECONDS,
+    )
+
+
+def _is_online_model(model_name):
+    return isinstance(model_name, str) and model_name.endswith(":online")
+
+
+def _brief_attempt_timeout_seconds(settings, model_name):
+    """Per-attempt wall-clock cap for one scheduled brief model.
+
+    The optional ``:online`` web-search attempt is capped shorter than the
+    non-online model and may never exceed the general per-attempt timeout, so
+    it cannot consume the window the useful non-online attempts need.
+    """
+    general = _brief_configured_timeout_seconds(settings)
+    if _is_online_model(model_name):
+        return min(general, _brief_online_timeout_seconds(settings))
+    return general
+
+
+def _brief_stage_worst_case_seconds(settings, override=None):
+    """Worst-case stage duration: every attempt's cap plus capped backoffs.
+
+    Retries only back off after transient network failures, so this is the
+    upper bound ``brief_total_budget_seconds`` must cover for every scheduled
+    attempt to keep its full cap.
+    """
+    models = _brief_model_attempts(settings, override=override)
+    total = sum(_brief_attempt_timeout_seconds(settings, name) for name in models)
+    for index in range(1, len(models)):
+        total += _brief_retry_backoff_seconds(settings, index)
+    return total
+
+
 def _request_brief_with_fallback(
     settings,
     prompt,
@@ -550,11 +593,12 @@ def _request_brief_with_fallback(
 
     The whole stage -- every attempt, body read, and retry delay -- is bounded by
     a configurable wall-clock budget (``pipeline.brief_total_budget_seconds``).
-    Each attempt is additionally bounded by the configured per-attempt timeout,
-    but never by more than what is left of that shared budget. Intermediate
-    failures are warnings so a later successful fallback does not mark the run
-    degraded; only exhaustion records an error. Returns ``(candidate, metadata)``;
-    candidate is ``None`` on exhaustion or an expired budget.
+    Each attempt is bounded by its own per-attempt cap (a shorter one for the
+    optional ``:online`` attempt), but never by more than what is left of that
+    shared budget. Intermediate failures are warnings so a later successful
+    fallback does not mark the run degraded; only exhaustion records an error.
+    Returns ``(candidate, metadata)``; candidate is ``None`` on exhaustion or
+    an expired budget.
     """
     models = _brief_model_attempts(settings, override=model_override)
     configured_timeout = _brief_configured_timeout_seconds(settings)
@@ -591,22 +635,24 @@ def _request_brief_with_fallback(
                 last_failure["budget_exhausted"] = True
             break
 
-        # Bound this attempt by both the per-attempt timeout and the shared
-        # stage deadline. ``stage_limited`` records which budget is binding so a
+        # Bound this attempt by both its per-attempt cap and the shared stage
+        # deadline. ``stage_limited`` records which budget is binding so a
         # DeadlineExceeded is described -- and retried -- accurately.
-        stage_limited = remaining <= configured_timeout
-        attempt_budget = min(configured_timeout, remaining)
+        attempt_timeout = _brief_attempt_timeout_seconds(settings, model_name)
+        stage_limited = remaining <= attempt_timeout
+        attempt_budget = min(attempt_timeout, remaining)
         attempt_deadline = clock() + attempt_budget
         deadline_scope = "stage" if stage_limited else "attempt"
         request_data = {
             "model": model_name,
+            "online_model": _is_online_model(model_name),
             "attempt": index,
             "attempt_count": len(models),
             "fallback": is_fallback,
             "temperature": settings.get("openrouter", {}).get("brief_temperature", 0.85),
             "signature": signature,
             "timeout_seconds": round(attempt_budget, 3),
-            "configured_timeout_seconds": configured_timeout,
+            "configured_timeout_seconds": attempt_timeout,
             "budget_remaining_seconds": round(remaining, 3),
             "budget_seconds": deadline.total_seconds,
         }
@@ -748,6 +794,7 @@ def _request_brief_with_fallback(
                 "total_elapsed_seconds": round(deadline.elapsed_seconds, 3),
                 "budget_seconds": deadline.total_seconds,
                 "configured_timeout_seconds": configured_timeout,
+                "online_timeout_seconds": _brief_online_timeout_seconds(settings),
                 "attempt_count": len(models),
                 "error_type": last_failure.get("error_type"),
                 "failure_category": last_failure.get("category"),

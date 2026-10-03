@@ -1,4 +1,5 @@
 """Tests for pure helpers in scripts/openrouter/generate_brief.py"""
+import hashlib
 import io
 import json
 import time
@@ -7,10 +8,14 @@ from pathlib import Path
 
 import pytest
 
+from scripts.common import load_settings
 from scripts.openrouter.generate_brief import (
+    _brief_attempt_timeout_seconds,
     _brief_model_attempts,
+    _brief_online_timeout_seconds,
     _brief_retry_backoff_seconds,
     _brief_schema_violations,
+    _brief_stage_worst_case_seconds,
     _brief_total_budget_seconds,
     _brief_violations,
     _call_openrouter,
@@ -52,6 +57,16 @@ def _display_settings():
 ARCHIVED_RESPONSE = json.loads(
     (Path(__file__).parent / "fixtures" / "issue6_brief_model_response.json").read_text(encoding="utf-8")
 )
+
+# Verbatim accepted non-online brief from run 9fc38047ce204122ac9cdaeedec17f34
+# (the Oct 2 night run whose second, non-online response took 23s). This is
+# the useful-latency replay for issue #16; the sha256/size are pinned so the
+# fixture cannot drift from the archive.
+ARCHIVED_23S_BRIEF = json.loads(
+    (Path(__file__).parent / "fixtures" / "issue16_archived_23s_brief.json").read_text(encoding="utf-8")
+)
+ARCHIVED_23S_SHA256 = "2e365c91c267b7a549656e8d596805be0b0472330678ad1a6e75d16fdb441709"
+ARCHIVED_23S_BYTE_SIZE = 915
 
 
 class TestNormalizeBriefPunct:
@@ -456,6 +471,22 @@ class TestRenderableDeterministicBrief:
         # Other deterministic fields are preserved for provenance/rendering.
         assert out["rain_level"] == "light"
 
+    def test_downgrade_keeps_the_caption_free_art_subject(self):
+        # Issue #16: when the fallback text must shrink, the art subject must
+        # stay a scene rather than reverting to caption/percentage wording.
+        deterministic = {
+            "headline": "W" * 60,
+            "subtitle": "x" * 200,
+            "illustration_prompt": (
+                "a wide clear sky with low sunlight raking across quiet rooftops"
+            ),
+        }
+        out = _renderable_deterministic_brief(_display_settings(), deterministic)
+        assert out["headline"] == "Weather update"
+        assert out["illustration_prompt"] == deterministic["illustration_prompt"]
+        assert not any(ch.isdigit() for ch in out["illustration_prompt"])
+        assert "%" not in out["illustration_prompt"]
+
     def test_non_dict_input_still_yields_safe_copy(self):
         out = _renderable_deterministic_brief(_display_settings(), None)
         assert out["headline"] == "Weather update"
@@ -811,7 +842,7 @@ class TestBriefStageBudget:
         assert all(data["attempt_elapsed_seconds"] == 0.1 for data in rejected)
 
     def test_backoff_helpers_are_bounded(self):
-        assert _brief_total_budget_seconds({}) == 60.0
+        assert _brief_total_budget_seconds({}) == 100.0
         settings = self._settings()
         assert _brief_retry_backoff_seconds(settings, 1) == 2
         assert _brief_retry_backoff_seconds(settings, 2) == 4
@@ -1050,3 +1081,170 @@ class TestTricklingBriefResponseBudget:
         # stops further attempts, so the final category is one of these two.
         assert metadata["category"] in ("attempt_timeout", "budget_exhausted")
         assert elapsed < 2.0  # never near the 2s trickle nor unbounded retries
+
+
+# ---------------------------------------------------------------------------
+# Brief attempt allocation (issue #16)
+# ---------------------------------------------------------------------------
+
+class TestBriefAttemptAllocation:
+    """The shipped schedule must fit the measured useful response latency.
+
+    Issue #16 recorded an accepted non-online brief arriving at 23s while the
+    deployed 20s per-attempt cap (inside a 60s total) cut it off. These tests
+    pin the production defaults to the observed useful latency and bound the
+    whole stage, retries and backoff included.
+    """
+
+    MEASURED_USEFUL_SECONDS = 23.0
+
+    def test_archived_23s_fixture_is_the_exact_accepted_payload(self):
+        canonical = json.dumps(ARCHIVED_23S_BRIEF, ensure_ascii=True, indent=2)
+        assert hashlib.sha256(canonical.encode("utf-8")).hexdigest() == ARCHIVED_23S_SHA256
+        assert len(canonical.encode("utf-8")) == ARCHIVED_23S_BYTE_SIZE
+        assert sorted(ARCHIVED_23S_BRIEF) == [
+            "accent", "event_ref", "headline", "illustration_prompt", "mood", "subtitle",
+        ]
+
+    def test_shipped_defaults_cover_measured_useful_latency(self):
+        settings = load_settings()
+        non_online = _brief_attempt_timeout_seconds(settings, "provider/model")
+        online = _brief_attempt_timeout_seconds(settings, "provider/model:online")
+        total = _brief_total_budget_seconds(settings)
+        worst_case = _brief_stage_worst_case_seconds(settings)
+
+        # The useful non-online path must fit the 23s response with headroom.
+        assert non_online >= self.MEASURED_USEFUL_SECONDS
+        # The optional online search gets a smaller slice than the useful path.
+        assert online < non_online
+        assert online == _brief_online_timeout_seconds(settings)
+        # Every attempt keeps its full cap: the total budget covers them all
+        # plus the capped backoff between them.
+        assert worst_case <= total, (worst_case, total)
+        assert total > self.MEASURED_USEFUL_SECONDS
+
+    def test_online_cap_never_exceeds_the_general_timeout(self):
+        settings = {
+            "pipeline": {"brief_timeout_seconds": 5, "brief_online_timeout_seconds": 20},
+        }
+        assert _brief_attempt_timeout_seconds(settings, "provider/model:online") == 5
+        assert _brief_attempt_timeout_seconds(settings, "provider/model") == 5
+
+    def test_archived_23s_non_online_response_completes_under_shipped_defaults(self, monkeypatch):
+        """Faithful replay: the slow optional online attempt times out first, the
+        archived accepted non-online brief then arrives at 23s and is accepted.
+        No provider call is made; a fake clock supplies the recorded latency."""
+        settings = load_settings()
+        assert _brief_violations(ARCHIVED_23S_BRIEF, settings) == []
+        assert settings["context"]["events_mode"] == "online_model"
+
+        clock = _FakeClock()
+        delays = []
+
+        def fake_sleep(seconds):
+            delays.append(seconds)
+            clock.advance(seconds)
+
+        def fake_call(settings, prompt, model_override=None, timeout=None, deadline=None, **kwargs):
+            if model_override.endswith(":online") or self.MEASURED_USEFUL_SECONDS > timeout:
+                # Enforce the cap: the online attempt always times out, and a
+                # success latency beyond the cap would hit the real deadline too.
+                clock.advance(timeout)
+                raise NetworkRequestError(
+                    "openrouter brief attempt exceeded its per-attempt timeout",
+                    category="attempt_timeout",
+                )
+            clock.advance(self.MEASURED_USEFUL_SECONDS)
+            return dict(ARCHIVED_23S_BRIEF)
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief._call_openrouter", fake_call)
+        monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_log", lambda *a, **k: None)
+        monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_snapshot", lambda *a, **k: None)
+
+        candidate, metadata = _request_brief_with_fallback(
+            settings, "prompt", "sig", clock=clock, sleep_fn=fake_sleep
+        )
+
+        assert candidate == ARCHIVED_23S_BRIEF
+        assert metadata["kind"] == "accepted"
+        assert metadata["attempt"] == 2  # the non-online fallback
+        assert delays == [1.5]  # one bounded backoff after the attempt timeout
+        assert clock.now == pytest.approx(
+            _brief_online_timeout_seconds(settings) + 1.5 + self.MEASURED_USEFUL_SECONDS
+        )
+        assert clock.now <= _brief_total_budget_seconds(settings)
+
+    def test_last_non_online_attempt_still_fits_after_two_timeouts(self, monkeypatch):
+        """Observed Oct 3 chain: the online and first non-online attempts time
+        out; the final non-online attempt must still have room for the 23s
+        accepted response instead of collapsing to the pictogram."""
+        settings = load_settings()
+        clock = _FakeClock()
+        timeouts = []
+
+        def fake_sleep(seconds):
+            clock.advance(seconds)
+
+        def fake_call(settings, prompt, model_override=None, timeout=None, deadline=None, **kwargs):
+            timeouts.append((model_override, timeout))
+            if len(timeouts) <= 2 or self.MEASURED_USEFUL_SECONDS > timeout:
+                # The first two attempts hit their caps; the last would too if
+                # the schedule no longer left room for the 23s response.
+                clock.advance(timeout)
+                raise NetworkRequestError("timed out", category="attempt_timeout")
+            clock.advance(self.MEASURED_USEFUL_SECONDS)
+            return dict(ARCHIVED_23S_BRIEF)
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief._call_openrouter", fake_call)
+        monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_log", lambda *a, **k: None)
+        monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_snapshot", lambda *a, **k: None)
+
+        candidate, metadata = _request_brief_with_fallback(
+            settings, "prompt", "sig", clock=clock, sleep_fn=fake_sleep
+        )
+
+        assert candidate == ARCHIVED_23S_BRIEF
+        assert metadata["kind"] == "accepted" and metadata["attempt"] == 3
+        assert len(timeouts) == 3
+        assert timeouts[2][1] >= self.MEASURED_USEFUL_SECONDS
+        assert clock.now <= _brief_total_budget_seconds(settings)
+
+    def test_online_attempt_cannot_starve_the_non_online_window(self, monkeypatch):
+        """Even if the optional online attempt burns its whole slice, the
+        non-online attempt still receives its configured per-attempt cap."""
+        settings = load_settings()
+        clock = _FakeClock()
+        seen_timeouts = []
+
+        def fake_sleep(seconds):
+            clock.advance(seconds)
+
+        def fake_call(settings, prompt, model_override=None, timeout=None, deadline=None, **kwargs):
+            seen_timeouts.append((model_override, timeout))
+            if model_override.endswith(":online"):
+                clock.advance(timeout)
+                raise NetworkRequestError("online timed out", category="attempt_timeout")
+            clock.advance(1.0)
+            return {
+                "headline": "Rain by 3pm, 22C",
+                "subtitle": "Bring a coat and an umbrella.",
+                "illustration_prompt": "Rain over a city street.",
+                "mood": "stormy",
+                "accent": "yellow",
+                "event_ref": "",
+            }
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief._call_openrouter", fake_call)
+        monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_log", lambda *a, **k: None)
+        monkeypatch.setattr("scripts.openrouter.generate_brief.record_current_snapshot", lambda *a, **k: None)
+
+        candidate, metadata = _request_brief_with_fallback(
+            settings, "prompt", "sig", clock=clock, sleep_fn=fake_sleep
+        )
+
+        assert candidate is not None and metadata["kind"] == "accepted"
+        online_timeout = next(t for m, t in seen_timeouts if m.endswith(":online"))
+        offline_timeout = next(t for m, t in seen_timeouts if not m.endswith(":online"))
+        assert online_timeout == _brief_online_timeout_seconds(settings)
+        assert offline_timeout == _brief_attempt_timeout_seconds(settings, "provider/model")
+        assert offline_timeout >= self.MEASURED_USEFUL_SECONDS

@@ -7,6 +7,7 @@ import urllib.error
 
 from PIL import Image
 
+from scripts.common import ROOT
 from scripts.history.store import GenerationStore
 from scripts.openrouter import generate_image as gi
 from scripts.openrouter.generate_image import (
@@ -54,6 +55,29 @@ def test_prompt_injects_subject_style_and_palette():
     assert "Linocut" in prompt and "carved marks" in prompt
     assert "Red Signal" in prompt and "red focal accent" in prompt
     assert "{{" not in prompt
+
+
+def test_deterministic_fallback_subject_stays_caption_free_downstream():
+    """Issue #16: the fallback art subject must not smuggle weather numbers or
+    poster wording into the image prompt; the no-text guardrail still applies."""
+    from scripts.weather.transform_weather import _deterministic_illustration_prompt
+
+    subject = _deterministic_illustration_prompt(
+        {"weather_code": 61, "condition": "Slight rain"}
+    )
+    assert not any(ch.isdigit() for ch in subject)
+    assert "poster" not in subject.lower() and "hint" not in subject.lower()
+
+    template = (
+        ROOT / "config" / "prompt_templates" / "weather_image.txt"
+    ).read_text(encoding="utf-8")
+    prompt = _inject_style_prompt(
+        template, subject, ART_STYLE_POOL[0], PALETTE_STRATEGY_POOL[0]
+    )
+
+    assert subject in prompt
+    assert "Absolutely NO TEXT" in prompt
+    assert "hint=" not in prompt
 
 
 # ---------------------------------------------------------------------------

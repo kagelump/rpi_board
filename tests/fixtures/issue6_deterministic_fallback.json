@@ -10,6 +10,6 @@
   "rain_level": "light",
   "temp_range": "18C-24C",
   "tomorrow_preview": "Tomorrow: Partly cloudy, 19-25C",
-  "illustration_prompt": "Minimal weather poster for Light drizzle with rain hint=40%",
+  "illustration_prompt": "fine drizzle beading on a leaf and a wet railing",
   "layout_emphasis": {"rain": "medium", "temperature": "medium"}
 }
