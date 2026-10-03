@@ -822,6 +822,10 @@ def main():
 
     use_openrouter = settings["pipeline"]["enable_openrouter_brief"] or args.force_openrouter
     if not use_openrouter:
+        # Issue #8: deterministic-only mode bypasses the model-failure recovery
+        # below, so run the transform-derived brief through the same
+        # compositor-fitting check before it can reach compose_board.
+        transformed["brief"] = _renderable_deterministic_brief(settings, deterministic)
         transformed["brief_source"] = "deterministic"
         record_current_log(
             "generate_brief", "deterministic_mode",

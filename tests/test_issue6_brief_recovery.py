@@ -347,3 +347,97 @@ def test_main_publishes_deterministic_fallback_when_budget_exhausted(tmp_path, m
     assert written["brief_source"] == "deterministic_fallback_error"
     assert written["brief"]["headline"] == DETERMINISTIC_FALLBACK["headline"]
     assert written["brief"]["subtitle"] == DETERMINISTIC_FALLBACK["subtitle"]
+
+
+def _run_deterministic_only_main(tmp_path, monkeypatch, deterministic_brief):
+    """Run ``generate_brief.main()`` with ``enable_openrouter_brief=false``.
+
+    ``_call_openrouter`` is replaced with a sentinel that records any provider
+    invocation, so a test can prove the deterministic-only path never asks a
+    model to rescue unrenderable copy.
+    """
+    settings = _main_settings(tmp_path, deterministic_brief)
+    settings["pipeline"]["enable_openrouter_brief"] = False
+    calls = []
+
+    def fail_on_provider_call(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("model provider called in deterministic-only mode")
+
+    monkeypatch.setattr(gb, "load_settings", lambda: settings)
+    monkeypatch.setattr(gb, "_call_openrouter", fail_on_provider_call)
+    monkeypatch.setattr(gb, "record_current_log", lambda *a, **k: None)
+    monkeypatch.setattr(gb, "record_current_snapshot", lambda *a, **k: None)
+    monkeypatch.setattr(sys, "argv", ["generate_brief.py"])
+
+    gb.main()
+    written = json.loads(Path(settings["runtime"]["brief_file"]).read_text(encoding="utf-8"))
+    return written, settings, calls
+
+
+def test_deterministic_only_mode_sanitizes_unrenderable_copy(tmp_path, monkeypatch):
+    """Issue #8: disabling OpenRouter must not bypass the renderability check.
+
+    The deterministic-only branch used to write the transform-derived brief
+    straight to disk, so deliberately unrenderable copy reached ``compose_board``
+    and raised the late text-panel ``ValueError``. Replay that input and confirm
+    the sanitized brief is what the compositor actually draws.
+    """
+    unrenderable = dict(
+        DETERMINISTIC_FALLBACK,
+        headline="W" * 60,
+        subtitle="x" * 200,
+    )
+    written, settings, calls = _run_deterministic_only_main(
+        tmp_path, monkeypatch, unrenderable
+    )
+
+    # No model provider was consulted: the deterministic path is self-sufficient.
+    assert calls == []
+    # Provenance stays deterministic and the unrenderable copy is replaced.
+    assert written["brief_source"] == "deterministic"
+    assert written["brief"]["headline"] == "Weather update"
+    assert written["brief"]["subtitle"] == "Check the forecast before heading out."
+    # The exact copy that would have aborted the compositor is what was repaired.
+    with pytest.raises(ValueError, match="do not fit the text panel"):
+        fit_panel_copy(settings, unrenderable["headline"], unrenderable["subtitle"])
+    # Non-copy deterministic fields survive the downgrade.
+    assert written["brief"]["illustration_prompt"] == unrenderable["illustration_prompt"]
+    fit_panel_copy(settings, written["brief"]["headline"], written["brief"]["subtitle"])
+
+    # Prove the sanitized copy, not the original, is what reaches the panel.
+    drawn = []
+    original_text = ImageDraw.ImageDraw.text
+
+    def capture_text(draw, xy, text, *args, **kwargs):
+        if xy[1] >= 480:
+            drawn.append(text)
+        return original_text(draw, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", capture_text)
+    output = tmp_path / "board.png"
+    preview = tmp_path / "preview.png"
+    render_board(settings, written, str(output), str(preview))
+
+    panel_copy = " ".join(drawn)
+    assert panel_copy == (
+        written["brief"]["headline"] + " " + written["brief"]["subtitle"]
+    )
+    assert unrenderable["headline"] not in panel_copy
+    assert unrenderable["subtitle"] not in panel_copy
+    assert "..." not in panel_copy and "\u2026" not in panel_copy
+    assert Image.open(output).size == (960, 640)
+    assert Image.open(preview).size == (480, 320)
+
+
+def test_deterministic_only_mode_keeps_concise_copy_unchanged(tmp_path, monkeypatch):
+    """A renderable deterministic brief still passes through byte-for-byte."""
+    concise = dict(DETERMINISTIC_FALLBACK)
+    written, settings, calls = _run_deterministic_only_main(
+        tmp_path, monkeypatch, concise
+    )
+
+    assert calls == []
+    assert written["brief_source"] == "deterministic"
+    assert written["brief"] == concise
+    fit_panel_copy(settings, written["brief"]["headline"], written["brief"]["subtitle"])
