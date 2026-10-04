@@ -12,8 +12,10 @@ from urllib.parse import parse_qs, urlparse
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
+from scripts.common import load_settings
 from scripts.history.store import GenerationStore
 from scripts.history.create_update import MAX_BODY_BYTES, SCHEMA, UpdateBusy, UpdateFailed, UpdateService
+from scripts.openrouter import art_recipes
 
 
 DASHBOARD_HTML = r"""<!doctype html>
@@ -126,6 +128,12 @@ class HistoryRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/stats":
                 self._json(self.store.stats())
                 return
+            if path in ("/api/art-recipes", "/api/art_recipes"):
+                # Issue #18: compact, read-only view of the shared published-
+                # artwork ledger and selection policy for external/Codex
+                # authoring. Contains no credentials or request bodies.
+                self._json(art_recipes.history_summary(getattr(self, "settings", None)))
+                return
             if path == "/api/runs":
                 query = parse_qs(parsed.query)
                 self._json(self.store.list_runs(
@@ -167,10 +175,18 @@ class HistoryRequestHandler(BaseHTTPRequestHandler):
             self._json({"error": f"internal error: {error}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
 
-def make_server(host: str, port: int, store: GenerationStore | None = None, updates=None):
+def make_server(
+    host: str,
+    port: int,
+    store: GenerationStore | None = None,
+    updates=None,
+    settings: dict | None = None,
+):
     store = store or GenerationStore()
     handler = type("ConfiguredHistoryHandler", (HistoryRequestHandler,), {
-        "store": store, "updates": updates or UpdateService(store),
+        "store": store,
+        "updates": updates or UpdateService(store, settings),
+        "settings": settings or load_settings(),
     })
     return ThreadingHTTPServer((host, port), handler)
 

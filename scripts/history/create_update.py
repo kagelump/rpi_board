@@ -5,6 +5,7 @@ import base64
 import binascii
 import copy
 import fcntl
+import hashlib
 import io
 import json
 import math
@@ -19,6 +20,7 @@ from zoneinfo import ZoneInfo
 from PIL import Image, UnidentifiedImageError
 
 from scripts.common import ROOT, absolute_path, load_settings, write_json
+from scripts.openrouter import art_recipes
 from scripts.render.compose_board import render_board
 from scripts.render.palette_quantize import quantize_board
 
@@ -258,6 +260,86 @@ def push_image(settings, image_path, mode=None):
     return completed
 
 
+def _pil_artwork_sha256(image) -> str | None:
+    """Stable identity for uploaded artwork pixels (no re-encode dependency)."""
+    if image is None:
+        return None
+    rgb = image.convert("RGB")
+    digest = hashlib.sha256()
+    digest.update(f"{rgb.width}x{rgb.height}:RGB".encode("ascii"))
+    digest.update(rgb.tobytes())
+    return digest.hexdigest()
+
+
+def _record_external_recipe(store, run_id, settings, payload, request, image, target_date):
+    """Book a successfully published external recipe into the shared ledger.
+
+    Only an uploaded ``hero_image``/``board_image`` counts as authored artwork.
+    A payload-only submission is rendered from the built-in deterministic
+    weather pictogram: that board was never authored or shown as artwork, so it
+    must not enter the ledger or consume a motif cooldown. Uses
+    ``metadata.recipe`` when supplied; otherwise the tags are inferred locally
+    from the supplied text/metadata (never via vision or embeddings) so an
+    external publication still steers subsequent scheduled direction. The
+    effective display mode gates previews out; repeated artwork bytes are reuse.
+    """
+    metadata = request.get("metadata") if isinstance(request.get("metadata"), dict) else {}
+    if image is None:
+        # Neither hero_image nor board_image was uploaded. Do not hash the
+        # locally composited final.png (it contains the built-in pictogram) as a
+        # surrogate authored-artwork identity.
+        result = {
+            "status": "skipped_no_uploaded_artwork",
+            "reason": (
+                "no hero_image or board_image uploaded; the local weather "
+                "pictogram is not published artwork"
+            ),
+        }
+        try:
+            store.log(
+                run_id,
+                component="art_variety",
+                event_type=f"recipe_{result['status']}",
+                message=f"External publication recipe bookkeeping: {result['status']}",
+                data=result,
+            )
+        except Exception:  # noqa: BLE001 - bookkeeping must not fail a delivered update
+            pass
+        return result
+    tags, recipe_source = art_recipes.derive_recipe_from_update(payload, metadata)
+    artwork_sha = _pil_artwork_sha256(image)
+    rationale = metadata.get("recipe_rationale") or metadata.get("rationale")
+    if not rationale:
+        rationale = (
+            "external authoring supplied explicit recipe tags"
+            if recipe_source == "metadata"
+            else "external recipe inferred locally from supplied text/metadata"
+        )
+    result = art_recipes.record_publication(
+        settings,
+        recipe=tags,
+        artwork_sha256=artwork_sha,
+        target_date=target_date,
+        source="external",
+        rationale=rationale,
+        mode=settings.get("display", {}).get("mode"),
+        style=metadata.get("style") or metadata.get("art_style"),
+        dominant_ink=metadata.get("dominant_ink") or metadata.get("palette"),
+    )
+    result["recipe_source"] = recipe_source
+    try:
+        store.log(
+            run_id,
+            component="art_variety",
+            event_type=f"recipe_{result.get('status')}",
+            message=f"External publication recipe bookkeeping: {result.get('status')}",
+            data=result,
+        )
+    except Exception:  # noqa: BLE001 - bookkeeping must not fail a delivered update
+        pass
+    return result
+
+
 class UpdateService:
     def __init__(self, store, settings=None, lock_path=None):
         self.store = store
@@ -277,7 +359,8 @@ class UpdateService:
         summary = {"brief_source": "external", "image_provider": "external",
                    "target_date": day.get("target_date_iso") or payload.get("today", {}).get("daily_summary", {}).get("date"),
                    "daypart_role": day.get("daypart_role", "external"), "timezone": payload["timezone"],
-                   "headline": payload.get("brief", {}).get("headline"), "published": False}
+                   "headline": payload.get("brief", {}).get("headline"), "published": False,
+                   "art_recipe": None}
         stage_id = None
         try:
             store.add_snapshot(run_id, "external_update", {
@@ -329,10 +412,19 @@ class UpdateService:
                     summary["published"] = True
                     store.end_stage(stage_id, status="succeeded", exit_code=0)
                     stage_id = None
+                    # Issue #18: only now, after hardware delivery and live-file
+                    # publication succeeded, may this recipe enter the shared
+                    # ledger and consume a motif cooldown.
+                    try:
+                        summary["art_recipe"] = _record_external_recipe(
+                            store, run_id, settings, payload, request, image,
+                            summary["target_date"])
+                    except Exception as error:  # noqa: BLE001 - never fail a delivered update
+                        summary["art_recipe"] = {"status": "error", "reason": str(error)}
             store.finish_run(run_id, summary=summary)
             return {"run_id": run_id, "status": "succeeded", "published": summary["published"],
                     "display_mode": settings["display"]["mode"], "run_url": f"/api/runs/{run_id}",
-                    "artifacts": artifacts}
+                    "artifacts": artifacts, "art_recipe": summary.get("art_recipe")}
         except Exception as error:
             if stage_id:
                 store.end_stage(stage_id, status="failed", exit_code=1, message=str(error))

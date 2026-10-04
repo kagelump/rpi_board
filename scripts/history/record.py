@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -10,7 +11,8 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from scripts.common import absolute_path, load_settings, read_json
-from scripts.history.store import GenerationStore
+from scripts.history.store import GenerationStore, current_run_id
+from scripts.openrouter import art_recipes
 
 
 STAGE_FILES = {
@@ -153,6 +155,87 @@ def _import_legacy(store):
     return imported
 
 
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _record_published_recipe(store, mode=None, source="scheduled"):
+    """Book the current day's artwork recipe after a *successful* panel delivery.
+
+    Reads the recipe locked into ``image_style_state.json`` by
+    ``generate_image.py`` and only records it when the effective display mode is a
+    real panel publication. Preview modes are skipped inside
+    :func:`art_recipes.record_publication`, so previews never consume a motif
+    cooldown. Repeated delivery of the same artwork bytes is booked as reuse.
+    """
+    settings = load_settings()
+    # update_display.sh always passes --mode "${DISPLAY_MODE_OVERRIDE}". That is
+    # an empty string unless the operator overrode the configured mode, so an
+    # empty override must resolve to settings.display.mode (for example
+    # local_preview) instead of being treated as a panel publication.
+    if not mode:
+        mode = (settings.get("display") or {}).get("mode")
+    state_path = _runtime_path(settings, "image_style_state_file")
+    if not state_path or not absolute_path(state_path).exists():
+        return {"status": "skipped", "reason": "no image style state"}
+    try:
+        state = read_json(state_path)
+    except (OSError, json.JSONDecodeError):
+        return {"status": "skipped", "reason": "unreadable image style state"}
+    recipe = state.get("art_recipe") if isinstance(state, dict) else None
+    if not isinstance(recipe, dict):
+        return {"status": "skipped", "reason": "no artwork recipe selected"}
+
+    target_date = state.get("art_recipe_target_date") or state.get("target_date")
+    brief_target = None
+    brief_path = _runtime_path(settings, "brief_file")
+    if brief_path and absolute_path(brief_path).exists():
+        try:
+            brief = read_json(brief_path)
+            day = brief.get("day_context", {}) if isinstance(brief, dict) else {}
+            brief_target = day.get("target_date_iso") or day.get("date_iso")
+        except (OSError, json.JSONDecodeError):
+            pass
+    if brief_target and target_date and brief_target != target_date:
+        return {
+            "status": "skipped",
+            "reason": f"recipe target {target_date} does not match brief target {brief_target}",
+        }
+
+    # The scheduled publication's artwork identity is the generated hero. If it
+    # is absent (image generation disabled, or the guardrail fell back to the
+    # deterministic pictogram) there is no authored recipe to record.
+    hero_path = _runtime_path(settings, "hero_file")
+    if not hero_path or not absolute_path(hero_path).is_file():
+        return {"status": "skipped", "reason": "no published hero artwork"}
+    artwork_sha = _sha256_file(absolute_path(hero_path))
+
+    result = art_recipes.record_publication(
+        settings,
+        recipe=recipe,
+        artwork_sha256=artwork_sha,
+        target_date=target_date or brief_target,
+        source=source,
+        rationale=recipe.get("rationale"),
+        mode=mode,
+        style=state.get("last_selected"),
+        dominant_ink=state.get("last_palette"),
+    )
+    run_id = current_run_id()
+    if run_id:
+        try:
+            store.log(
+                run_id,
+                component="art_variety",
+                event_type=f"recipe_{result.get('status')}",
+                message=f"Published-recipe bookkeeping: {result.get('status')}",
+                data=result,
+            )
+        except Exception:  # noqa: BLE001 - bookkeeping must not fail the pipeline
+            pass
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description="Record weather-board generation history")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -184,6 +267,10 @@ def main():
     finish.add_argument("run_id")
     finish.add_argument("--status", choices=("succeeded", "failed"), default="succeeded")
     finish.add_argument("--error")
+
+    publish_recipe = sub.add_parser("publish-recipe")
+    publish_recipe.add_argument("--mode", default="", help="Effective display mode; empty resolves from settings")
+    publish_recipe.add_argument("--source", default="scheduled")
 
     sub.add_parser("import-legacy")
     sub.add_parser("init")
@@ -217,6 +304,11 @@ def main():
             error_summary=args.error,
             summary=_summary_from_runtime(load_settings()),
         )
+    elif args.command == "publish-recipe":
+        print(json.dumps(
+            _record_published_recipe(store, mode=args.mode, source=args.source),
+            separators=(",", ":"),
+        ))
     elif args.command == "import-legacy":
         print(f"imported={_import_legacy(store)}")
     elif args.command == "init":

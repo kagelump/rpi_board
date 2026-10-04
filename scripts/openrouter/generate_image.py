@@ -14,6 +14,7 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 from scripts.common import ROOT, absolute_path, get_fal_api_key, get_openrouter_api_key, load_settings, read_json, utc_now_iso, write_json
 from scripts.history.store import record_current_log, record_current_snapshot
 from scripts.openrouter.network import describe_network_error, urlopen_with_context
+from scripts.openrouter import art_recipes
 from scripts.openrouter.art_guardrail import inspect_art
 from scripts.render.palette_metrics import analyze as analyze_palette
 
@@ -248,16 +249,22 @@ def _prompt_similar(prompt_a, prompt_b, threshold):
     return len(tokens_a & tokens_b) / len(tokens_a | tokens_b) >= threshold
 
 
-def _inject_style_prompt(template, illustration_prompt, style, palette):
+def _inject_style_prompt(template, illustration_prompt, style, palette, recipe=None):
     style_block = (
         f"Selected art style: {style['name']}\n"
         f"Style direction: {style['prompt']}\n"
         f"{NEGATIVE_STYLE_CONSTRAINTS}"
     )
+    recipe_block = art_recipes.recipe_directive(recipe) if recipe else ""
     prompt = template.replace("{{IMAGE_PROMPT}}", illustration_prompt.strip())
     if "{{PALETTE_GUIDANCE}}" in prompt:
         palette_block = f"{palette['name']}: {palette['prompt']}"
         prompt = prompt.replace("{{PALETTE_GUIDANCE}}", palette_block)
+    if "{{RECIPE_GUIDANCE}}" in prompt:
+        prompt = prompt.replace("{{RECIPE_GUIDANCE}}", recipe_block)
+    elif recipe_block:
+        # Older templates without the slot still receive the recipe direction.
+        prompt = prompt + "\n\n" + recipe_block
     if "{{STYLE_GUIDANCE}}" in prompt:
         prompt = prompt.replace("{{STYLE_GUIDANCE}}", style_block)
     else:
@@ -806,6 +813,49 @@ def main():
         },
     )
 
+    # Issue #18: lock a structured artwork recipe to the forecast day and make
+    # sure it is novel versus recently *published* art. The recipe is chosen
+    # locally, before any image API call; changing only style or palette cannot
+    # establish novelty. A new target date rolls a new recipe, while same-day
+    # refreshes keep the day's existing one.
+    if new_target_day:
+        style_state.pop("art_recipe", None)
+    if new_target_day or not isinstance(style_state.get("art_recipe"), dict):
+        try:
+            art_recipe = art_recipes.choose_recipe(
+                settings, target_date=target_date, daypart_role=daypart_role, payload=payload)
+        except Exception as error:  # noqa: BLE001 - variety must never break art
+            art_recipe = None
+            record_current_log(
+                "generate_image", "art_recipe_selection_failed", str(error),
+                level="warning",
+                data={"target_date": target_date, "daypart_role": daypart_role},
+            )
+        if art_recipe is not None:
+            style_state["art_recipe"] = art_recipe
+            style_state["art_recipe_target_date"] = target_date
+            record_current_log(
+                "generate_image", "art_recipe_selected",
+                f"Selected artwork recipe ({art_recipe.get('status')}): "
+                f"{art_recipe['tags'].get('subject')} / {art_recipe['tags'].get('setting')}",
+                data={
+                    "target_date": target_date,
+                    "daypart_role": daypart_role,
+                    "status": art_recipe.get("status"),
+                    "tags": art_recipe.get("tags"),
+                    "rationale": art_recipe.get("rationale"),
+                    "policy": art_recipe.get("policy"),
+                    "recent_recipe_ids": art_recipe.get("recent_recipe_ids"),
+                },
+            )
+    else:
+        art_recipe = style_state.get("art_recipe")
+        record_current_log(
+            "generate_image", "art_recipe_locked",
+            "Kept the forecast day's artwork recipe",
+            data={"target_date": target_date, "tags": art_recipes.extract_tags(art_recipe)},
+        )
+
     # Only reuse a cached hero whose recorded validation is safe under the
     # current policy: accepted art is always reusable, while a disabled
     # (never-validated) hero is reusable only while the guardrail stays disabled.
@@ -860,7 +910,7 @@ def main():
 
     template_path = ROOT / "config" / "prompt_templates" / "weather_image.txt"
     template = template_path.read_text(encoding="utf-8")
-    prompt = _inject_style_prompt(template, illustration_prompt, style, palette)
+    prompt = _inject_style_prompt(template, illustration_prompt, style, palette, recipe=art_recipe)
     provider = _resolve_image_provider(settings, args.force_openrouter)
     record_current_snapshot("image_generation_input", {
         "target_date": target_date,
@@ -868,6 +918,7 @@ def main():
         "illustration_prompt": illustration_prompt,
         "selected_style": style,
         "selected_palette": palette,
+        "art_recipe": art_recipe,
         "provider": provider,
     })
     record_current_snapshot("image_prompt", prompt, content_type="text/plain; charset=utf-8")

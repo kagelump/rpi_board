@@ -19,6 +19,7 @@ from scripts.openrouter.network import (
     failure_category,
     fetch_bytes_with_deadline,
 )
+from scripts.openrouter import art_recipes
 from scripts.ops.render_gate import compute_signature, should_regenerate
 from scripts.render.compose_board import fit_panel_copy
 
@@ -363,6 +364,10 @@ def _enrich_payload(payload, settings):
     enriched["voice"] = settings.get("voice", {})
     enriched["board_context"] = settings.get("context", {})
     enriched["recent_history"] = _load_recent_history(settings)
+    # Issue #18: expose the shared *published artwork* ledger and selection
+    # policy to scheduled authoring. Unlike recent_history (briefs written, not
+    # necessarily delivered) this only reflects recipes that reached the panel.
+    enriched["art_variety"] = art_recipes.history_summary(settings)
     # Merge the holidays/moon/calendar extras onto the weather-derived day_context.
     extra = _load_day_context_extra(settings)
     if extra:

@@ -43,11 +43,12 @@ def api(tmp_path, monkeypatch):
         path = tmp_path / key
         path.write_bytes(b"original")
         settings["runtime"][key] = str(path)
+    settings["runtime"]["art_recipe_ledger_file"] = str(tmp_path / "art_recipe_ledger.jsonl")
     store = GenerationStore(tmp_path / "history.jsonl", tmp_path / "artifacts")
     service = UpdateService(store, settings, tmp_path / "update.lock")
     pushed = []
     monkeypatch.setattr("scripts.history.create_update.push_image", lambda s, p: pushed.append(p.read_bytes()))
-    server = make_server("127.0.0.1", 0, store, service)
+    server = make_server("127.0.0.1", 0, store, service, settings)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
@@ -233,3 +234,125 @@ def test_unknown_timezone_rejected(api, payload):
     payload["timezone"] = "not/a/timezone"
     assert request({"payload": payload})[0] == 400
     assert store.stats()["runs"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Issue #18: external publications feed the shared artwork recipe ledger
+# ---------------------------------------------------------------------------
+
+
+RECIPE_METADATA = {
+    "recipe": {
+        "subject": "cyclist",
+        "motifs": ["bicycle"],
+        "setting": "riverside_path",
+        "viewpoint": "high_angle",
+        "composition": "layered_depth",
+    },
+    "style": "Linocut",
+    "dominant_ink": "Red Signal",
+}
+
+
+def _ledger_events(service):
+    path = Path(service.settings["runtime"]["art_recipe_ledger_file"])
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def test_external_publication_records_shared_recipe(api, payload):
+    request, store, service, pushed = api
+    status, raw = request({
+        "payload": payload,
+        "hero_image": encoded_image((1024, 512), "red"),
+        "metadata": RECIPE_METADATA,
+    })
+    assert status == 201, raw
+    result = json.loads(raw)
+    assert result["art_recipe"]["status"] == "published"
+    published = [event for event in _ledger_events(service) if event["event"] == "recipe_published"]
+    assert len(published) == 1
+    assert published[0]["source"] == "external"
+    assert published[0]["tags"]["subject"] == "cyclist"
+    assert published[0]["tags"]["style"] == "linocut"
+    assert published[0]["tags"]["dominant_ink"] == "red signal"
+
+
+def test_preview_and_failed_delivery_do_not_record_recipe(api, payload, monkeypatch):
+    request, store, service, pushed = api
+    status, _ = request({
+        "payload": payload,
+        "hero_image": encoded_image((1024, 512), "red"),
+        "publish": False,
+        "metadata": RECIPE_METADATA,
+    })
+    assert status == 201
+    assert _ledger_events(service) == []
+
+    def fail(*args):
+        raise RuntimeError("hardware offline")
+
+    monkeypatch.setattr("scripts.history.create_update.push_image", fail)
+    status, _ = request({
+        "payload": payload,
+        "hero_image": encoded_image((1024, 512), "blue"),
+        "metadata": RECIPE_METADATA,
+    })
+    assert status == 500
+    assert _ledger_events(service) == []
+
+
+def test_reused_external_artwork_is_booked_as_reuse(api, payload):
+    request, store, service, pushed = api
+    body = {
+        "payload": payload,
+        "hero_image": encoded_image((1024, 512), "green"),
+        "metadata": RECIPE_METADATA,
+    }
+    assert request(body)[0] == 201
+    assert request(body)[0] == 201
+    events = _ledger_events(service)
+    assert sum(event["event"] == "recipe_published" for event in events) == 1
+    assert sum(event["event"] == "recipe_reused" for event in events) == 1
+
+
+def test_payload_only_publish_does_not_record_recipe(api, payload):
+    """A native payload-only ``publish:true`` request still composes, previews,
+    and delivers the deterministic weather pictogram, but that local board was
+    never authored or shown as uploaded artwork. It must not enter the shared
+    published-artwork ledger or consume a motif cooldown -- even though a recipe
+    could be derived from ``payload.brief.illustration_prompt`` or supplied via
+    ``metadata.recipe``.
+    """
+    request, store, service, pushed = api
+    for _ in range(2):
+        status, raw = request({"payload": payload, "metadata": RECIPE_METADATA})
+        assert status == 201, raw
+        result = json.loads(raw)
+        assert result["published"] is True
+        assert result["art_recipe"]["status"] == "skipped_no_uploaded_artwork"
+        assert result["artifacts"]["final_display"]
+
+    # The board was delivered to the panel and the live files updated as before.
+    assert len(pushed) == 2
+    assert Path(service.settings["runtime"]["final_file"]).read_bytes() == pushed[-1]
+
+    # No recipe_published and no recipe_reused events: the pictogram is not art.
+    assert _ledger_events(service) == []
+
+
+def test_board_upload_records_shared_recipe(api):
+    """An uploaded full board (not just a hero) still feeds the ledger: the
+    correction only excludes the locally composited pictogram, not authored art."""
+    request, store, service, pushed = api
+    status, raw = request({
+        "board_image": encoded_image(color="red", format="JPEG"),
+        "metadata": RECIPE_METADATA,
+    })
+    assert status == 201, raw
+    assert json.loads(raw)["art_recipe"]["status"] == "published"
+    published = [event for event in _ledger_events(service) if event["event"] == "recipe_published"]
+    assert len(published) == 1
+    assert published[0]["source"] == "external"
+    assert published[0]["tags"]["subject"] == "cyclist"

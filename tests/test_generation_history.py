@@ -146,3 +146,49 @@ def test_http_api_dashboard_and_artifact(tmp_path):
     status, headers, body = request(f"/api/artifacts/{artifact_id}")
     assert status == 200 and headers["Content-Type"] == "image/png"
     assert body.startswith(b"\x89PNG")
+
+
+def test_art_recipe_endpoint_exposes_policy_and_history(tmp_path):
+    from scripts.openrouter import art_recipes
+
+    settings = {
+        "runtime": {"art_recipe_ledger_file": str(tmp_path / "recipes.jsonl")},
+        "art_variety": {"lookback_days": 14, "motif_cooldown_days": 7, "min_dimension_differences": 2},
+    }
+    art_recipes.record_publication(
+        settings,
+        recipe={"subject": "lone_walker", "motifs": ["red bag"], "setting": "residential lane",
+                "viewpoint": "eye level", "composition": "cropped edge"},
+        artwork_sha256="a" * 64,
+        target_date="2026-10-01",
+        mode="pi_display",
+    )
+    store = _store(tmp_path)
+
+    class TestHandler(HistoryRequestHandler):
+        pass
+
+    TestHandler.store = store
+    TestHandler.settings = settings
+
+    def request(path):
+        handler = TestHandler.__new__(TestHandler)
+        handler.path = path
+        handler.wfile = io.BytesIO()
+        handler.response_status = None
+        handler.response_headers = {}
+        handler.send_response = lambda status: setattr(handler, "response_status", status)
+        handler.send_header = lambda key, value: handler.response_headers.__setitem__(key, value)
+        handler.end_headers = lambda: None
+        handler.do_GET()
+        return handler.response_status, handler.wfile.getvalue()
+
+    status, body = request("/api/art-recipes")
+    assert status == 200
+    payload = json.loads(body)
+    assert payload["policy"]["motif_cooldown_days"] == 7
+    assert payload["required_dimensions"] == ["subject/motif", "viewpoint/composition"]
+    assert payload["recent_recipes"][0]["tags"]["subject"] == "lone walker"
+    text = body.decode().lower()
+    for secret in ("api_key", "bearer", "authorization", "password", "secret"):
+        assert secret not in text

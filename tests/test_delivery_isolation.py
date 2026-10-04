@@ -181,10 +181,11 @@ def delivery(tmp_path):
         target = tmp_path / key
         target.write_bytes(b"original")
         settings["runtime"][key] = str(target)
+    settings["runtime"]["art_recipe_ledger_file"] = str(tmp_path / "art_recipe_ledger.jsonl")
 
     store = GenerationStore(tmp_path / "history.jsonl", tmp_path / "artifacts")
     service = UpdateService(store, settings, tmp_path / "update.lock")
-    server = make_server("127.0.0.1", 0, store, service)
+    server = make_server("127.0.0.1", 0, store, service, settings)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 

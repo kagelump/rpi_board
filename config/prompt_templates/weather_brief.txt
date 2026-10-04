@@ -39,6 +39,13 @@ WHAT TO USE
   their opening words, sentence shapes, focal-object category, sun/cloud
   arrangement, camera distance, horizon placement, human/no-human choice, or
   visual metaphor. Deliberately change several dimensions at once.
+- INPUT_JSON.art_variety: the shared ledger of recipes that were actually
+  published to the panel, plus the novelty policy. Do not repeat the
+  subject/motif, setting, viewpoint, or composition of any recipe in
+  recent_recipes. A new recipe must differ in subject/motif AND
+  viewpoint/composition from the latest publication; changing only palette,
+  clothing, weather mood, or sky is not enough. The image stage enforces this
+  rule locally too, so start from a genuinely different concept.
 
 VOICE RULES
 - headline: <= 52 chars. LEAD WITH THE REAL WEATHER -- the dominant condition

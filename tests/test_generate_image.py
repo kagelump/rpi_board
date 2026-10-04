@@ -104,6 +104,7 @@ def _main_settings(tmp_path, *, guardrail=True, max_retries=1):
             "brief_file": str(runtime / "last_brief.json"),
             "hero_file": str(runtime / "hero.png"),
             "image_style_state_file": str(runtime / "image_style_state.json"),
+            "art_recipe_ledger_file": str(runtime / "art_recipe_ledger.jsonl"),
         },
         "pipeline": {
             "enable_openrouter_image": True,
@@ -640,3 +641,78 @@ class TestRunStatusDegraded:
         errors = [log for log in run["logs"] if log["level"] == "error"]
         assert errors
         assert "has_text" in errors[0]["data"]["reasons"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #18: shared artwork recipe selection before image generation
+# ---------------------------------------------------------------------------
+
+
+def test_art_recipe_selected_locked_and_injected_into_prompt(monkeypatch, tmp_path):
+    from scripts.openrouter import art_recipes
+
+    settings = _main_settings(tmp_path)
+    _write_brief(settings, target_date="2026-10-05")
+    captured = {}
+
+    def fake_call(_settings, prompt, _provider):
+        captured["prompt"] = prompt
+        return b"artwork"
+
+    monkeypatch.setattr(gi, "_call_image_api", fake_call)
+    monkeypatch.setattr(gi, "inspect_art", lambda b, s: {"ok": True, "status": "accepted"})
+    monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
+
+    logs = []
+    _run_main(monkeypatch, settings, logs)
+    state = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    recipe = state["art_recipe"]
+    assert recipe["status"] == "selected"
+    assert recipe["tags"]["subject"]
+    assert "Artwork recipe for this forecast day" in captured["prompt"]
+    assert recipe["rationale"]
+    selected_events = [log for log in logs if log["event_type"] == "art_recipe_selected"]
+    assert len(selected_events) == 1
+
+    # A second refresh on the same forecast day keeps the locked recipe.
+    second = {}
+
+    def fake_call_two(_settings, prompt, _provider):
+        second["prompt"] = prompt
+        return b"artwork2"
+
+    monkeypatch.setattr(gi, "_call_image_api", fake_call_two)
+    _run_main(monkeypatch, settings, logs)
+    state_again = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    assert state_again["art_recipe"]["tags"] == recipe["tags"]
+    locked_events = [log for log in logs if log["event_type"] == "art_recipe_locked"]
+    assert len(locked_events) >= 1
+
+
+def test_art_recipe_avoids_recent_published_walker(monkeypatch, tmp_path):
+    from scripts.openrouter import art_recipes
+
+    settings = _main_settings(tmp_path)
+    art_recipes.record_publication(
+        settings,
+        recipe={
+            "subject": "lone_walker",
+            "motifs": ["small red bag"],
+            "setting": "residential_lane",
+            "viewpoint": "eye_level",
+            "composition": "cropped_edge",
+        },
+        artwork_sha256="a" * 64,
+        target_date="2026-10-04",
+        mode="pi_display",
+    )
+    _write_brief(settings, target_date="2026-10-05")
+
+    monkeypatch.setattr(gi, "_call_image_api", lambda s, p, pr: b"artwork")
+    monkeypatch.setattr(gi, "inspect_art", lambda b, s: {"ok": True, "status": "accepted"})
+    monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
+
+    _run_main(monkeypatch, settings, [])
+    state = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    tags = state["art_recipe"]["tags"]
+    assert not (tags["subject"] == "lone_walker" and "small red bag" in tags["motifs"])

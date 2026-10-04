@@ -25,6 +25,12 @@ The board is designed as a **morning poster**: a generated weather illustration 
 - Local generation-history API and dashboard with an append-only event ledger,
   immutable image artifacts, model inputs/prompts, styles, seeds, guardrail
   results, stage logs, and failure history.
+- Shared artwork-recipe variety: a small local ledger of the subject/motif,
+  setting, viewpoint/composition, style, and dominant ink of artwork that was
+  actually published to the panel. A configurable lookback and motif cooldown
+  plus a two-dimension novelty rule keep newly authored art distinct from recent
+  work without extra image, vision, or embedding calls. See
+  `scripts/openrouter/art_recipes.py`.
 
 ## Repository Layout
 
@@ -60,9 +66,11 @@ times a day, each refresh playing a distinct role for the **forecast day**:
   nearly identical to the morning's (then the existing art is kept).
 
 All three runs for one forecast day share a **fixed theme**: the creative angle
-(seeded on the target date, not the time of day) and the art style (locked per
-target date) stay constant, so only the wording and any major forecast change
-move between refreshes. The "major update" sensitivity and afternoon
+(seeded on the target date, not the time of day), the art style and palette, and
+the artwork recipe (subject/motif, setting, viewpoint, composition) are locked
+per target date, so only the wording and any major forecast change move between
+refreshes. A new target date selects a recipe that is novel against the shared
+published-art ledger. The "major update" sensitivity and afternoon
 re-render threshold are tunable in `config/settings.json`
 (`regen_min_interval_seconds`, `afternoon_art_prompt_similarity_threshold`).
 
@@ -230,6 +238,7 @@ Outputs are written under `runtime/`:
 - `last_brief.json`
 - `hero.png` (when image generation succeeds)
 - `final_display.png`
+- `art_recipe_ledger.jsonl` (append-only published artwork recipe ledger)
 - `preview.png`
 - `last_success.json`
 
@@ -306,6 +315,88 @@ guardrail verdicts, and each pipeline stage's combined stdout/stderr.
 - `GET /api/runs/<run-id>`
 - `GET /api/snapshots/<snapshot-id>`
 - `GET /api/artifacts/<artifact-id>`
+- `GET /api/art-recipes` (also `/api/art_recipes`)
+
+### Artwork recipe variety
+
+Issue #18 stops the board from re-telling the same visual story (for example,
+the same lone walker with a red bag in a residential lane) while the style and
+palette rotate. `scripts/openrouter/art_recipes.py` keeps a small append-only
+ledger and selects the next recipe locally.
+
+`runtime/art_recipe_ledger.jsonl` is a JSON-lines ledger. Each line is one
+event:
+
+```json
+{
+  "schema_version": 1,
+  "event": "recipe_published",
+  "recipe_id": "short-stable-id",
+  "published_at": "ISO-8601 timestamp",
+  "target_date": "YYYY-MM-DD",
+  "source": "scheduled|external",
+  "artwork_sha256": "sha256 of the delivered artwork bytes",
+  "tags": {"subject": "...", "motifs": ["..."], "setting": "...",
+           "viewpoint": "...", "composition": "...", "style": "...",
+           "dominant_ink": "..."},
+  "rationale": "why this recipe was selected",
+  "policy": {"lookback_days": 14, "motif_cooldown_days": 7,
+             "min_dimension_differences": 2}
+}
+```
+
+Only artwork that **reached the panel** is recorded: the scheduled pipeline
+records after a successful `push_to_display`, and `POST /create_update` records
+after hardware delivery succeeds. Preview renders, `publish: false` submissions
+and failed deliveries never enter the ledger. A payload-only `POST
+/create_update` still composes and publishes the built-in weather pictogram,
+but that board was never authored artwork, so it is skipped too: neither the
+pictogram nor its generated `final.png` is hashed as a published recipe.
+Re-delivering the exact same uploaded artwork bytes is stored as a
+`recipe_reused` event against the existing recipe, so it does not reset a
+cooldown.
+
+Policy keys live under `art_variety` in `config/settings.json`:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Turn the selection policy on or off. |
+| `lookback_days` | `14` | How far back recipes are considered for novelty scoring. |
+| `motif_cooldown_days` | `7` | A repeated subject+motif is ineligible within this window. |
+| `min_dimension_differences` | `2` | Minimum differing dimensions, which must include subject/motif **and** viewpoint/composition. |
+
+Changing only the style, palette, clothing or sky never establishes novelty.
+When every local candidate is blocked by the cooldown and/or the two-dimension
+rule, selection falls back to the most-different available recipe with a
+`variety_exhausted` rationale instead of blocking an urgent forecast update.
+
+`GET /api/art-recipes` is a compact, read-only view for external/Codex
+authoring. It returns the resolved policy, the required dimensions, and the
+recent recipe tags/rationales. It never includes credentials or request bodies.
+
+External updates can supply structured tags under `metadata.recipe`:
+
+```json
+{
+  "metadata": {
+    "recipe": {
+      "subject": "cyclist",
+      "motifs": ["bicycle"],
+      "setting": "riverside_path",
+      "viewpoint": "high_angle",
+      "composition": "layered_depth"
+    },
+    "style": "Linocut",
+    "dominant_ink": "Red Signal",
+    "recipe_rationale": "distinct subject and viewpoint from the last board"
+  }
+}
+```
+
+When `metadata.recipe` is omitted, tags are inferred locally from the supplied
+text and metadata (no vision or embedding call) so a successful external
+publication still steers subsequent scheduled direction. The `POST
+/create_update` response includes the recorded `art_recipe` result.
 
 ### Upload an externally authored update
 
@@ -364,7 +455,7 @@ The wire format is `application/json`:
 | `hero_image` | Optional raw base64 PNG/JPEG artwork. Without it, composition uses a weather pictogram, never the previous run's artwork. |
 | `board_image` | Optional raw base64 PNG/JPEG complete board at exact device dimensions. Mutually exclusive with `hero_image`. |
 | `publish` | Boolean, default `true`. `false` renders and archives without touching hardware or live output files. |
-| `metadata` | Optional arbitrary JSON object, preserved in history. |
+| `metadata` | Optional arbitrary JSON object, preserved in history. Use `metadata.recipe` (plus `style`/`dominant_ink`) to describe the artwork recipe for the shared variety ledger. |
 
 All native payload fields can be supplied and are archived. The compositor uses:
 

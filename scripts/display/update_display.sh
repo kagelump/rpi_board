@@ -123,6 +123,10 @@ if [[ -n "${DISPLAY_MODE_OVERRIDE}" ]]; then
 else
   run_step "push_to_display" "push to display or preview" "${PYTHON_BIN}" scripts/display/push_to_epd.py
 fi
+# Issue #18: only a successful panel delivery consumes a recipe/cooldown. The
+# recorder skips preview modes (including an empty override that resolves to
+# local_preview) and books duplicate artwork bytes as reuse, not a new recipe.
+"${PYTHON_BIN}" scripts/history/record.py publish-recipe --mode "${DISPLAY_MODE_OVERRIDE}" >/dev/null 2>&1 || true
 if [[ -n "${GENERATION_RUN_ID}" ]]; then
   "${PYTHON_BIN}" scripts/history/record.py finish "${GENERATION_RUN_ID}" --status succeeded >/dev/null 2>&1 || true
   GENERATION_FINISHED=1

@@ -36,6 +36,7 @@
     "image_style_state_file": "runtime/image_style_state.json",
     "generation_record_file": "runtime/generations.jsonl",
     "generation_artifacts_dir": "runtime/generations",
+    "art_recipe_ledger_file": "runtime/art_recipe_ledger.jsonl",
     "log_file": "runtime/logs/weather_display.log"
   },
   "pipeline": {
@@ -69,6 +70,12 @@
     "skip_unchanged": true,
     "regen_min_interval_seconds": 86400,
     "afternoon_art_prompt_similarity_threshold": 0.8
+  },
+  "art_variety": {
+    "enabled": true,
+    "lookback_days": 14,
+    "motif_cooldown_days": 7,
+    "min_dimension_differences": 2
   },
   "voice": {
     "persona": "a wry, observant Tokyo local who notices small seasonal things and never just recites the forecast",

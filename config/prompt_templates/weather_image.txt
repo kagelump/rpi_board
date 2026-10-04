@@ -1,6 +1,8 @@
 SUBJECT (this is the most important part, render exactly this scene):
 {{IMAGE_PROMPT}}
 
+{{RECIPE_GUIDANCE}}
+
 Render the SUBJECT above as ONE single, cohesive illustration filling a 960x480
 landscape frame (2:1), edge to edge, drawn entirely in the one style named
 below. Subject and style are not separate layers: there is a single unified
