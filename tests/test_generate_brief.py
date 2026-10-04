@@ -842,7 +842,7 @@ class TestBriefStageBudget:
         assert all(data["attempt_elapsed_seconds"] == 0.1 for data in rejected)
 
     def test_backoff_helpers_are_bounded(self):
-        assert _brief_total_budget_seconds({}) == 100.0
+        assert _brief_total_budget_seconds({}) == 200.0
         settings = self._settings()
         assert _brief_retry_backoff_seconds(settings, 1) == 2
         assert _brief_retry_backoff_seconds(settings, 2) == 4

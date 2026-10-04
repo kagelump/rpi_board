@@ -56,7 +56,7 @@ def inspect_art(image_bytes, settings):
     if not model or not api_key:
         return {"ok": True, "status": "unverified", "skipped": "no model or key"}
 
-    timeout = settings.get("pipeline", {}).get("image_guardrail_timeout_seconds", 15)
+    timeout = settings.get("pipeline", {}).get("image_guardrail_timeout_seconds", 30)
     url = settings["openrouter"]["base_url"].rstrip("/") + "/chat/completions"
     img_b64 = base64.b64encode(image_bytes).decode("ascii")
     body = {

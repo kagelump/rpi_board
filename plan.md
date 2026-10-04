@@ -206,10 +206,10 @@ rpi_board/
 ## Reliability
 
 - Timeout budget:
-  - brief generation: one per-attempt timeout (default 20s) inside a
-    wall-clock stage budget (default 60s) covering all attempts and retries;
+  - brief generation: one per-attempt timeout (default 70s) inside a
+    wall-clock stage budget (default 200s) covering all attempts and retries;
     transient network failures use capped exponential backoff.
-  - image generation: 12-20s max.
+  - image generation: 24-40s max.
 - If text generation fails, use deterministic local copy.
 - If image generation fails, continue with a blank illustration area and still refresh display.
 

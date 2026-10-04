@@ -487,15 +487,15 @@ def _call_openrouter(
 # Wall-clock budget for one complete brief stage: every model attempt, every
 # response-body read, and every retry delay must fit inside this window. The
 # deterministic fallback is effectively instant and runs after the budget.
-DEFAULT_BRIEF_TOTAL_BUDGET_SECONDS = 100.0
+DEFAULT_BRIEF_TOTAL_BUDGET_SECONDS = 200.0
 DEFAULT_BRIEF_RETRY_BACKOFF_SECONDS = 1.5
 DEFAULT_BRIEF_RETRY_BACKOFF_MAX_SECONDS = 6.0
 # Per-attempt wall-clock caps. The non-online model is the reliable useful
 # path and gets a cap above the measured useful-response latency; the
 # optional ":online" web-search attempt gets a shorter cap so it can never
 # starve the non-online attempts inside the shared stage budget.
-DEFAULT_BRIEF_TIMEOUT_SECONDS = 35.0
-DEFAULT_BRIEF_ONLINE_TIMEOUT_SECONDS = 20.0
+DEFAULT_BRIEF_TIMEOUT_SECONDS = 70.0
+DEFAULT_BRIEF_ONLINE_TIMEOUT_SECONDS = 40.0
 
 # Network failures get bounded backoff so a dead resolver/route is not hammered
 # immediately. Schema/response failures are cheap to re-sample and stay

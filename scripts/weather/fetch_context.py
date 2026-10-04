@@ -167,7 +167,7 @@ def fetch_holidays(settings, year, force=False):
         if not force and isinstance(cache, dict) and cache_key in cache:
             return cache[cache_key]
 
-    timeout = context.get("context_timeout_seconds", 8)
+    timeout = context.get("context_timeout_seconds", 16)
     data = _fetch_json(f"{api_url.rstrip('/')}/{year}/{country}", settings, timeout)
     if not isinstance(data, list):
         return []
@@ -184,7 +184,7 @@ def fetch_calendar_events(settings, target_date):
     urls = context.get("calendar_ics_urls", []) or []
     if not urls:
         return []
-    timeout = context.get("context_timeout_seconds", 8)
+    timeout = context.get("context_timeout_seconds", 16)
     target = target_date.strftime("%Y%m%d")
     events = []
     for url in urls:

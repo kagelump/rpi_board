@@ -112,7 +112,7 @@ Key sections:
   rejects baked-in text, collage/photo-in-frame, and off-palette art, then
   regenerates:
   - `image_guardrail_max_retries` (default `1`): extra attempts on a rejection.
-  - `image_guardrail_timeout_seconds` (default `15`): vision-check timeout.
+  - `image_guardrail_timeout_seconds` (default `30`): vision-check timeout.
   - `image_guardrail_max_off_palette_pct` (default `0.15`): reject art with more
     than this fraction of pixels in colours the panel cannot show.
   Each check fails open, so the guardrail never blocks a board from rendering:
@@ -127,18 +127,18 @@ Key sections:
   and is reusable only while the guardrail stays off (see
   [Force a full refresh](#force-a-full-refresh)); disabled mode performs no art
   QA at all.
-- `pipeline.brief_timeout_seconds` (default `35`): per-attempt wall-clock cap
+- `pipeline.brief_timeout_seconds` (default `70`): per-attempt wall-clock cap
   for the non-online brief model. It is sized above the measured useful
   response latency (23s) with headroom, while still rejecting the known-slow
   online attempt and the 193s outlier. It bounds DNS/connect and each socket
   read as well as the whole attempt.
-- `pipeline.brief_online_timeout_seconds` (default `20`): shorter cap for the
+- `pipeline.brief_online_timeout_seconds` (default `40`): shorter cap for the
   optional `:online` web-search attempt. Event search is enrichment, so it gets
   a bounded slice and can never consume the non-online attempts' window.
-- `pipeline.brief_total_budget_seconds` (default `100`): wall-clock budget for
+- `pipeline.brief_total_budget_seconds` (default `200`): wall-clock budget for
   the entire brief stage, including every model attempt, response-body read,
-  and retry delay. The shipped schedule (online 20s + backoff 1.5s + two
-  non-online attempts of 35s each + backoff 3s = 94.5s worst case) fits inside
+  and retry delay. The shipped schedule (online 40s + backoff 1.5s + two
+  non-online attempts of 70s each + backoff 3s = 184.5s worst case) fits inside
   it, so every attempt keeps its full cap; when it expires the pipeline
   publishes the deterministic brief instead of stalling.
 - `pipeline.brief_offline_retry_count` (default `2`): bounded non-online
