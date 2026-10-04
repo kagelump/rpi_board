@@ -406,11 +406,14 @@ and use SSH for remote access.
 Successful requests return HTTP **201** with `run_id`, `run_url`, `status`,
 `published`, `display_mode`, and `artifacts.final_display` / `artifacts.preview`
 URLs. The call is synchronous and can take the duration of a panel refresh;
-the helper defaults to a 180-second timeout. `published: true` means the configured
-display delivery and live-file publication completed; `local_preview` mode skips
-physical hardware. Scheduled updates continue normally and can replace an external
-update at the next scheduled run. External uploads do not replace scheduled weather,
-brief, or hero caches.
+the helper defaults to a 180-second timeout. Hardware delivery runs in a
+dedicated short-lived process, so the long-running history service never
+retains e-paper GPIO lines or `/dev/gpiochip0` handles after a request,
+including failed ones. `published: true` means the configured display delivery
+and live-file publication completed; `local_preview` mode skips physical
+hardware. Scheduled updates continue normally and can replace an external
+update at the next scheduled run. External uploads do not replace scheduled
+weather, brief, or hero caches.
 
 Errors use JSON: **400** invalid input, **403** browser origin, **408** body-read
 timeout, **409** another update holds the shared lock, **411** missing/unsupported

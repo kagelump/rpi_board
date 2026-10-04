@@ -6,7 +6,10 @@ import binascii
 import copy
 import fcntl
 import io
+import json
 import math
+import subprocess
+import sys
 import tempfile
 from contextlib import contextmanager
 from datetime import date, datetime
@@ -16,12 +19,13 @@ from zoneinfo import ZoneInfo
 from PIL import Image, UnidentifiedImageError
 
 from scripts.common import ROOT, absolute_path, load_settings, write_json
-from scripts.display.push_to_epd import push_image
 from scripts.render.compose_board import render_board
 from scripts.render.palette_quantize import quantize_board
 
 MAX_BODY_BYTES = 16 * 1024 * 1024
 MAX_IMAGE_PIXELS = 16_000_000
+DELIVERY_SCRIPT = ROOT / "scripts" / "display" / "push_to_epd.py"
+DELIVERY_TIMEOUT_SECONDS = 300
 
 TEXT = {"type": "string", "maxLength": 4000}
 SCHEMA = {
@@ -187,6 +191,71 @@ def update_lock(path):
             yield
         finally:
             fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def _delivery_child_settings(settings, mode=None):
+    """Build the strict allowlisted config for the isolated delivery child.
+
+    Only the display mode and the two Waveshare import candidate lists are read
+    by :mod:`scripts.display.push_to_epd`. The shape is constructed explicitly
+    so the full runtime settings object -- which may hold OpenRouter/FAL
+    credentials or other auth configuration -- is never copied into the
+    temporary child file. Do not replace this with a full or recursively
+    sanitised settings object.
+    """
+    display = settings.get("display", {})
+    return {
+        "display": {
+            "mode": mode or display.get("mode"),
+            "waveshare_module_candidates": list(display.get("waveshare_module_candidates", [])),
+            "waveshare_python_lib_candidates": list(display.get("waveshare_python_lib_candidates", [])),
+        }
+    }
+
+
+def push_image(settings, image_path, mode=None):
+    """Deliver the final board from an isolated, short-lived child process.
+
+    The Waveshare/lgpio stack claims GPIO lines (and ``/dev/gpiochip0``) while
+    the driver module is imported or initialised. ``POST /create_update`` runs
+    inside the long-lived history server, so initialising the driver in-process
+    would pin those resources for the server's lifetime and make the next
+    scheduled preflight/display fail with ``GPIO busy``. A dedicated
+    interpreter guarantees the kernel releases every handle when the child
+    exits, including after import, initialisation, or display failures.
+
+    The child receives only the non-secret display config built by
+    :func:`_delivery_child_settings`; the board image path is passed
+    separately on the command line. This remains the module-level
+    ``push_image`` seam so the rest of the pipeline (and tests) can substitute
+    delivery without touching the render, archive, or locking behaviour.
+    """
+    target = Path(image_path).resolve()
+    child_settings = _delivery_child_settings(settings, mode)
+    with tempfile.TemporaryDirectory(prefix="board-delivery-") as tmp:
+        settings_file = Path(tmp) / "settings.json"
+        settings_file.write_text(json.dumps(child_settings, ensure_ascii=True), encoding="utf-8")
+        command = [
+            sys.executable or "python3",
+            str(DELIVERY_SCRIPT),
+            "--settings-file", str(settings_file),
+            "--input", str(target),
+        ]
+        if mode:
+            command.extend(["--mode", mode])
+        try:
+            completed = subprocess.run(
+                command, capture_output=True, text=True, timeout=DELIVERY_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError(
+                f"display delivery timed out after {DELIVERY_TIMEOUT_SECONDS}s"
+            ) from error
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip().splitlines()
+        tail = " | ".join(line for line in detail[-5:] if line)
+        raise RuntimeError(f"display delivery failed (exit {completed.returncode}): {tail}")
+    return completed
 
 
 class UpdateService:

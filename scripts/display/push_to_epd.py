@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import importlib
+import json
 import os
 import sys
 from pathlib import Path
@@ -30,13 +31,31 @@ def _load_epd_module(candidates):
     raise RuntimeError(f"Unable to import any waveshare module from: {candidates}")
 
 
+def _load_settings(settings_file=None):
+    """Load the display settings, optionally from an explicit JSON file.
+
+    External delivery hands the isolated child a minimal, allowlisted display
+    object (mode plus Waveshare import candidates) in ``settings_file``; the
+    scheduled helper keeps loading the full ``config/settings.json`` when none
+    is given.
+    """
+    if settings_file:
+        return json.loads(Path(settings_file).read_text(encoding="utf-8"))
+    return load_settings()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default=None)
     parser.add_argument("--mode", choices=["local_preview", "pi_display"], default=None)
+    parser.add_argument(
+        "--settings-file",
+        default=None,
+        help="Read display settings from this JSON file instead of config/settings.json.",
+    )
     args = parser.parse_args()
 
-    settings = load_settings()
+    settings = _load_settings(args.settings_file)
     image_path = absolute_path(args.input or settings["runtime"]["final_file"])
     mode = args.mode or settings["display"]["mode"]
 
