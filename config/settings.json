@@ -64,6 +64,7 @@
     "enable_openrouter_brief": true,
     "enable_openrouter_image": true,
     "enable_image_guardrail": true,
+    "image_guardrail_check_text": false,
     "image_guardrail_max_retries": 1,
     "image_guardrail_timeout_seconds": 30,
     "image_guardrail_max_off_palette_pct": 0.15,

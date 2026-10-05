@@ -117,8 +117,11 @@ Key sections:
 - `pipeline.enable_openrouter_image`: enable generated hero image.
 - `pipeline.image_provider`: `fal` (default) or `openrouter`.
 - `pipeline.enable_image_guardrail`: post-generation QA on the hero art. When on,
-  rejects baked-in text, collage/photo-in-frame, and off-palette art, then
-  regenerates:
+  rejects collage/photo-in-frame and off-palette art, then regenerates:
+  - `image_guardrail_check_text` (shipped setting `false`): text classification
+    is off, so natural signs and lettering do not reject artwork. Collage and
+    palette checks remain active. Set to `true` to restore strict text rejection;
+    older configurations that omit this key retain their previous text check.
   - `image_guardrail_max_retries` (default `1`): extra attempts on a rejection.
   - `image_guardrail_timeout_seconds` (default `30`): vision-check timeout.
   - `image_guardrail_max_off_palette_pct` (default `0.15`): reject art with more

@@ -2,6 +2,8 @@
 import io
 import json
 
+import pytest
+
 from PIL import Image
 
 import scripts.openrouter.art_guardrail as ag
@@ -38,6 +40,32 @@ def _mock_guardrail_response(monkeypatch, verdict):
 
 
 class TestInspectArtStatus:
+    @pytest.mark.parametrize("is_collage", [False, True])
+    def test_text_check_disabled_keeps_collage_check(self, monkeypatch, is_collage):
+        requests = []
+        monkeypatch.setattr(ag, "get_openrouter_api_key", lambda settings: "k")
+
+        def response(request, **kwargs):
+            requests.append(json.loads(request.data))
+            # Even an unsolicited text flag cannot cause rejection.
+            return _FakeResponse({"choices": [{"message": {"content": json.dumps({
+                "has_text": True, "is_collage": is_collage, "note": "signage",
+            })}}]})
+
+        monkeypatch.setattr(ag, "urlopen_with_context", response)
+        settings = {
+            "openrouter": {"base_url": "https://x", "image_tool_model": "m"},
+            "pipeline": {"image_guardrail_check_text": False},
+        }
+        verdict = ag.inspect_art(b"x", settings)
+        assert verdict["ok"] is (not is_collage)
+        assert verdict["status"] == ("rejected" if is_collage else "accepted")
+        assert verdict["has_text"] is None
+        assert verdict["text_check_enabled"] is False
+        prompt = requests[0]["messages"][0]["content"][0]["text"]
+        assert '"has_text"' not in prompt
+        assert "Ignore all text" in prompt
+
     def test_no_key_marks_unverified(self, monkeypatch):
         monkeypatch.setattr(ag, "get_openrouter_api_key", lambda settings: None)
         verdict = ag.inspect_art(b"x", {"openrouter": {"text_model": "m"}, "pipeline": {}})
