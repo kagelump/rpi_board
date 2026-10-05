@@ -50,41 +50,43 @@ RECORDED_DIMENSIONS = SELECTION_DIMENSIONS + ("style", "dominant_ink")
 
 # Local vocabularies. They are weather-agnostic and colour-free; the image
 # template still enforces the four-ink palette. ``time`` keeps night subjects out
-# of daytime runs (and vice versa) and ``dry_only`` keeps obviously-dry scenes
-# out of rain/snow forecasts.
+# of daytime runs (and vice versa) and ``weather`` classifies each subject's
+# rain compatibility so the selector never stages rain on a dry day (or dry-only
+# scenes on a wet one): ``wet`` subjects are eligible only for wet forecasts,
+# ``dry`` subjects only for dry forecasts, and ``neutral`` subjects for both.
 SUBJECT_POOL = [
     {"name": "lone_walker", "subject": "a lone pedestrian walking away from the viewer",
-     "motifs": ["small red bag"], "time": "any", "dry_only": False},
+     "motifs": ["small red bag"], "time": "any", "weather": "neutral"},
     {"name": "umbrella_crowd", "subject": "a small cluster of commuters under umbrellas",
-     "motifs": ["umbrellas"], "time": "any", "dry_only": False},
+     "motifs": ["umbrellas"], "time": "any", "weather": "wet"},
     {"name": "cyclist", "subject": "a cyclist leaning into the weather",
-     "motifs": ["bicycle"], "time": "any", "dry_only": False},
+     "motifs": ["bicycle"], "time": "any", "weather": "neutral"},
     {"name": "street_vendor", "subject": "a street vendor beside a small cart",
-     "motifs": ["steam"], "time": "day", "dry_only": False},
+     "motifs": ["steam"], "time": "day", "weather": "neutral"},
     {"name": "delivery_rider", "subject": "a delivery rider pausing at a corner",
-     "motifs": ["insulated box"], "time": "any", "dry_only": False},
+     "motifs": ["insulated box"], "time": "any", "weather": "neutral"},
     {"name": "bird_flock", "subject": "a flock of birds turning against the sky",
-     "motifs": ["birds"], "time": "any", "dry_only": False},
+     "motifs": ["birds"], "time": "any", "weather": "neutral"},
     {"name": "window_cat", "subject": "a cat watching from a window ledge",
-     "motifs": ["potted plant"], "time": "any", "dry_only": False},
+     "motifs": ["potted plant"], "time": "any", "weather": "neutral"},
     {"name": "balcony_laundry", "subject": "laundry lifting on a balcony line",
-     "motifs": ["bedsheets"], "time": "any", "dry_only": True},
+     "motifs": ["bedsheets"], "time": "any", "weather": "dry"},
     {"name": "train_bridge", "subject": "a train crossing a bridge",
-     "motifs": ["railing"], "time": "any", "dry_only": False},
+     "motifs": ["railing"], "time": "any", "weather": "neutral"},
     {"name": "waterside_figure", "subject": "a lone figure at the water's edge",
-     "motifs": ["fishing rod"], "time": "any", "dry_only": False},
+     "motifs": ["fishing rod"], "time": "any", "weather": "neutral"},
     {"name": "dog_walker", "subject": "a person walking a small dog",
-     "motifs": ["leash"], "time": "any", "dry_only": False},
+     "motifs": ["leash"], "time": "any", "weather": "neutral"},
     {"name": "lantern_street", "subject": "paper lanterns strung over a street",
-     "motifs": ["lanterns"], "time": "night", "dry_only": False},
+     "motifs": ["lanterns"], "time": "night", "weather": "neutral"},
     {"name": "gardener", "subject": "a gardener tending a few plants",
-     "motifs": ["watering can"], "time": "day", "dry_only": False},
+     "motifs": ["watering can"], "time": "day", "weather": "neutral"},
     {"name": "sleeping_cat", "subject": "a cat asleep on a warm ledge",
-     "motifs": ["tail"], "time": "any", "dry_only": False},
+     "motifs": ["tail"], "time": "any", "weather": "neutral"},
     {"name": "school_children", "subject": "children hurrying through a school gate",
-     "motifs": ["backpacks"], "time": "day", "dry_only": False},
+     "motifs": ["backpacks"], "time": "day", "weather": "neutral"},
     {"name": "window_worker", "subject": "a worker seen through a rain-streaked window",
-     "motifs": ["desk lamp"], "time": "any", "dry_only": False},
+     "motifs": ["desk lamp"], "time": "any", "weather": "wet"},
 ]
 
 SETTING_POOL = [
@@ -727,15 +729,98 @@ def _allows_time(item: dict[str, Any], is_night: bool) -> bool:
     return window == ("night" if is_night else "day")
 
 
+def _subject_weather_class(item: dict[str, Any]) -> str:
+    """Return ``wet``, ``dry`` or ``neutral`` for a subject-pool entry.
+
+    The explicit ``weather`` field is authoritative; ``dry_only`` is still
+    honoured so any externally-authored pool entry with the old shape keeps
+    working.
+    """
+    weather = str(item.get("weather") or "").strip().lower()
+    if weather in {"wet", "dry", "neutral"}:
+        return weather
+    return "dry" if item.get("dry_only") else "neutral"
+
+
+def _allows_weather(item: dict[str, Any], wet: bool) -> bool:
+    """True when a subject is compatible with the forecast's wetness.
+
+    Wet-only subjects are eligible only for wet forecasts, dry-only subjects
+    only for dry forecasts, and neutral subjects for both. Filtering runs before
+    novelty scoring so the selector can never stage rain on a dry day.
+    """
+    weather = _subject_weather_class(item)
+    if weather == "wet":
+        return wet
+    if weather == "dry":
+        return not wet
+    return True
+
+
+_WET_CONDITION_WORDS = ("rain", "shower", "drizzle", "storm", "snow", "sleet")
+_WET_WEATHER_CODES = frozenset({
+    51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77,
+    80, 81, 82, 85, 86, 95, 96, 99,
+})
+
+# Wording that makes a brief explicitly dry. "no rain" must win over the
+# ``rain`` substring when classifying the accepted brief.
+_EXPLICIT_DRY_PHRASES = (
+    "no rain",
+    "without rain",
+    "rain-free",
+    "rain free",
+    "rainless",
+    "stays dry",
+    "stay dry",
+    "staying dry",
+    "remains dry",
+    "remain dry",
+    "and dry",
+    "dry day",
+    "dry days",
+    "dry weather",
+    "dry forecast",
+    "dry conditions",
+    "dry spell",
+    "dry spells",
+    "dry stretch",
+    "dry period",
+    "dry morning",
+    "dry afternoon",
+    "dry evening",
+    "dry night",
+    "dry today",
+    "dry tomorrow",
+    "dry throughout",
+    "dry all day",
+    "mostly dry",
+    "largely dry",
+    "no showers",
+    "no drizzle",
+    "won't rain",
+    "will not rain",
+    "umbrella not needed",
+    "umbrellas not needed",
+    "no umbrella needed",
+    "no need for an umbrella",
+    "no need for umbrella",
+)
+
+
 def _is_wet(payload: dict[str, Any] | None) -> bool:
     payload = payload or {}
     daily = (payload.get("today") or {}).get("daily_summary") or {}
     condition = str(daily.get("condition") or "").lower()
-    if any(word in condition for word in ("rain", "shower", "drizzle", "storm", "snow", "sleet")):
+    if any(word in condition for word in _WET_CONDITION_WORDS):
         return True
     code = daily.get("weather_code")
-    if isinstance(code, int) and code in {51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77, 80, 81, 82, 85, 86, 95, 96, 99}:
+    if isinstance(code, int) and code in _WET_WEATHER_CODES:
         return True
+    # An explicit dry claim in the brief ("no rain", "stays dry") must not be
+    # read as wet just because of the ``rain`` substring.
+    if brief_declares_dry(payload):
+        return False
     # Fall back to the transformed brief context when available.
     text = " ".join(
         str(value)
@@ -745,7 +830,107 @@ def _is_wet(payload: dict[str, Any] | None) -> bool:
         )
         if value
     ).lower()
-    return any(word in text for word in ("rain", "shower", "drizzle", "snow"))
+    return any(word in text for word in _WET_CONDITION_WORDS)
+
+
+def brief_weather_text(payload: dict[str, Any] | None) -> str:
+    """Flatten the accepted brief's user-visible weather wording."""
+    payload = payload or {}
+    brief = payload.get("brief") if isinstance(payload.get("brief"), dict) else {}
+    context = payload.get("brief_context") if isinstance(payload.get("brief_context"), dict) else {}
+    parts: list[Any] = [
+        brief.get("headline"),
+        brief.get("subtitle"),
+        brief.get("illustration_prompt"),
+        brief.get("event_ref"),
+        context.get("summary"),
+    ]
+    bullets = brief.get("bullets")
+    if isinstance(bullets, list):
+        parts.extend(bullets)
+    return _norm_text(" ".join(str(part) for part in parts if part))
+
+
+def brief_declares_dry(payload: dict[str, Any] | None) -> bool:
+    """True when the accepted brief explicitly tells the user it stays dry."""
+    text = brief_weather_text(payload)
+    if not text:
+        return False
+    return any(phrase in text for phrase in _EXPLICIT_DRY_PHRASES)
+
+
+def _forecast_is_wet(payload: dict[str, Any] | None) -> bool:
+    """Whether the accepted forecast/brief supports rain staging.
+
+    The brief's explicit dry meaning is authoritative: a "stays dry" / "no rain"
+    brief is never treated as wet, so rain-specific recipes stay ineligible.
+    """
+    if brief_declares_dry(payload):
+        return False
+    return _is_wet(payload)
+
+
+_RECIPE_WET_KEYWORDS = (
+    "umbrella", "rain", "drizzle", "shower", "storm", "sleet", "snow", "wet",
+    "puddle", "downpour", "raincoat", "gumboot", "waterproof",
+)
+_RECIPE_DRY_KEYWORDS = ("laundry", "bedsheet", "line-dried", "sun-dried")
+
+
+def _subject_pool_weather(subject: Any) -> str | None:
+    target = _norm_text(subject)
+    if not target:
+        return None
+    for item in SUBJECT_POOL:
+        if _norm_text(item["name"]) == target:
+            return _subject_weather_class(item)
+    return None
+
+
+def recipe_weather_class(recipe: Any) -> str:
+    """Classify a recipe's staging weather as ``wet``, ``dry`` or ``neutral``.
+
+    The known subject pool is authoritative; for external/free-text recipes the
+    recorded subject/motif wording is inspected with a small, deterministic
+    keyword table so umbrella/rain staging can never be treated as neutral.
+    """
+    tags = extract_tags(recipe)
+    pool_class = _subject_pool_weather(tags.get("subject"))
+    if pool_class in {"wet", "dry"}:
+        return pool_class
+    parts: list[Any] = [
+        tags.get("subject"),
+        tags.get("subject_text"),
+        tags.get("setting"),
+        tags.get("setting_text"),
+    ]
+    motifs = tags.get("motifs")
+    if isinstance(motifs, list):
+        parts.extend(motifs)
+    text = _norm_text(" ".join(str(part) for part in parts if part))
+    if any(keyword in text for keyword in _RECIPE_WET_KEYWORDS):
+        return "wet"
+    if any(keyword in text for keyword in _RECIPE_DRY_KEYWORDS):
+        return "dry"
+    return "neutral"
+
+
+def recipe_conflicts_with_brief(
+    recipe: Any, payload: dict[str, Any] | None
+) -> bool:
+    """True when injecting ``recipe`` staging would contradict the forecast.
+
+    Rain-specific staging is invalid on a dry forecast and dry-only staging is
+    invalid on a wet one. Neutral recipes never conflict, and the accepted
+    brief's explicit dry claim always wins over a loose wet heuristic.
+    """
+    weather = recipe_weather_class(recipe)
+    if weather == "neutral":
+        return False
+    forecast_wet = _forecast_is_wet(payload)
+    if weather == "wet":
+        return not forecast_wet
+    return forecast_wet
 
 
 def build_candidates(
@@ -753,7 +938,11 @@ def build_candidates(
 ) -> list[dict[str, Any]]:
     """Product of weather-compatible subject/setting/viewpoint/composition pools."""
     is_night = _is_night(daypart_role)
-    subjects = [item for item in SUBJECT_POOL if _allows_time(item, is_night) and not (wet and item.get("dry_only"))]
+    subjects = [
+        item
+        for item in SUBJECT_POOL
+        if _allows_time(item, is_night) and _allows_weather(item, wet)
+    ]
     settings = [item for item in SETTING_POOL if _allows_time(item, is_night)]
     viewpoints = [item for item in VIEWPOINT_POOL]
     compositions = [item for item in COMPOSITION_POOL]
@@ -788,10 +977,11 @@ def recipe_directive(recipe: dict[str, Any]) -> str:
     tags = extract_tags(recipe)
     motif = ", ".join(tags.get("motifs") or []) or "no distinct motif"
     return (
-        "Artwork recipe for this forecast day. Keep the weather, light and emotional "
-        "beat described in SUBJECT, but stage the scene with this subject/motif, "
-        "setting, viewpoint and composition (these are authoritative for staging, "
-        "not for the forecast; keep the four-ink e-ink constraints below):\n"
+        "Artwork recipe for this forecast day. The weather, light and emotional "
+        "beat described in SUBJECT remain authoritative and must not be "
+        "contradicted. Within that weather, stage the scene with this "
+        "subject/motif, setting, viewpoint and composition (these control staging "
+        "and framing only; keep the four-ink e-ink constraints below):\n"
         f"- Subject and motif: {tags.get('subject_text') or tags.get('subject') or 'unspecified'} "
         f"(motif: {motif})\n"
         f"- Setting: {tags.get('setting_text') or tags.get('setting') or 'unspecified'}\n"
@@ -862,8 +1052,12 @@ def choose_recipe(
     cooldown = recent_published_recipes(
         settings, now=now, days=policy["motif_cooldown_days"]
     )
-    candidates = build_candidates(daypart_role=daypart_role, wet=_is_wet(payload))
+    forecast_wet = _forecast_is_wet(payload)
+    candidates = build_candidates(daypart_role=daypart_role, wet=forecast_wet)
     if not candidates:
+        # No weather-compatible subject exists: return ``None`` so the caller
+        # keeps the accepted brief's original SUBJECT instead of forcing a
+        # contradictory recipe.
         return None
 
     rng = random.Random(_selection_seed(target_date))
@@ -880,18 +1074,23 @@ def choose_recipe(
     if eligible:
         chosen = max(eligible, key=lambda candidate: _score_candidate(candidate, recent, policy))
         status = "selected"
+        score = _score_candidate(chosen, recent, policy)
+        forecast_name = "wet" if forecast_wet else "dry"
+        chosen_weather = recipe_weather_class(chosen["tags"])
         rationale = (
-            f"novelty score {_score_candidate(chosen, recent, policy):.1f} vs "
-            f"{len(recent)} recent recipe(s); subject/motif and viewpoint/composition "
-            f"both differ from the latest publication"
+            f"novelty score {score:.1f} vs {len(recent)} recent recipe(s); "
+            f"weather-compatible for a {forecast_name} forecast ({chosen_weather} "
+            f"staging); subject/motif and viewpoint/composition both differ from "
+            f"the latest publication"
         )
     else:
         chosen = _fallback_candidate(candidates, recent)
         status = "variety_exhausted"
         rationale = (
-            "variety_exhausted: every local candidate was blocked by the motif "
-            "cooldown or the two-dimension rule; chose the most-different available "
-            "subject/setting/viewpoint so an urgent forecast update is not blocked"
+            "variety_exhausted: every weather-compatible local candidate was "
+            "blocked by the motif cooldown or the two-dimension rule; chose the "
+            "most-different available subject/setting/viewpoint so an urgent "
+            "forecast update is not blocked"
         )
 
     return {
@@ -902,6 +1101,8 @@ def choose_recipe(
         "target_date": target_date,
         "selected_at": utc_now_iso(),
         "tags": dict(chosen["tags"]),
+        "forecast_weather": "wet" if forecast_wet else "dry",
+        "recipe_weather": recipe_weather_class(chosen["tags"]),
         "policy": {
             "lookback_days": policy["lookback_days"],
             "motif_cooldown_days": policy["motif_cooldown_days"],

@@ -716,3 +716,130 @@ def test_art_recipe_avoids_recent_published_walker(monkeypatch, tmp_path):
     state = json.loads(_state_path(settings).read_text(encoding="utf-8"))
     tags = state["art_recipe"]["tags"]
     assert not (tags["subject"] == "lone_walker" and "small red bag" in tags["motifs"])
+
+
+# ---------------------------------------------------------------------------
+# Issue #20: recipe staging must not contradict the accepted dry brief
+# ---------------------------------------------------------------------------
+
+
+ARCHIVED_DRY_FIXTURE = (
+    ROOT / "tests" / "fixtures" / "issue20_archived_dry_oct6_brief.json"
+)
+
+
+def _archived_dry_payload():
+    return json.loads(ARCHIVED_DRY_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _umbrella_recipe():
+    return {
+        "status": "selected",
+        "rationale": "novelty test",
+        "forecast_weather": "dry",
+        "recipe_weather": "wet",
+        "tags": {
+            "subject": "umbrella_crowd",
+            "subject_text": "a small cluster of commuters under umbrellas",
+            "motif": "umbrellas",
+            "motifs": ["umbrellas"],
+            "setting": "rooftop_terrace",
+            "setting_text": "a rooftop terrace",
+            "viewpoint": "close_crop",
+            "viewpoint_text": "tight crop on the main motif",
+            "composition": "upward",
+            "composition_text": "upward view through the scene toward the sky",
+        },
+    }
+
+
+def _neutral_recipe():
+    return {
+        "status": "selected",
+        "tags": {
+            "subject": "school_children",
+            "subject_text": "children hurrying through a school gate",
+            "motif": "backpacks",
+            "motifs": ["backpacks"],
+            "setting": "school_gate",
+            "setting_text": "a school gate",
+            "viewpoint": "eye_level",
+            "viewpoint_text": "eye-level medium shot",
+            "composition": "emblem",
+            "composition_text": "near-symmetrical emblem with one deliberate disruption",
+        },
+    }
+
+
+def test_inject_style_prompt_suppresses_conflicting_recipe_on_dry_brief():
+    payload = _archived_dry_payload()
+    template = (
+        ROOT / "config" / "prompt_templates" / "weather_image.txt"
+    ).read_text(encoding="utf-8")
+
+    prompt = _inject_style_prompt(
+        template, payload["brief"]["illustration_prompt"],
+        ART_STYLE_POOL[0], PALETTE_STRATEGY_POOL[0],
+        recipe=_umbrella_recipe(), forecast=payload,
+    )
+
+    lowered = prompt.lower()
+    assert "artwork recipe" not in lowered
+    assert "umbrella" not in lowered
+    assert "ginkgo" in lowered  # the accepted brief's SUBJECT still drives the art
+
+
+def test_inject_style_prompt_keeps_compatible_recipe_on_dry_brief():
+    payload = _archived_dry_payload()
+    template = (
+        ROOT / "config" / "prompt_templates" / "weather_image.txt"
+    ).read_text(encoding="utf-8")
+
+    prompt = _inject_style_prompt(
+        template, payload["brief"]["illustration_prompt"],
+        ART_STYLE_POOL[0], PALETTE_STRATEGY_POOL[0],
+        recipe=_neutral_recipe(), forecast=payload,
+    )
+
+    assert "Artwork recipe for this forecast day" in prompt
+    assert "backpacks" in prompt
+
+
+def test_main_suppresses_locked_conflicting_recipe_and_logs_decision(monkeypatch, tmp_path):
+    settings = _main_settings(tmp_path)
+    payload = _archived_dry_payload()
+    with open(settings["runtime"]["brief_file"], "w", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+    # A recipe locked from an earlier refresh of the same target day can predate
+    # the weather filter, so the prompt path must still refuse contradictory art.
+    state = {
+        "target_date": "2026-10-06",
+        "art_recipe_target_date": "2026-10-06",
+        "art_recipe": _umbrella_recipe(),
+        "last_selected": ART_STYLE_POOL[0]["name"],
+        "last_palette": PALETTE_STRATEGY_POOL[0]["name"],
+    }
+    _state_path(settings).write_text(json.dumps(state), encoding="utf-8")
+
+    captured = {}
+
+    def fake_call(_settings, prompt, _provider):
+        captured["prompt"] = prompt
+        return b"artwork"
+
+    monkeypatch.setattr(gi, "_call_image_api", fake_call)
+    monkeypatch.setattr(gi, "inspect_art", lambda b, s: {"ok": True, "status": "accepted"})
+    monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
+
+    logs = []
+    _run_main(monkeypatch, settings, logs)
+
+    assert "umbrella" not in captured["prompt"].lower()
+    assert "ginkgo" in captured["prompt"].lower()
+    suppressed = [log for log in logs if log["event_type"] == "art_recipe_suppressed"]
+    assert len(suppressed) == 1
+    assert suppressed[0]["data"]["recipe_weather"] == "wet"
+    assert suppressed[0]["data"]["forecast_weather"] == "dry"
+    # The audited selected recipe is still recorded in state.
+    state_after = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    assert state_after["art_recipe"]["tags"]["subject"] == "umbrella_crowd"

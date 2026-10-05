@@ -211,6 +211,156 @@ def test_candidate_pools_filter_night_and_rain():
 
 
 # ---------------------------------------------------------------------------
+# Issue #20: weather compatibility in both directions
+# ---------------------------------------------------------------------------
+
+ARCHIVED_DRY_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "issue20_archived_dry_oct6_brief.json"
+)
+
+
+def _archived_dry_payload():
+    """The archived 2026-10-06 input that produced the buggy umbrella artwork.
+
+    Snapshot ``2b43c2d198a04c05ae34d639038f16d1`` from live run
+    ``976e7473dc1d4ed78e974eee1556d876``: Open-Meteo ``rain_sum_mm: 0.0`` and an
+    8% maximum rain probability, with a brief that explicitly stays dry.
+    """
+    return json.loads(ARCHIVED_DRY_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _wet_payload():
+    return {
+        "today": {"daily_summary": {
+            "condition": "Light rain", "weather_code": 61,
+            "rain_prob_max_pct": 80, "rain_sum_mm": 4.2,
+        }},
+        "brief": {
+            "headline": "Rain on and off: take an umbrella",
+            "subtitle": "Showers through the afternoon with a light breeze.",
+            "rain_level": "light",
+            "illustration_prompt": "A commuter under an umbrella crossing a wet lane.",
+        },
+        "brief_context": {},
+    }
+
+
+def test_subject_weather_classification_is_deterministic():
+    assert ar.recipe_weather_class(
+        {"subject": "umbrella_crowd", "motifs": ["umbrellas"]}) == "wet"
+    assert ar.recipe_weather_class(
+        {"subject": "window_worker", "motifs": ["desk lamp"]}) == "wet"
+    assert ar.recipe_weather_class(
+        {"subject": "balcony_laundry", "motifs": ["bedsheets"]}) == "dry"
+    assert ar.recipe_weather_class(
+        {"subject": "lone_walker", "motifs": ["small red bag"]}) == "neutral"
+    # Free-text external recipes are still caught by the keyword fallback.
+    assert ar.recipe_weather_class(
+        {"subject_text": "a crowd beneath open umbrellas"}) == "wet"
+    # "no rain" must not be misread as rain by the wetness heuristic.
+    no_rain = {"brief": {"subtitle": "clouds above, no rain."}}
+    assert ar.brief_declares_dry(no_rain) is True
+    assert ar._is_wet(no_rain) is False
+
+
+def test_candidate_pools_filter_both_wet_and_dry_subjects():
+    dry = {
+        item["tags"]["subject"]
+        for item in ar.build_candidates(daypart_role="midday", wet=False)
+    }
+    wet = {
+        item["tags"]["subject"]
+        for item in ar.build_candidates(daypart_role="midday", wet=True)
+    }
+
+    # Rain-specific subjects must never appear on a dry forecast.
+    assert "umbrella_crowd" not in dry
+    assert "window_worker" not in dry
+    # Dry-only subjects must never appear on a wet forecast.
+    assert "balcony_laundry" not in wet
+    # Neutral subjects remain eligible for both classes.
+    assert "lone_walker" in dry and "lone_walker" in wet
+    # Compatible families remain available.
+    assert "umbrella_crowd" in wet and "window_worker" in wet
+    assert "balcony_laundry" in dry
+
+
+def test_archived_dry_oct6_replay_never_selects_rain_staging(tmp_path):
+    """Replay the archived dry run.
+
+    With the same recent ledger history the pre-fix selector picked
+    ``umbrella_crowd``; the weather filter must make that impossible and keep the
+    selected staging dry/neutral.
+    """
+    payload = _archived_dry_payload()
+    assert ar._is_wet(payload) is False
+    assert ar.brief_declares_dry(payload) is True
+
+    settings = _settings(tmp_path)
+    now = datetime(2026, 10, 5, 12, 3, 20, tzinfo=timezone.utc)
+    ar.record_publication(
+        settings,
+        recipe={
+            "subject": "window_worker",
+            "motifs": ["desk lamp"],
+            "setting": "under_overpass",
+            "viewpoint": "high_angle",
+            "composition": "emblem",
+        },
+        artwork_sha256="a" * 64,
+        target_date="2026-10-05",
+        mode="pi_display",
+        published_at="2026-10-05T04:03:03+00:00",
+    )
+
+    chosen = ar.choose_recipe(
+        settings, target_date="2026-10-06", daypart_role="primary",
+        payload=payload, now=now,
+    )
+
+    assert chosen is not None
+    tags = chosen["tags"]
+    assert tags["subject"] not in {"umbrella_crowd", "window_worker"}
+    assert "umbrellas" not in (tags.get("motifs") or [])
+    assert ar.recipe_weather_class(tags) in {"dry", "neutral"}
+    assert chosen["forecast_weather"] == "dry"
+    assert chosen["recipe_weather"] in {"dry", "neutral"}
+    assert chosen["rationale"]
+
+
+def test_recipe_conflicts_with_brief_both_directions():
+    dry = _archived_dry_payload()
+    wet = _wet_payload()
+
+    assert ar.recipe_conflicts_with_brief(
+        {"subject": "umbrella_crowd", "motifs": ["umbrellas"]}, dry) is True
+    assert ar.recipe_conflicts_with_brief(
+        {"subject": "window_worker", "motifs": ["desk lamp"]}, dry) is True
+    assert ar.recipe_conflicts_with_brief(
+        {"subject": "balcony_laundry", "motifs": ["bedsheets"]}, wet) is True
+    # Neutral subjects are compatible with both classes.
+    assert ar.recipe_conflicts_with_brief(
+        {"subject": "lone_walker", "motifs": ["small red bag"]}, dry) is False
+    assert ar.recipe_conflicts_with_brief(
+        {"subject": "lone_walker", "motifs": ["small red bag"]}, wet) is False
+    # Wet-specific subjects are valid once the brief supports rain.
+    assert ar.recipe_conflicts_with_brief(
+        {"subject": "umbrella_crowd", "motifs": ["umbrellas"]}, wet) is False
+
+
+def test_no_weather_compatible_candidate_preserves_brief(monkeypatch, tmp_path):
+    """No compatible candidate means ``None``: the caller keeps the accepted
+    brief's original subject instead of forcing contradictory recipe staging."""
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(ar, "build_candidates", lambda **kwargs: [])
+    chosen = ar.choose_recipe(
+        settings, target_date="2026-10-06", daypart_role="primary",
+        payload=_archived_dry_payload(),
+    )
+    assert chosen is None
+
+
+# ---------------------------------------------------------------------------
 # Publication / reuse bookkeeping
 # ---------------------------------------------------------------------------
 

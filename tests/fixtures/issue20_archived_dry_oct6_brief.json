@@ -1,0 +1,353 @@
+{
+  "brief": {
+    "accent": "none",
+    "event_ref": "",
+    "headline": "Overcast and dry: your Tuesday walk stays dry",
+    "illustration_prompt": "Worm's-eye view looking straight up through the branches of a ginkgo tree. The branches radiate outward, with clusters of yellowing leaves framing the scene. Through the gaps, a soft grey overcast sky is visible. At the bottom edge of the frame, the silhouette of a person stands still, facing upward. A single leaf is falling past the left side. The light is diffuse and calm. The emotional beat is a quiet pause under the autumn sky. No text, letters, numbers, signs, or logos.",
+    "mood": "calm",
+    "subtitle": "A mild evening for a walk along the river - clouds above, no rain."
+  },
+  "brief_context": {
+    "conflicts": [],
+    "missing_sections": [
+      "yahoo:alerts",
+      "yahoo:pollen"
+    ],
+    "ordered_facts": [
+      {
+        "date_iso": "2026-10-06",
+        "id": "yahoo.today_tomorrow.1.condition",
+        "source": "yahoo",
+        "text": "10月6日(火): 曇り",
+        "value": "曇り"
+      },
+      {
+        "date_iso": "2026-10-06",
+        "id": "yahoo.today_tomorrow.1.temperature",
+        "source": "yahoo",
+        "text": "Temp 20C to 27C",
+        "value": {
+          "max_c": 27,
+          "min_c": 20
+        }
+      },
+      {
+        "date_iso": "2026-10-06",
+        "id": "yahoo.today_tomorrow.1.precip.0-6",
+        "source": "yahoo",
+        "text": "Rain 0-6=10％",
+        "value": 10
+      },
+      {
+        "date_iso": "2026-10-06",
+        "id": "yahoo.today_tomorrow.1.precip.6-12",
+        "source": "yahoo",
+        "text": "Rain 6-12=10％",
+        "value": 10
+      },
+      {
+        "date_iso": "2026-10-06",
+        "id": "yahoo.today_tomorrow.1.precip.12-18",
+        "source": "yahoo",
+        "text": "Rain 12-18=10％",
+        "value": 10
+      },
+      {
+        "date_iso": "2026-10-06",
+        "id": "yahoo.today_tomorrow.1.precip.18-24",
+        "source": "yahoo",
+        "text": "Rain 18-24=10％",
+        "value": 10
+      },
+      {
+        "id": "open_meteo.daily.0",
+        "source": "open_meteo",
+        "text": "2026-10-05 max=21.2C min=17.1C rain_prob_max=41%",
+        "value": {
+          "date": "2026-10-05",
+          "rain_prob_max_pct": 41,
+          "temp_max_c": 21.2,
+          "temp_min_c": 17.1
+        }
+      },
+      {
+        "id": "open_meteo.daily.1",
+        "source": "open_meteo",
+        "text": "2026-10-06 max=27.0C min=19.7C rain_prob_max=8%",
+        "value": {
+          "date": "2026-10-06",
+          "rain_prob_max_pct": 8,
+          "temp_max_c": 27.0,
+          "temp_min_c": 19.7
+        }
+      },
+      {
+        "id": "open_meteo.daily.2",
+        "source": "open_meteo",
+        "text": "2026-10-07 max=25.0C min=18.3C rain_prob_max=8%",
+        "value": {
+          "date": "2026-10-07",
+          "rain_prob_max_pct": 8,
+          "temp_max_c": 25.0,
+          "temp_min_c": 18.3
+        }
+      }
+    ],
+    "source_priority": [
+      "yahoo",
+      "open_meteo",
+      "other"
+    ],
+    "target_date_iso": "2026-10-06"
+  },
+  "brief_source": "openrouter",
+  "day_context": {
+    "date_iso": "2026-10-06",
+    "date_pretty": "Tuesday, October 6",
+    "daypart_role": "primary",
+    "is_weekend": false,
+    "month_name": "October",
+    "part_of_day": "night",
+    "run_date_iso": "2026-10-05",
+    "season": "autumn",
+    "sunrise": "05:39",
+    "sunset": "17:18",
+    "target_date_iso": "2026-10-06",
+    "weekday": "Tuesday"
+  },
+  "generated_at_local": "2026-10-05T21:01:45+09:00",
+  "location": {
+    "label": "Tokyo 153-0051",
+    "latitude": 35.658,
+    "longitude": 139.6835,
+    "timezone": "Asia/Tokyo"
+  },
+  "timezone": "Asia/Tokyo",
+  "today": {
+    "daily_summary": {
+      "condition": "Overcast",
+      "date": "2026-10-06",
+      "rain_prob_max_pct": 8,
+      "rain_sum_mm": 0.0,
+      "temp_max_c": 27.0,
+      "temp_min_c": 19.7,
+      "weather_code": 3
+    },
+    "hourly": [
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 8,
+        "temp_c": 19.9,
+        "time": "2026-10-06T00:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 8,
+        "temp_c": 19.9,
+        "time": "2026-10-06T01:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 8,
+        "temp_c": 19.8,
+        "time": "2026-10-06T02:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 8,
+        "temp_c": 19.8,
+        "time": "2026-10-06T03:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 7,
+        "temp_c": 19.7,
+        "time": "2026-10-06T04:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 5,
+        "temp_c": 19.7,
+        "time": "2026-10-06T05:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 4,
+        "temp_c": 19.7,
+        "time": "2026-10-06T06:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 4,
+        "temp_c": 20.3,
+        "time": "2026-10-06T07:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 6,
+        "temp_c": 21.5,
+        "time": "2026-10-06T08:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 6,
+        "temp_c": 22.9,
+        "time": "2026-10-06T09:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 5,
+        "temp_c": 24.0,
+        "time": "2026-10-06T10:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 3,
+        "temp_c": 25.1,
+        "time": "2026-10-06T11:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 2,
+        "temp_c": 26.2,
+        "time": "2026-10-06T12:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 2,
+        "temp_c": 26.5,
+        "time": "2026-10-06T13:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 3,
+        "temp_c": 27.0,
+        "time": "2026-10-06T14:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 4,
+        "temp_c": 27.0,
+        "time": "2026-10-06T15:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 4,
+        "temp_c": 26.6,
+        "time": "2026-10-06T16:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 4,
+        "temp_c": 25.6,
+        "time": "2026-10-06T17:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 4,
+        "temp_c": 24.4,
+        "time": "2026-10-06T18:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 3,
+        "temp_c": 23.3,
+        "time": "2026-10-06T19:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 1,
+        "temp_c": 22.2,
+        "time": "2026-10-06T20:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 21.2,
+        "time": "2026-10-06T21:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 20.6,
+        "time": "2026-10-06T22:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 1,
+        "temp_c": 20.2,
+        "time": "2026-10-06T23:00",
+        "weather_code": 1
+      }
+    ],
+    "yahoo_summary": {
+      "condition": "曇り",
+      "date_iso": "2026-10-06",
+      "date_label": "10月6日",
+      "precipitation_windows": [
+        {
+          "period": "0-6",
+          "precipitation_probability_pct": 10,
+          "raw": "10％"
+        },
+        {
+          "period": "6-12",
+          "precipitation_probability_pct": 10,
+          "raw": "10％"
+        },
+        {
+          "period": "12-18",
+          "precipitation_probability_pct": 10,
+          "raw": "10％"
+        },
+        {
+          "period": "18-24",
+          "precipitation_probability_pct": 10,
+          "raw": "10％"
+        }
+      ],
+      "temp_max_c": 27,
+      "temp_max_delta": "+5",
+      "temp_min_c": 20,
+      "temp_min_delta": "+2",
+      "wave": "0.5メートル後1メートル",
+      "weekday": "火",
+      "wind": "北の風後やや強く"
+    }
+  },
+  "tomorrow": {
+    "daily_summary": {
+      "condition": "Overcast",
+      "date": "2026-10-07",
+      "rain_prob_max_pct": 8,
+      "rain_sum_mm": 0.0,
+      "temp_max_c": 25.0,
+      "temp_min_c": 18.3,
+      "weather_code": 3
+    },
+    "yahoo_summary": {}
+  }
+}

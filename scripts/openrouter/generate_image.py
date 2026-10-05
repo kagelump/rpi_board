@@ -249,13 +249,22 @@ def _prompt_similar(prompt_a, prompt_b, threshold):
     return len(tokens_a & tokens_b) / len(tokens_a | tokens_b) >= threshold
 
 
-def _inject_style_prompt(template, illustration_prompt, style, palette, recipe=None):
+def _inject_style_prompt(template, illustration_prompt, style, palette, recipe=None,
+                         *, forecast=None):
     style_block = (
         f"Selected art style: {style['name']}\n"
         f"Style direction: {style['prompt']}\n"
         f"{NEGATIVE_STYLE_CONSTRAINTS}"
     )
-    recipe_block = art_recipes.recipe_directive(recipe) if recipe else ""
+    # Issue #20: the accepted brief/forecast is authoritative. When the selected
+    # recipe's staging would contradict it (for example an umbrella crowd on a
+    # forecast that explicitly stays dry), inject no recipe guidance so the
+    # brief's original SUBJECT wins instead of forcing contradictory rain art.
+    recipe_block = ""
+    if recipe and not (
+        forecast is not None and art_recipes.recipe_conflicts_with_brief(recipe, forecast)
+    ):
+        recipe_block = art_recipes.recipe_directive(recipe)
     prompt = template.replace("{{IMAGE_PROMPT}}", illustration_prompt.strip())
     if "{{PALETTE_GUIDANCE}}" in prompt:
         palette_block = f"{palette['name']}: {palette['prompt']}"
@@ -846,6 +855,8 @@ def main():
                     "rationale": art_recipe.get("rationale"),
                     "policy": art_recipe.get("policy"),
                     "recent_recipe_ids": art_recipe.get("recent_recipe_ids"),
+                    "forecast_weather": art_recipe.get("forecast_weather"),
+                    "recipe_weather": art_recipe.get("recipe_weather"),
                 },
             )
     else:
@@ -908,9 +919,34 @@ def main():
         )
         print(f"image-regenerate: cached hero has no recorded acceptance ({reuse_reason})")
 
+    # Issue #20: record when an audited recipe is suppressed because its staging
+    # contradicts the accepted brief/forecast. The brief's SUBJECT still drives
+    # the image, so forecast accuracy is preserved.
+    if art_recipe is not None and art_recipes.recipe_conflicts_with_brief(art_recipe, payload):
+        record_current_log(
+            "generate_image", "art_recipe_suppressed",
+            "Suppressed artwork recipe staging that contradicts the accepted forecast/brief",
+            level="warning",
+            data={
+                "target_date": target_date,
+                "daypart_role": daypart_role,
+                "tags": art_recipes.extract_tags(art_recipe),
+                "recipe_weather": art_recipes.recipe_weather_class(art_recipe),
+                "forecast_weather": (
+                    "wet" if art_recipes._forecast_is_wet(payload) else "dry"
+                ),
+                "rationale": (
+                    "The accepted brief/forecast is authoritative; the brief's "
+                    "original SUBJECT is used instead of contradictory recipe staging."
+                ),
+            },
+        )
+
     template_path = ROOT / "config" / "prompt_templates" / "weather_image.txt"
     template = template_path.read_text(encoding="utf-8")
-    prompt = _inject_style_prompt(template, illustration_prompt, style, palette, recipe=art_recipe)
+    prompt = _inject_style_prompt(
+        template, illustration_prompt, style, palette, recipe=art_recipe, forecast=payload
+    )
     provider = _resolve_image_provider(settings, args.force_openrouter)
     record_current_snapshot("image_generation_input", {
         "target_date": target_date,
