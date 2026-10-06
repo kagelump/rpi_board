@@ -1,4 +1,4 @@
-.PHONY: update setup preflight run dev timer force tomorrow history history-import history-install
+.PHONY: update setup preflight run dev timer force tomorrow history history-import history-install history-correct-issue21
 
 update:
 	git pull --ff-only origin main
@@ -32,6 +32,9 @@ history:
 
 history-import:
 	python3 scripts/history/record.py import-legacy
+
+history-correct-issue21:
+	python3 scripts/history/correct_recipe_publication.py --known-suppressed-dry-oct6
 
 history-install:
 	./scripts/ops/install_history_server.sh

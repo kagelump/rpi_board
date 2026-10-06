@@ -367,6 +367,26 @@ The rejected choice stays visible in run history as `art_recipe_selected` /
 `art_recipe_suppressed` without entering the published-art ledger or consuming a
 motif cooldown.
 
+The ledger is append-only, so a mistaken `recipe_published` row that already
+reached it is retired -- never edited or deleted -- by appending a
+`recipe_publication_corrected` row keyed by the exact `artwork_sha256`. The
+correction records a reason and issue reference. Every reader
+(`published_recipes`, `recent_published_recipes`, novelty/cooldown selection,
+and `GET /api/art-recipes`) ignores a publication whose artwork hash has an
+appended correction, so it cannot consume a cooldown or influence selection.
+The correction rows stay in the raw ledger for audit while
+`GET /api/art-recipes` ignores the retired rows entirely.
+
+Apply the two known issue #21 corrections (the umbrella rows booked for the
+suppressed dry 2026-10-06 deliveries) with the idempotent helper:
+
+```bash
+python3 scripts/history/correct_recipe_publication.py --known-suppressed-dry-oct6
+```
+
+Re-running it appends nothing. Generic one-off corrections use
+`--artwork-sha256 <exact-sha256> --reason "<why this row is false>"`.
+
 Policy keys live under `art_variety` in `config/settings.json`:
 
 | Key | Default | Meaning |

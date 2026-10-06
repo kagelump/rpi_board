@@ -1,6 +1,7 @@
 """Tests for issue #18: shared artwork recipe ledger, motif cooldowns, and the
 two-dimension novelty rule."""
 import json
+import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -786,3 +787,202 @@ def test_failed_delivery_leaves_no_published_recipe(tmp_path, monkeypatch):
 
     assert result["status"] == "skipped"
     assert ar.published_recipes(settings) == []
+
+
+# ---------------------------------------------------------------------------
+# Issue #21: append-only corrections for false published-recipe rows
+# ---------------------------------------------------------------------------
+
+LEGACY_LEDGER_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "issue21_archived_pi_ledger.jsonl"
+)
+GENUINE_UMBRELLA_SHA = (
+    "2c965e74bbacd043e502c8bf8e32230f98a31bd885eea904c8e624f2f283c602"
+)
+FALSE_UMBRELLA_SHAS = (
+    "f0fd7abfb63127778631da754b9d0beaeb6471dea765aed5d51475ef20229bbb",
+    "4b5c5a585e69eb86b16609e372fb76ce120a5c597b551b6574beaeb837ac23de",
+)
+UMBRELLA_RECIPE_ID = "4e9fd1194606ca7a580e"
+CORRECTED_AT = "2026-10-07T00:00:00+00:00"
+
+
+def _legacy_ledger_settings(tmp_path):
+    ledger = tmp_path / "art_recipe_ledger.jsonl"
+    shutil.copy(LEGACY_LEDGER_FIXTURE, ledger)
+    settings = {
+        "runtime": {"art_recipe_ledger_file": str(ledger)},
+        "art_variety": {
+            "lookback_days": 14,
+            "motif_cooldown_days": 7,
+            "min_dimension_differences": 2,
+        },
+    }
+    return settings, ledger
+
+
+def _raw_events(ledger):
+    return [
+        json.loads(line)
+        for line in ledger.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def test_issue21_fixture_corrections_retire_only_the_false_umbrella_rows(tmp_path):
+    settings, ledger = _legacy_ledger_settings(tmp_path)
+    assert len(ar.published_recipes(settings)) == 5
+
+    results = ar.correct_legacy_suppressed_publications(
+        settings, corrected_at=CORRECTED_AT
+    )
+
+    assert [result["status"] for result in results] == ["corrected", "corrected"]
+    assert {result["artwork_sha256"] for result in results} == set(FALSE_UMBRELLA_SHAS)
+    assert all(result["issue"] == "#21" for result in results)
+    assert all(result["reason"] for result in results)
+
+    # Append-only: the original publication rows and the correction rows all
+    # remain in the raw ledger.
+    raw = _raw_events(ledger)
+    assert len(raw) == 7
+    assert sum(event["event"] == ar.RECIPE_EVENT for event in raw) == 5
+    correction_rows = [
+        event for event in raw if event["event"] == ar.RECIPE_CORRECTION_EVENT
+    ]
+    assert len(correction_rows) == 2
+    assert {event["artwork_sha256"] for event in correction_rows} == set(
+        FALSE_UMBRELLA_SHAS
+    )
+
+    published = ar.published_recipes(settings)
+    hashes = {event["artwork_sha256"] for event in published}
+    assert len(published) == 3
+    assert GENUINE_UMBRELLA_SHA in hashes
+    assert set(FALSE_UMBRELLA_SHAS).isdisjoint(hashes)
+    # The genuine Oct 5 umbrella publication keeps the shared recipe id visible;
+    # the correction is keyed on artwork hash, not recipe id.
+    genuine = [
+        event for event in published if event["artwork_sha256"] == GENUINE_UMBRELLA_SHA
+    ]
+    assert genuine[0]["recipe_id"] == UMBRELLA_RECIPE_ID
+
+
+def test_issue21_corrected_rows_do_not_feed_readers_or_selection(tmp_path):
+    settings, _ = _legacy_ledger_settings(tmp_path)
+    now = datetime(2026, 10, 7, 12, tzinfo=timezone.utc)
+    before_ids = [
+        event["recipe_id"]
+        for event in ar.recent_published_recipes(settings, now=now, days=14)
+    ]
+    assert before_ids.count(UMBRELLA_RECIPE_ID) == 3
+
+    ar.correct_legacy_suppressed_publications(settings, corrected_at=CORRECTED_AT)
+
+    recent = ar.recent_published_recipes(settings, now=now, days=14)
+    assert [event["recipe_id"] for event in recent].count(UMBRELLA_RECIPE_ID) == 1
+    assert {event["artwork_sha256"] for event in recent}.isdisjoint(FALSE_UMBRELLA_SHAS)
+
+    summary = ar.history_summary(settings, now=now)
+    assert summary["count"] == 3
+    assert [entry["recipe_id"] for entry in summary["recent_recipes"]].count(
+        UMBRELLA_RECIPE_ID
+    ) == 1
+    # The API/authoring summary ignores corrected rows entirely: the false
+    # artwork hashes never appear in it.
+    summary_text = json.dumps(summary)
+    for false_sha in FALSE_UMBRELLA_SHAS:
+        assert false_sha not in summary_text
+
+    # Cooldown/recent scoring sees one real umbrella publication, not the
+    # two phantoms that used to share its recipe id.
+    advisory = ar.evaluate_recipe(
+        settings,
+        {"subject": "umbrella_crowd", "motifs": ["umbrellas"]},
+        now=now,
+    )
+    assert advisory["in_motif_cooldown"] is True
+    assert advisory["conflicting_recipe_ids"] == [UMBRELLA_RECIPE_ID]
+
+    # The scheduled selector's recent ids reflect the same corrected view.
+    chosen = ar.choose_recipe(
+        settings,
+        target_date="2026-10-07",
+        daypart_role="morning",
+        payload={"brief": {"headline": "Dry and clear", "illustration_prompt": "dry streets"}},
+        now=now,
+    )
+    assert chosen is not None
+    assert chosen["recent_recipe_ids"].count(UMBRELLA_RECIPE_ID) == 1
+
+
+def test_issue21_corrections_are_idempotent_and_unambiguous(tmp_path):
+    settings, ledger = _legacy_ledger_settings(tmp_path)
+    first = ar.correct_legacy_suppressed_publications(settings, corrected_at=CORRECTED_AT)
+    assert [result["status"] for result in first] == ["corrected", "corrected"]
+    rows_after_first = len(_raw_events(ledger))
+
+    second = ar.correct_legacy_suppressed_publications(settings, corrected_at=CORRECTED_AT)
+    assert [result["status"] for result in second] == [
+        "already_corrected",
+        "already_corrected",
+    ]
+    assert len(_raw_events(ledger)) == rows_after_first
+
+    correction_rows = ar.corrections(settings)
+    assert len(correction_rows) == 2
+    assert len({event["artwork_sha256"] for event in correction_rows}) == 2
+
+
+def test_issue21_generic_correction_requires_a_real_publication_row(tmp_path):
+    settings, ledger = _legacy_ledger_settings(tmp_path)
+
+    unknown = ar.correct_publication(
+        settings,
+        artwork_sha256="a" * 64,
+        reason="there is no such published row",
+        corrected_at=CORRECTED_AT,
+    )
+    assert unknown["status"] == "skipped_unknown_artwork"
+    assert len(_raw_events(ledger)) == 5
+
+    corrected = ar.correct_publication(
+        settings,
+        artwork_sha256=FALSE_UMBRELLA_SHAS[0],
+        reason="phantom row from a suppressed recipe",
+        corrected_at=CORRECTED_AT,
+    )
+    assert corrected["status"] == "corrected"
+    assert corrected["issue"] == "#21"
+    assert len(_raw_events(ledger)) == 6
+    assert len(ar.published_recipes(settings)) == 4
+
+    repeat = ar.correct_publication(
+        settings,
+        artwork_sha256=FALSE_UMBRELLA_SHAS[0],
+        reason="duplicate attempt must not append",
+    )
+    assert repeat["status"] == "already_corrected"
+    assert len(_raw_events(ledger)) == 6
+
+
+def test_issue21_cli_appends_known_corrections_idempotently(tmp_path, monkeypatch):
+    from scripts.history import correct_recipe_publication as cli
+
+    settings, ledger = _legacy_ledger_settings(tmp_path)
+    monkeypatch.setattr(cli, "load_settings", lambda: settings)
+
+    argv = [
+        "--known-suppressed-dry-oct6",
+        "--corrected-at",
+        CORRECTED_AT,
+    ]
+    assert cli.main(argv) == 0
+    assert len(_raw_events(ledger)) == 7
+    assert len(ar.published_recipes(settings)) == 3
+
+    # A second rollout is a successful no-op and does not duplicate corrections.
+    assert cli.main(argv) == 0
+    assert len(_raw_events(ledger)) == 7
+    assert len(ar.published_recipes(settings)) == 3
+    assert len(ar.corrections(settings)) == 2

@@ -15,6 +15,11 @@ recorded as a reuse event instead, so it cannot reset a motif cooldown.
 
 Everything here is pure local bookkeeping. The only shared state is the
 append-only JSON-lines ledger under the configured runtime directory.
+
+Issue #21: a mistaken ``recipe_published`` row is never edited or deleted.
+An appended ``recipe_publication_corrected`` row keyed by the exact
+``artwork_sha256`` retires it from every reader while the original row stays
+in the ledger for audit.
 """
 from __future__ import annotations
 
@@ -32,6 +37,9 @@ from scripts.common import absolute_path, load_settings, utc_now_iso
 RECIPE_SCHEMA_VERSION = 1
 RECIPE_EVENT = "recipe_published"
 RECIPE_REUSE_EVENT = "recipe_reused"
+# Issue #21: append-only correction row that retires a falsely recorded
+# ``recipe_published`` entry without editing or deleting the original.
+RECIPE_CORRECTION_EVENT = "recipe_publication_corrected"
 
 DEFAULT_LOOKBACK_DAYS = 14
 DEFAULT_MOTIF_COOLDOWN_DAYS = 7
@@ -47,6 +55,34 @@ SUBJECT_DIMENSIONS = ("subject", "motif")
 VIEWPOINT_DIMENSIONS = ("viewpoint", "composition")
 SELECTION_DIMENSIONS = ("subject", "motif", "setting", "viewpoint", "composition")
 RECORDED_DIMENSIONS = SELECTION_DIMENSIONS + ("style", "dominant_ink")
+
+# Issue #21: two ``recipe_published`` rows were booked *after* successful
+# dry 2026-10-06 deliveries even though the selected wet umbrella recipe had
+# been suppressed before generation and none of its staging reached the
+# hero. They stay in the raw ledger for audit but are corrected (append-only,
+# keyed by exact artwork hash) so no reader counts them as visual history.
+LEGACY_SUPPRESSED_PUBLICATION_CORRECTIONS = (
+    {
+        "artwork_sha256": (
+            "f0fd7abfb63127778631da754b9d0beaeb6471dea765aed5d51475ef20229bbb"
+        ),
+        "reason": (
+            "False publication from the dry 2026-10-06 08:01 JST delivery "
+            "(run 7dacc9c3bf8042068068afd10d91d8f9): the wet umbrella recipe "
+            "was suppressed before generation and absent from the hero."
+        ),
+    },
+    {
+        "artwork_sha256": (
+            "4b5c5a585e69eb86b16609e372fb76ce120a5c597b551b6574beaeb837ac23de"
+        ),
+        "reason": (
+            "False publication from the dry 2026-10-06 13:01 JST delivery "
+            "(run c092b9fd53bd4586a941187259a9d7c6): the wet umbrella recipe "
+            "was suppressed before generation and absent from the hero."
+        ),
+    },
+)
 
 # Local vocabularies. They are weather-agnostic and colour-free; the image
 # template still enforces the four-ink palette. ``time`` keeps night subjects out
@@ -356,7 +392,9 @@ def load_ledger(settings: dict[str, Any] | None = None) -> list[dict[str, Any]]:
                         continue
                     if event.get("schema_version") != RECIPE_SCHEMA_VERSION:
                         continue
-                    if event.get("event") not in {RECIPE_EVENT, RECIPE_REUSE_EVENT}:
+                    if event.get("event") not in {
+                        RECIPE_EVENT, RECIPE_REUSE_EVENT, RECIPE_CORRECTION_EVENT
+                    }:
                         continue
                     events.append(event)
             finally:
@@ -368,8 +406,40 @@ def load_ledger(settings: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         return []
 
 
+def _corrected_artwork_hashes(events: list[dict[str, Any]]) -> set[str]:
+    """Artwork hashes whose published-recipe row has an appended correction."""
+    return {
+        event["artwork_sha256"]
+        for event in events
+        if event.get("event") == RECIPE_CORRECTION_EVENT
+        and isinstance(event.get("artwork_sha256"), str)
+    }
+
+
+def corrections(settings: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Return the append-only publication-correction events (for audit)."""
+    return [
+        event
+        for event in load_ledger(settings)
+        if event.get("event") == RECIPE_CORRECTION_EVENT
+    ]
+
+
 def published_recipes(settings: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    return [event for event in load_ledger(settings) if event.get("event") == RECIPE_EVENT]
+    """Published recipes excluding rows retired by an appended correction.
+
+    Corrections are append-only: the mistaken ``recipe_published`` row stays
+    in the raw ledger for audit, but it is not artwork that reached the panel,
+    so it must not feed cooldowns, novelty scoring, or the published summary.
+    """
+    events = load_ledger(settings)
+    corrected = _corrected_artwork_hashes(events)
+    return [
+        event
+        for event in events
+        if event.get("event") == RECIPE_EVENT
+        and event.get("artwork_sha256") not in corrected
+    ]
 
 
 def _parse_timestamp(value: Any) -> datetime | None:
@@ -711,6 +781,148 @@ def record_publication(
         "variety_status": advisory["status"],
         "advisory": advisory,
     }
+
+
+def _append_correction_if_absent(settings: dict[str, Any], event: dict[str, Any]) -> bool:
+    """Append a correction unless an equal one already exists.
+
+    The existence check and append share one exclusive lock, so a repeated or
+    concurrent rollout cannot insert duplicate correction rows.
+    """
+    path = ledger_path(settings)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = (
+        json.dumps(event, ensure_ascii=True, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+    with path.open("a+b", buffering=0) as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            handle.seek(0)
+            for raw_line in handle.read().splitlines():
+                try:
+                    existing = json.loads(raw_line)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+                if (
+                    isinstance(existing, dict)
+                    and existing.get("event") == RECIPE_CORRECTION_EVENT
+                    and existing.get("artwork_sha256") == event.get("artwork_sha256")
+                ):
+                    return False
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() > 0:
+                handle.seek(-1, os.SEEK_END)
+                if handle.read(1) != b"\n":
+                    handle.write(b"\n")
+            handle.write(line)
+            os.fsync(handle.fileno())
+            return True
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _correction_for(
+    events: list[dict[str, Any]], artwork_sha256: str
+) -> dict[str, Any] | None:
+    return next(
+        (
+            event
+            for event in events
+            if event.get("event") == RECIPE_CORRECTION_EVENT
+            and event.get("artwork_sha256") == artwork_sha256
+        ),
+        None,
+    )
+
+
+def correct_publication(
+    settings: dict[str, Any] | None,
+    *,
+    artwork_sha256: str,
+    reason: str,
+    issue: str = "#21",
+    corrected_at: str | None = None,
+) -> dict[str, Any]:
+    """Append an audit correction for a falsely recorded publication.
+
+    The ledger is append-only: the original ``recipe_published`` row is kept and
+    a ``recipe_publication_corrected`` row keyed by the exact ``artwork_sha256``
+    is appended. Readers then ignore the corrected publication.
+
+    Idempotent: an equivalent correction is never appended twice. A hash with no
+    matching ``recipe_published`` row is reported and left untouched.
+    """
+    settings = settings if settings is not None else load_settings()
+    if not artwork_sha256:
+        return {"status": "skipped_no_artwork", "reason": "no artwork hash available"}
+    events = load_ledger(settings)
+    existing = _correction_for(events, artwork_sha256)
+    if existing is not None:
+        return {
+            "status": "already_corrected",
+            "artwork_sha256": artwork_sha256,
+            "recipe_id": existing.get("recipe_id"),
+            "reason": existing.get("reason"),
+            "issue": existing.get("issue"),
+        }
+    publication = next(
+        (
+            event
+            for event in events
+            if event.get("event") == RECIPE_EVENT
+            and event.get("artwork_sha256") == artwork_sha256
+        ),
+        None,
+    )
+    if publication is None:
+        return {
+            "status": "skipped_unknown_artwork",
+            "reason": f"no recipe_published row for artwork {artwork_sha256}",
+            "artwork_sha256": artwork_sha256,
+        }
+    event = {
+        "schema_version": RECIPE_SCHEMA_VERSION,
+        "event": RECIPE_CORRECTION_EVENT,
+        "recipe_id": publication.get("recipe_id"),
+        "artwork_sha256": artwork_sha256,
+        "corrected_at": corrected_at or utc_now_iso(),
+        "issue": issue,
+        "reason": reason,
+    }
+    if not _append_correction_if_absent(settings, event):
+        return {
+            "status": "already_corrected",
+            "artwork_sha256": artwork_sha256,
+            "recipe_id": event.get("recipe_id"),
+            "reason": reason,
+            "issue": issue,
+        }
+    return {
+        "status": "corrected",
+        "artwork_sha256": artwork_sha256,
+        "recipe_id": event.get("recipe_id"),
+        "reason": reason,
+        "issue": issue,
+    }
+
+
+def correct_legacy_suppressed_publications(
+    settings: dict[str, Any] | None = None,
+    *,
+    corrected_at: str | None = None,
+) -> list[dict[str, Any]]:
+    """Apply the two known issue #21 corrections (idempotent)."""
+    settings = settings if settings is not None else load_settings()
+    return [
+        correct_publication(
+            settings,
+            artwork_sha256=entry["artwork_sha256"],
+            reason=entry["reason"],
+            issue="#21",
+            corrected_at=corrected_at,
+        )
+        for entry in LEGACY_SUPPRESSED_PUBLICATION_CORRECTIONS
+    ]
 
 
 # ---------------------------------------------------------------------------
