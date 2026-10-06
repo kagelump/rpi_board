@@ -829,6 +829,11 @@ def main():
     # refreshes keep the day's existing one.
     if new_target_day:
         style_state.pop("art_recipe", None)
+        # Issue #21: the usage marker describes the hero currently on disk. A new
+        # target day generates a new hero, so drop the prior day's marker rather
+        # than letting it vouch for unrelated artwork.
+        style_state.pop("art_recipe_used", None)
+        style_state.pop("art_recipe_suppressed", None)
     if new_target_day or not isinstance(style_state.get("art_recipe"), dict):
         try:
             art_recipe = art_recipes.choose_recipe(
@@ -919,10 +924,17 @@ def main():
         )
         print(f"image-regenerate: cached hero has no recorded acceptance ({reuse_reason})")
 
-    # Issue #20: record when an audited recipe is suppressed because its staging
-    # contradicts the accepted brief/forecast. The brief's SUBJECT still drives
-    # the image, so forecast accuracy is preserved.
-    if art_recipe is not None and art_recipes.recipe_conflicts_with_brief(art_recipe, payload):
+    # Issue #20/#21: record when an audited recipe is suppressed because its
+    # staging contradicts the accepted brief/forecast. The brief's SUBJECT still
+    # drives the image, so forecast accuracy is preserved. A suppressed recipe is
+    # audit-only: it must never be booked as the recipe that guided the published
+    # hero (the ledger reads ``art_recipe_used``, not ``art_recipe``).
+    recipe_suppressed = bool(
+        art_recipe is not None
+        and art_recipes.recipe_conflicts_with_brief(art_recipe, payload)
+    )
+    used_recipe = None if recipe_suppressed else art_recipe
+    if recipe_suppressed:
         record_current_log(
             "generate_image", "art_recipe_suppressed",
             "Suppressed artwork recipe staging that contradicts the accepted forecast/brief",
@@ -930,11 +942,13 @@ def main():
             data={
                 "target_date": target_date,
                 "daypart_role": daypart_role,
+                "recipe_id": art_recipe.get("recipe_id"),
                 "tags": art_recipes.extract_tags(art_recipe),
                 "recipe_weather": art_recipes.recipe_weather_class(art_recipe),
                 "forecast_weather": (
                     "wet" if art_recipes._forecast_is_wet(payload) else "dry"
                 ),
+                "used_for_hero": False,
                 "rationale": (
                     "The accepted brief/forecast is authoritative; the brief's "
                     "original SUBJECT is used instead of contradictory recipe staging."
@@ -955,6 +969,8 @@ def main():
         "selected_style": style,
         "selected_palette": palette,
         "art_recipe": art_recipe,
+        "art_recipe_suppressed": recipe_suppressed,
+        "art_recipe_used": used_recipe,
         "provider": provider,
     })
     record_current_snapshot("image_prompt", prompt, content_type="text/plain; charset=utf-8")
@@ -984,6 +1000,11 @@ def main():
             palette=palette["name"], provider=provider, image_bytes=image_bytes,
             attempts=outcome.get("attempts", []), reasons=outcome.get("reasons", []),
         )
+        # Issue #21: persist which recipe actually guided this hero so the
+        # published-art ledger can distinguish a used recipe from one that was
+        # selected for audit but suppressed for contradicting the forecast.
+        style_state["art_recipe_used"] = used_recipe
+        style_state["art_recipe_suppressed"] = recipe_suppressed
         _save_style_state(settings, style_state)
         if status == "unverified":
             generated_message = (

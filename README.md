@@ -359,6 +359,14 @@ Re-delivering the exact same uploaded artwork bytes is stored as a
 `recipe_reused` event against the existing recipe, so it does not reset a
 cooldown.
 
+A recipe that was selected for audit but *suppressed* because its staging
+contradicted the accepted forecast/brief is likewise never booked. The scheduled
+recorder publishes the recipe recorded as actually guiding the current hero in
+`runtime/image_style_state.json` (`art_recipe_used`), not the locked selection.
+The rejected choice stays visible in run history as `art_recipe_selected` /
+`art_recipe_suppressed` without entering the published-art ledger or consuming a
+motif cooldown.
+
 Policy keys live under `art_variety` in `config/settings.json`:
 
 | Key | Default | Meaning |

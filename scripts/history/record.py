@@ -159,68 +159,8 @@ def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _record_published_recipe(store, mode=None, source="scheduled"):
-    """Book the current day's artwork recipe after a *successful* panel delivery.
-
-    Reads the recipe locked into ``image_style_state.json`` by
-    ``generate_image.py`` and only records it when the effective display mode is a
-    real panel publication. Preview modes are skipped inside
-    :func:`art_recipes.record_publication`, so previews never consume a motif
-    cooldown. Repeated delivery of the same artwork bytes is booked as reuse.
-    """
-    settings = load_settings()
-    # update_display.sh always passes --mode "${DISPLAY_MODE_OVERRIDE}". That is
-    # an empty string unless the operator overrode the configured mode, so an
-    # empty override must resolve to settings.display.mode (for example
-    # local_preview) instead of being treated as a panel publication.
-    if not mode:
-        mode = (settings.get("display") or {}).get("mode")
-    state_path = _runtime_path(settings, "image_style_state_file")
-    if not state_path or not absolute_path(state_path).exists():
-        return {"status": "skipped", "reason": "no image style state"}
-    try:
-        state = read_json(state_path)
-    except (OSError, json.JSONDecodeError):
-        return {"status": "skipped", "reason": "unreadable image style state"}
-    recipe = state.get("art_recipe") if isinstance(state, dict) else None
-    if not isinstance(recipe, dict):
-        return {"status": "skipped", "reason": "no artwork recipe selected"}
-
-    target_date = state.get("art_recipe_target_date") or state.get("target_date")
-    brief_target = None
-    brief_path = _runtime_path(settings, "brief_file")
-    if brief_path and absolute_path(brief_path).exists():
-        try:
-            brief = read_json(brief_path)
-            day = brief.get("day_context", {}) if isinstance(brief, dict) else {}
-            brief_target = day.get("target_date_iso") or day.get("date_iso")
-        except (OSError, json.JSONDecodeError):
-            pass
-    if brief_target and target_date and brief_target != target_date:
-        return {
-            "status": "skipped",
-            "reason": f"recipe target {target_date} does not match brief target {brief_target}",
-        }
-
-    # The scheduled publication's artwork identity is the generated hero. If it
-    # is absent (image generation disabled, or the guardrail fell back to the
-    # deterministic pictogram) there is no authored recipe to record.
-    hero_path = _runtime_path(settings, "hero_file")
-    if not hero_path or not absolute_path(hero_path).is_file():
-        return {"status": "skipped", "reason": "no published hero artwork"}
-    artwork_sha = _sha256_file(absolute_path(hero_path))
-
-    result = art_recipes.record_publication(
-        settings,
-        recipe=recipe,
-        artwork_sha256=artwork_sha,
-        target_date=target_date or brief_target,
-        source=source,
-        rationale=recipe.get("rationale"),
-        mode=mode,
-        style=state.get("last_selected"),
-        dominant_ink=state.get("last_palette"),
-    )
+def _log_publication_result(store, result):
+    """Log the publication bookkeeping outcome without ever failing the pipeline."""
     run_id = current_run_id()
     if run_id:
         try:
@@ -234,6 +174,116 @@ def _record_published_recipe(store, mode=None, source="scheduled"):
         except Exception:  # noqa: BLE001 - bookkeeping must not fail the pipeline
             pass
     return result
+
+
+def _record_published_recipe(store, mode=None, source="scheduled"):
+    """Book the current day's artwork recipe after a *successful* panel delivery.
+
+    Reads the recipe that actually guided the hero from
+    ``image_style_state.json`` (``art_recipe_used``, written by
+    ``generate_image.py``) and only records it when the effective display mode is
+    a real panel publication. Preview modes are skipped inside
+    :func:`art_recipes.record_publication`, so previews never consume a motif
+    cooldown. Repeated delivery of the same artwork bytes is booked as reuse.
+
+    A recipe selected for audit but suppressed because it contradicted the
+    accepted forecast is deliberately *not* booked: the ledger must describe the
+    artwork that reached the panel, and those motifs were omitted from it.
+    """
+    settings = load_settings()
+    # update_display.sh always passes --mode "${DISPLAY_MODE_OVERRIDE}". That is
+    # an empty string unless the operator overrode the configured mode, so an
+    # empty override must resolve to settings.display.mode (for example
+    # local_preview) instead of being treated as a panel publication.
+    if not mode:
+        mode = (settings.get("display") or {}).get("mode")
+    state_path = _runtime_path(settings, "image_style_state_file")
+    if not state_path or not absolute_path(state_path).exists():
+        return _log_publication_result(store, {"status": "skipped", "reason": "no image style state"})
+    try:
+        state = read_json(state_path)
+    except (OSError, json.JSONDecodeError):
+        return _log_publication_result(store, {"status": "skipped", "reason": "unreadable image style state"})
+    if not isinstance(state, dict):
+        return _log_publication_result(store, {"status": "skipped", "reason": "unreadable image style state"})
+
+    target_date = state.get("art_recipe_target_date") or state.get("target_date")
+    brief_target = None
+    brief_payload = None
+    brief_path = _runtime_path(settings, "brief_file")
+    if brief_path and absolute_path(brief_path).exists():
+        try:
+            brief = read_json(brief_path)
+            if isinstance(brief, dict):
+                brief_payload = brief
+                day = brief.get("day_context", {}) if isinstance(brief.get("day_context"), dict) else {}
+                brief_target = day.get("target_date_iso") or day.get("date_iso")
+        except (OSError, json.JSONDecodeError):
+            pass
+    if brief_target and target_date and brief_target != target_date:
+        return _log_publication_result(store, {
+            "status": "skipped",
+            "reason": f"recipe target {target_date} does not match brief target {brief_target}",
+        })
+
+    # The scheduled publication's artwork identity is the generated hero. If it
+    # is absent (image generation disabled, or the guardrail fell back to the
+    # deterministic pictogram) there is no authored recipe to record.
+    hero_path = _runtime_path(settings, "hero_file")
+    if not hero_path or not absolute_path(hero_path).is_file():
+        return _log_publication_result(store, {"status": "skipped", "reason": "no published hero artwork"})
+    artwork_sha = _sha256_file(absolute_path(hero_path))
+
+    locked_recipe = state.get("art_recipe")
+    if "art_recipe_used" in state:
+        # generate_image.py records the recipe that actually guided the current
+        # hero. ``None`` (with a locked recipe present) means the selected recipe
+        # was suppressed and never entered the generation prompt.
+        recipe = state.get("art_recipe_used")
+        if not isinstance(recipe, dict):
+            if bool(state.get("art_recipe_suppressed")) or isinstance(locked_recipe, dict):
+                return _log_publication_result(store, {
+                    "status": "skipped_suppressed",
+                    "reason": (
+                        "selected artwork recipe was suppressed for a forecast "
+                        "conflict and did not guide the published hero"
+                    ),
+                    "recipe_id": (
+                        locked_recipe.get("recipe_id")
+                        if isinstance(locked_recipe, dict) else None
+                    ),
+                })
+            return _log_publication_result(store, {"status": "skipped", "reason": "no artwork recipe selected"})
+    else:
+        # Legacy state written before usage tracking existed. Fall back to the
+        # locked recipe but never book staging that contradicts the accepted
+        # brief, so a state file carried across the upgrade cannot reseed the
+        # phantom-publication bug.
+        recipe = locked_recipe
+        if not isinstance(recipe, dict):
+            return _log_publication_result(store, {"status": "skipped", "reason": "no artwork recipe selected"})
+        if brief_payload is not None and art_recipes.recipe_conflicts_with_brief(recipe, brief_payload):
+            return _log_publication_result(store, {
+                "status": "skipped_suppressed",
+                "reason": (
+                    "locked artwork recipe contradicts the accepted brief and "
+                    "was not confirmed used for the published hero"
+                ),
+                "recipe_id": recipe.get("recipe_id"),
+            })
+
+    result = art_recipes.record_publication(
+        settings,
+        recipe=recipe,
+        artwork_sha256=artwork_sha,
+        target_date=target_date or brief_target,
+        source=source,
+        rationale=recipe.get("rationale"),
+        mode=mode,
+        style=state.get("last_selected"),
+        dominant_ink=state.get("last_palette"),
+    )
+    return _log_publication_result(store, result)
 
 
 def main():

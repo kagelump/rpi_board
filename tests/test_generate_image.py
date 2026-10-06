@@ -843,3 +843,252 @@ def test_main_suppresses_locked_conflicting_recipe_and_logs_decision(monkeypatch
     # The audited selected recipe is still recorded in state.
     state_after = json.loads(_state_path(settings).read_text(encoding="utf-8"))
     assert state_after["art_recipe"]["tags"]["subject"] == "umbrella_crowd"
+
+
+# ---------------------------------------------------------------------------
+# Issue #21: a suppressed recipe is audit-only and never enters the ledger
+# ---------------------------------------------------------------------------
+
+
+class _RecipeHistoryLog:
+    def __init__(self):
+        self.entries = []
+
+    def log(self, *args, **kwargs):
+        self.entries.append(kwargs)
+
+
+def _issue21_settings(tmp_path):
+    settings = _main_settings(tmp_path)
+    settings["display"] = {"mode": "pi_display"}
+    settings["art_variety"] = {
+        "lookback_days": 14,
+        "motif_cooldown_days": 7,
+        "min_dimension_differences": 2,
+    }
+    return settings
+
+
+def _write_archived_dry_brief(settings):
+    payload = _archived_dry_payload()
+    with open(settings["runtime"]["brief_file"], "w", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+    return payload
+
+
+def _lock_recipe(settings, recipe, target_date="2026-10-06"):
+    state = {
+        "target_date": target_date,
+        "art_recipe_target_date": target_date,
+        "art_recipe": recipe,
+        "last_selected": ART_STYLE_POOL[0]["name"],
+        "last_palette": PALETTE_STRATEGY_POOL[0]["name"],
+    }
+    _state_path(settings).write_text(json.dumps(state), encoding="utf-8")
+    return state
+
+
+def _accept_generation(monkeypatch, capture=None):
+    def fake_call(_settings, prompt, _provider):
+        if capture is not None:
+            capture["prompt"] = prompt
+        return b"artwork"
+
+    monkeypatch.setattr(gi, "_call_image_api", fake_call)
+    monkeypatch.setattr(gi, "inspect_art", lambda b, s: {"ok": True, "status": "accepted"})
+    monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
+
+
+def test_suppressed_recipe_is_not_booked_as_published(monkeypatch, tmp_path):
+    from scripts.history import record as record_mod
+    from scripts.openrouter import art_recipes as ar
+
+    settings = _issue21_settings(tmp_path)
+    _write_archived_dry_brief(settings)
+    _lock_recipe(settings, _umbrella_recipe())
+
+    captured = {}
+    _accept_generation(monkeypatch, captured)
+    logs = []
+    _run_main(monkeypatch, settings, logs)
+
+    # #20 behaviour is preserved: the contradictory staging is out of the prompt.
+    assert "umbrella" not in captured["prompt"].lower()
+    assert "ginkgo" in captured["prompt"].lower()
+    assert [log["event_type"] for log in logs].count("art_recipe_suppressed") == 1
+
+    state_after = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    # The selected recipe stays in state for audit...
+    assert state_after["art_recipe"]["tags"]["subject"] == "umbrella_crowd"
+    # ...but its usage marker says it never guided the hero.
+    assert state_after["art_recipe_used"] is None
+    assert state_after["art_recipe_suppressed"] is True
+
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+    monkeypatch.setenv("GENERATION_RUN_ID", "run-issue21-suppressed")
+    store = _RecipeHistoryLog()
+    result = record_mod._record_published_recipe(store, mode="pi_display")
+
+    assert result["status"] == "skipped_suppressed"
+    assert ar.published_recipes(settings) == []
+    # No phantom entry means no novelty/cooldown input and no API summary count.
+    assert ar.recent_published_recipes(settings) == []
+    assert ar.history_summary(settings)["count"] == 0
+    assert any(
+        entry.get("event_type") == "recipe_skipped_suppressed"
+        for entry in store.entries
+    )
+
+
+def test_compatible_recipe_is_booked_after_panel_delivery(monkeypatch, tmp_path):
+    from scripts.history import record as record_mod
+    from scripts.openrouter import art_recipes as ar
+
+    settings = _issue21_settings(tmp_path)
+    _write_archived_dry_brief(settings)
+    _lock_recipe(settings, _neutral_recipe())
+
+    captured = {}
+    _accept_generation(monkeypatch, captured)
+    _run_main(monkeypatch, settings, [])
+
+    assert "backpacks" in captured["prompt"]
+    state_after = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    assert state_after["art_recipe_used"]["tags"]["subject"] == "school_children"
+    assert state_after["art_recipe_suppressed"] is False
+
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+    monkeypatch.setenv("GENERATION_RUN_ID", "run-issue21-used")
+    result = record_mod._record_published_recipe(_RecipeHistoryLog(), mode="pi_display")
+
+    assert result["status"] == "published"
+    entries = ar.published_recipes(settings)
+    assert len(entries) == 1
+    assert entries[0]["tags"]["subject"] == "school children"
+
+
+def test_recipe_usage_marker_survives_hero_reuse(monkeypatch, tmp_path):
+    from scripts.history import record as record_mod
+    from scripts.openrouter import art_recipes as ar
+
+    from pathlib import Path
+
+    settings = _issue21_settings(tmp_path)
+    _write_archived_dry_brief(settings)
+    _lock_recipe(settings, _neutral_recipe())
+
+    _accept_generation(monkeypatch)
+    _run_main(monkeypatch, settings, [])
+    first_used = json.loads(_state_path(settings).read_text(encoding="utf-8"))["art_recipe_used"]
+    assert first_used["tags"]["subject"] == "school_children"
+
+    payload = _archived_dry_payload()
+    payload["brief_source"] = "cached"
+    Path(settings["runtime"]["brief_file"]).write_text(json.dumps(payload), encoding="utf-8")
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("reused hero must not call the image provider")
+
+    monkeypatch.setattr(gi, "_call_image_api", boom)
+    logs = []
+    _run_main(monkeypatch, settings, logs)
+    assert any(log["event_type"] == "hero_reused" for log in logs)
+
+    state_after = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    assert state_after["art_recipe_used"] == first_used
+    assert state_after["art_recipe_suppressed"] is False
+
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+    monkeypatch.setenv("GENERATION_RUN_ID", "run-issue21-reuse")
+    result = record_mod._record_published_recipe(_RecipeHistoryLog(), mode="pi_display")
+    assert result["status"] == "published"
+    assert len(ar.published_recipes(settings)) == 1
+
+
+def test_same_day_locked_recipe_keeps_usage_marker(monkeypatch, tmp_path):
+    settings = _issue21_settings(tmp_path)
+    _write_archived_dry_brief(settings)
+    _lock_recipe(settings, _neutral_recipe())
+
+    _accept_generation(monkeypatch)
+    _run_main(monkeypatch, settings, [])
+
+    # A later non-cached refresh of the same forecast day regenerates the hero
+    # but keeps the locked recipe (no new selection).
+    logs = []
+    _accept_generation(monkeypatch)
+    _run_main(monkeypatch, settings, logs)
+
+    assert any(log["event_type"] == "art_recipe_locked" for log in logs)
+    assert not any(log["event_type"] == "art_recipe_selected" for log in logs)
+    state_after = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    assert state_after["art_recipe_used"]["tags"]["subject"] == "school_children"
+    assert state_after["art_recipe_suppressed"] is False
+
+
+def test_deterministic_fallback_does_not_book_a_recipe(monkeypatch, tmp_path):
+    from scripts.history import record as record_mod
+    from scripts.openrouter import art_recipes as ar
+
+    settings = _issue21_settings(tmp_path)
+    _write_archived_dry_brief(settings)
+
+    monkeypatch.setattr(gi, "_call_image_api", lambda *a, **k: b"artwork")
+    monkeypatch.setattr(
+        gi, "inspect_art", lambda b, s: {"status": "rejected", "has_text": True})
+    monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
+    logs = []
+    _run_main(monkeypatch, settings, logs)
+
+    assert not _hero_path(settings).exists()
+    assert any(log["event_type"] == "hero_fallback_pictogram" for log in logs)
+
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+    monkeypatch.setenv("GENERATION_RUN_ID", "run-issue21-fallback")
+    result = record_mod._record_published_recipe(_RecipeHistoryLog(), mode="pi_display")
+
+    assert result["status"] == "skipped"
+    assert ar.published_recipes(settings) == []
+
+
+def test_archived_dry_oct6_eight_and_one_deliveries_skip_ledger(monkeypatch, tmp_path):
+    """Both archived dry Oct 6 deliveries suppress the locked recipe and skip it."""
+    from pathlib import Path
+
+    from scripts.history import record as record_mod
+    from scripts.openrouter import art_recipes as ar
+
+    settings = _issue21_settings(tmp_path)
+    _write_archived_dry_brief(settings)
+    _lock_recipe(settings, _umbrella_recipe())
+
+    # 08:00 delivery: the locked wet recipe contradicts the dry accepted brief.
+    _accept_generation(monkeypatch)
+    logs_0800 = []
+    _run_main(monkeypatch, settings, logs_0800)
+    assert any(log["event_type"] == "art_recipe_suppressed" for log in logs_0800)
+
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+    monkeypatch.setenv("GENERATION_RUN_ID", "run-issue21-0800")
+    first = record_mod._record_published_recipe(_RecipeHistoryLog(), mode="pi_display")
+    assert first["status"] == "skipped_suppressed"
+
+    # 13:00 refresh: same locked recipe, re-rendered face-in-clearing-sun brief.
+    payload = _archived_dry_payload()
+    payload["day_context"]["daypart_role"] = "afternoon"
+    payload["brief"]["illustration_prompt"] = (
+        "A close-up of a person's face in clearing sun. No umbrella needed."
+    )
+    Path(settings["runtime"]["brief_file"]).write_text(json.dumps(payload), encoding="utf-8")
+
+    _accept_generation(monkeypatch)
+    logs_1300 = []
+    _run_main(monkeypatch, settings, logs_1300)
+    assert any(log["event_type"] == "art_recipe_suppressed" for log in logs_1300)
+
+    monkeypatch.setenv("GENERATION_RUN_ID", "run-issue21-1300")
+    second = record_mod._record_published_recipe(_RecipeHistoryLog(), mode="pi_display")
+    assert second["status"] == "skipped_suppressed"
+
+    assert ar.published_recipes(settings) == []
+    assert ar.history_summary(settings)["count"] == 0

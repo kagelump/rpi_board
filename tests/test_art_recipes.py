@@ -632,3 +632,157 @@ def test_record_cli_empty_override_resolves_configured_display_mode(tmp_path, mo
     monkeypatch.setattr(record_mod, "load_settings", lambda: panel)
     assert record_mod._record_published_recipe(_LogStore(), mode="")["status"] == "published"
     assert len(ar.published_recipes(panel)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Issue #21: the ledger books only the recipe that guided the published hero
+# ---------------------------------------------------------------------------
+
+
+def _archived_dry_brief():
+    return json.loads(
+        (Path(__file__).parent / "fixtures" / "issue20_archived_dry_oct6_brief.json")
+        .read_text(encoding="utf-8")
+    )
+
+
+def _umbrella_recipe():
+    return {
+        "recipe_id": "4e9fd1194606ca7a580e",
+        "status": "selected",
+        "rationale": "selected before the dry filter existed",
+        "tags": {
+            "subject": "umbrella_crowd",
+            "subject_text": "a cluster of commuters under umbrellas",
+            "motif": "umbrellas",
+            "motifs": ["umbrellas"],
+            "setting": "rooftop_terrace",
+            "setting_text": "a rooftop terrace",
+            "viewpoint": "close_crop",
+            "viewpoint_text": "tight crop on the main motif",
+            "composition": "upward",
+            "composition_text": "upward view toward the sky",
+        },
+    }
+
+
+def _neutral_recipe():
+    return {
+        "recipe_id": "neutral-recipe-id-0001",
+        "status": "selected",
+        "rationale": "weather-compatible selection",
+        "tags": _tags(),
+    }
+
+
+def _write_replay_runtime(tmp_path, state, *, mode="pi_display"):
+    """Runtime shaped like the archived dry Oct 6 runs (matching target date)."""
+    hero = tmp_path / "hero.png"
+    Image.new("RGB", (12, 8), "red").save(hero)
+    (tmp_path / "last_brief.json").write_text(
+        json.dumps(_archived_dry_brief()), encoding="utf-8")
+    (tmp_path / "image_style_state.json").write_text(json.dumps(state), encoding="utf-8")
+    return {
+        "runtime": {
+            "image_style_state_file": str(tmp_path / "image_style_state.json"),
+            "brief_file": str(tmp_path / "last_brief.json"),
+            "hero_file": str(hero),
+            "final_file": str(tmp_path / "final.png"),
+            "art_recipe_ledger_file": str(tmp_path / "ledger.jsonl"),
+        },
+        "display": {"mode": mode},
+        "art_variety": {
+            "lookback_days": 14, "motif_cooldown_days": 7, "min_dimension_differences": 2,
+        },
+    }
+
+
+def _replay_state(recipe, *, used="missing", suppressed=None):
+    state = {
+        "target_date": "2026-10-06",
+        "art_recipe_target_date": "2026-10-06",
+        "art_recipe": recipe,
+        "last_selected": "Linocut",
+        "last_palette": "Red Signal",
+    }
+    if used != "missing":
+        state["art_recipe_used"] = used
+    if suppressed is not None:
+        state["art_recipe_suppressed"] = suppressed
+    return state
+
+
+def test_record_cli_skips_suppressed_recipe_and_keeps_audit_event(tmp_path, monkeypatch):
+    state = _replay_state(_umbrella_recipe(), used=None, suppressed=True)
+    settings = _write_replay_runtime(tmp_path, state)
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+    monkeypatch.setenv("GENERATION_RUN_ID", "run-replay-suppressed")
+    store = _LogStore()
+
+    result = record_mod._record_published_recipe(store, mode="pi_display")
+
+    assert result["status"] == "skipped_suppressed"
+    assert result["recipe_id"] == "4e9fd1194606ca7a580e"
+    assert ar.published_recipes(settings) == []
+    assert ar.recent_published_recipes(settings) == []
+    assert ar.history_summary(settings)["count"] == 0
+    # History still tells the two states apart: selected/suppressed vs published.
+    event_types = [entry[1]["event_type"] for entry in store.entries]
+    assert "recipe_skipped_suppressed" in event_types
+    assert "recipe_published" not in event_types
+
+
+def test_record_cli_books_used_recipe_not_the_suppressed_locked_recipe(tmp_path, monkeypatch):
+    # The locked recipe is the contradictory wet one, but the hero was actually
+    # guided by the compatible neutral recipe: only the latter is published.
+    state = _replay_state(
+        _umbrella_recipe(), used=_neutral_recipe(), suppressed=False)
+    settings = _write_replay_runtime(tmp_path, state)
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+    monkeypatch.setenv("GENERATION_RUN_ID", "run-replay-used")
+
+    result = record_mod._record_published_recipe(_LogStore(), mode="pi_display")
+
+    assert result["status"] == "published"
+    entries = ar.published_recipes(settings)
+    assert len(entries) == 1
+    assert entries[0]["tags"]["subject"] == "lone walker"
+    assert entries[0]["recipe_id"] != "4e9fd1194606ca7a580e"
+
+
+def test_record_cli_legacy_state_never_books_brief_contradicting_recipe(tmp_path, monkeypatch):
+    # State carried across the upgrade has no usage marker. The accepted dry
+    # brief is authoritative, so the locked umbrella recipe must still stay out.
+    state = _replay_state(_umbrella_recipe())
+    settings = _write_replay_runtime(tmp_path, state)
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+
+    result = record_mod._record_published_recipe(_LogStore(), mode="pi_display")
+
+    assert result["status"] == "skipped_suppressed"
+    assert ar.published_recipes(settings) == []
+
+
+def test_record_cli_preview_skips_used_recipe(tmp_path, monkeypatch):
+    state = _replay_state(_neutral_recipe(), used=_neutral_recipe(), suppressed=False)
+    settings = _write_replay_runtime(tmp_path, state, mode="local_preview")
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+
+    result = record_mod._record_published_recipe(_LogStore(), mode="")
+
+    assert result["status"] == "skipped_preview"
+    assert ar.published_recipes(settings) == []
+
+
+def test_failed_delivery_leaves_no_published_recipe(tmp_path, monkeypatch):
+    """A delivery failure produces no hero, so nothing is booked even when the
+    state carries a used recipe marker."""
+    state = _replay_state(_neutral_recipe(), used=_neutral_recipe(), suppressed=False)
+    settings = _write_replay_runtime(tmp_path, state)
+    Path(settings["runtime"]["hero_file"]).unlink()
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+
+    result = record_mod._record_published_recipe(_LogStore(), mode="pi_display")
+
+    assert result["status"] == "skipped"
+    assert ar.published_recipes(settings) == []
