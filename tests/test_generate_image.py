@@ -54,7 +54,7 @@ def test_prompt_injects_subject_style_and_palette():
 
     assert "wind in trees" in prompt
     assert "Linocut" in prompt and "carved marks" in prompt
-    assert "Red Signal" in prompt and "red focal accent" in prompt
+    assert "red focal accent" in prompt
     assert "{{" not in prompt
 
 
@@ -77,7 +77,8 @@ def test_deterministic_fallback_subject_stays_caption_free_downstream():
     )
 
     assert subject in prompt
-    assert "Absolutely NO TEXT" in prompt
+    assert "no text" in prompt.lower()
+    assert all(word in prompt.lower() for word in ("letters", "numbers", "logos"))
     assert "hint=" not in prompt
 
 

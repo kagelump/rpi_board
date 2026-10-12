@@ -1,0 +1,10 @@
+{{STYLE_GUIDANCE}}
+
+A four-ink print using only white, black, red and yellow. Every tonal mark is made from one of these inks, with the inks kept separate. One cohesive illustration fills a 960x480 landscape canvas edge to edge. No text, letters, numbers, logos or borders.
+
+Let the selected style determine line quality, texture, visual density and depth. Preserve fine rhythmic marks, carved gaps, hatching, dot fields and irregular edges when they belong to that style. Describe light and atmosphere through the density and spacing of ink marks; maintain a clear silhouette while allowing rich detail.
+
+Palette emphasis: {{PALETTE_GUIDANCE}}
+
+Scene (translate all materials, light and atmosphere into the specified ink shapes):
+{{IMAGE_PROMPT}}

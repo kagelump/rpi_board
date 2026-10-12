@@ -82,9 +82,12 @@ def inspect_art(image_bytes, settings):
                 ],
             }
         ],
-        "temperature": 0,
         "response_format": {"type": "json_object"},
     }
+    # GPT-6 reasoning requests do not support temperature. Preserve the
+    # existing deterministic setting for other providers/models.
+    if not model.startswith(("openai/gpt-6", "gpt-6")):
+        body["temperature"] = 0
     request = urllib.request.Request(
         url=url,
         data=json.dumps(body).encode("utf-8"),

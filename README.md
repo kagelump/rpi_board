@@ -169,7 +169,7 @@ Key sections:
   material into the image model when the brief stage degrades.
 - `openrouter.text_model`: model for text brief.
 - `openrouter.image_model`: image generation model (default: `google/gemini-3.1-flash-image-preview`).
-- `openrouter.image_tool_model`: model used to invoke OpenRouter image server tool (default: `openai/gpt-5.2`).
+- `openrouter.image_tool_model`: model used for art validation and to invoke the OpenRouter image server tool (default: `openai/gpt-6-luna`).
 
 ## OpenRouter API Key
 

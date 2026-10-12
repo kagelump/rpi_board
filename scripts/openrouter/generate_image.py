@@ -252,9 +252,8 @@ def _prompt_similar(prompt_a, prompt_b, threshold):
 def _inject_style_prompt(template, illustration_prompt, style, palette, recipe=None,
                          *, forecast=None):
     style_block = (
-        f"Selected art style: {style['name']}\n"
-        f"Style direction: {style['prompt']}\n"
-        f"{NEGATIVE_STYLE_CONSTRAINTS}"
+        f"Style: {style['name']}. {style['prompt']}. "
+        "Apply this style using only the specified solid inks."
     )
     # Issue #20: the accepted brief/forecast is authoritative. When the selected
     # recipe's staging would contradict it (for example an umbrella crowd on a
@@ -265,9 +264,9 @@ def _inject_style_prompt(template, illustration_prompt, style, palette, recipe=N
         forecast is not None and art_recipes.recipe_conflicts_with_brief(recipe, forecast)
     ):
         recipe_block = art_recipes.recipe_directive(recipe)
-    prompt = template.replace("{{IMAGE_PROMPT}}", illustration_prompt.strip())
+    prompt = template.replace("{{IMAGE_PROMPT}}", _rewrite_palette_scene(illustration_prompt.strip()))
     if "{{PALETTE_GUIDANCE}}" in prompt:
-        palette_block = f"{palette['name']}: {palette['prompt']}"
+        palette_block = palette['prompt']
         prompt = prompt.replace("{{PALETTE_GUIDANCE}}", palette_block)
     if "{{RECIPE_GUIDANCE}}" in prompt:
         prompt = prompt.replace("{{RECIPE_GUIDANCE}}", recipe_block)
@@ -496,9 +495,42 @@ _RETRY_PROMPT_CLAUSES = {
     ),
 }
 _OFF_PALETTE_RETRY_CLAUSE = (
-    "The previous attempt used colours the panel cannot show. Use only white, "
-    "black, red, and yellow, with no grey, blue, green, or other hues."
+    "Print every surface as one opaque white, black, red or yellow ink. "
+    "Use black for night and shadows, white for moon and stars, solid yellow "
+    "for light, and repeated white/yellow shapes for reflections. Keep ink "
+    "regions separate with crisp edges."
 )
+
+_SCENE_HEADING = (
+    "Scene (translate all materials, light and atmosphere into the specified ink shapes):\n"
+)
+
+
+def _rewrite_palette_scene(scene):
+    """Translate common conflicting cues without another network dependency.
+
+    Only the scene is edited; exclusions and style directions are not subject
+    to colour replacement. This bounded vocabulary complements the rendering
+    contract; it is not a general semantic rewriter.
+    """
+    replacements = [
+        (r"\bglass office building\b", "office building with black window dividers and opaque white or yellow panes"),
+        (r"\breflection on the glass\b", "pattern of repeated white or yellow shapes on the window panes"),
+        (r"\b(?:crisp )?reflections\b", "repeated white or yellow ink shapes"),
+        (r"\breflected night sky\b", "solid black night sky with white marks"),
+        (r"\bsoft cool night air\b", "still night air"),
+        (r"\bbarely visible\b", "solid white"),
+        (r"\bfaint ghost\b", "white silhouette"),
+        (r"\b(?:soft(?:\s+(?:cool|warm|golden))?|cool|warm|golden)\s+(?:sunlight|streetlight|light|glow)\b(?!\s+(?:rain|drizzle|snow|breeze|wind)\b)", "solid yellow shapes with hard edges"),
+        (r"\btranslucent leaves\b", "opaque black or yellow leaves"),
+        (r"\b(?:blue|cyan|teal|azure)\b(?=\s+(?:sky|water|river|sea|clouds?|panes?|windows?|light|hue))", "white"),
+        (r"\b(?:green|brown|grey|gray|purple|violet|indigo)\b(?=\s+(?:trees?|leaves|foliage|sky|water|river|clouds?|panes?|windows?|light|hue))", "black"),
+        (r"\b(?:pink|magenta)\b(?=\s+(?:sky|clouds?|blossoms?|flowers?|light|hue))", "red"),
+        (r"\borange\b(?=\s+(?:sky|light|glow|clouds?|leaves|hue))", "yellow"),
+    ]
+    for pattern, replacement in replacements:
+        scene = re.sub(pattern, replacement, scene, flags=re.IGNORECASE)
+    return scene
 
 
 def _sha256_bytes(data):
@@ -562,7 +594,7 @@ def _hero_validation_record(status, *, target_date, style, palette, provider,
 
 
 def _retry_prompt(prompt, reasons):
-    """Append targeted corrections for the previous explicit rejection.
+    """Rewrite conflicting scene cues after a palette rejection.
 
     This addresses the actual rejection instead of adding weather wording or
     percentages, which can themselves encourage baked-in captions.
@@ -574,9 +606,16 @@ def _retry_prompt(prompt, reasons):
             clauses.append(clause)
     if any(str(reason).startswith("off_palette=") for reason in reasons or []):
         clauses.append(_OFF_PALETTE_RETRY_CLAUSE)
+        before, separator, after = prompt.partition(_SCENE_HEADING)
+        if separator:
+            scene, ending, tail = after.partition("\n\n")
+            prompt = before + separator + _rewrite_palette_scene(scene) + ending + tail
+        prompt = prompt.replace(
+            "Solid ink shapes following the palette emphasis; large readable silhouettes.",
+            "Separate opaque ink shapes, crisp edges, a readable silhouette.")
     if not clauses:
         return prompt
-    return prompt + "\n\nRetry correction:\n- " + "\n- ".join(clauses)
+    return "Retry correction:\n- " + "\n- ".join(clauses) + "\n\n" + prompt
 
 
 def _generate_with_guardrail(settings, prompt, provider):
@@ -613,7 +652,7 @@ def _generate_with_guardrail(settings, prompt, provider):
     attempts = []
     rejected_reasons = []
     for attempt in range(max_retries + 1):
-        current_prompt = prompt if not attempts else _retry_prompt(prompt, attempts[-1]["reasons"])
+        current_prompt = prompt if not attempts else _retry_prompt(prompt, rejected_reasons)
         image_bytes = _call_image_api(settings, current_prompt, provider)
         verdict = inspect_art(image_bytes, settings)  # vision: text / collage
         inspection = verdict.get("status")

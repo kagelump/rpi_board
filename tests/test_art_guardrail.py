@@ -1,6 +1,7 @@
 """Tests for the art guardrail (status separation + bounded retry)."""
 import io
 import json
+import pytest
 
 import pytest
 
@@ -65,6 +66,25 @@ class TestInspectArtStatus:
         prompt = requests[0]["messages"][0]["content"][0]["text"]
         assert '"has_text"' not in prompt
         assert "Ignore all text" in prompt
+
+    @pytest.mark.parametrize("model,temperature_supported", [
+        ("openai/gpt-6-luna", False), ("openai/gpt-5.2", True)])
+    def test_model_request_omits_unsupported_temperature(
+            self, monkeypatch, model, temperature_supported):
+        monkeypatch.setattr(ag, "get_openrouter_api_key", lambda s: "k")
+        requests = []
+
+        def response(request, **kwargs):
+            requests.append(json.loads(request.data))
+            return _FakeResponse({"choices": [{"message": {"content": json.dumps({
+                "has_text": False, "is_collage": False, "note": "clean"})}}]})
+
+        monkeypatch.setattr(ag, "urlopen_with_context", response)
+        settings = {"openrouter": {"base_url": "https://x", "image_tool_model": model}}
+        assert ag.inspect_art(_png((0, 0, 0)), settings)["status"] == "accepted"
+        assert ("temperature" in requests[0]) is temperature_supported
+        assert requests[0]["model"] == model
+        assert requests[0]["response_format"] == {"type": "json_object"}
 
     def test_no_key_marks_unverified(self, monkeypatch):
         monkeypatch.setattr(ag, "get_openrouter_api_key", lambda settings: None)
@@ -243,7 +263,7 @@ class TestGenerateWithGuardrail:
             self._settings(image_guardrail_max_retries=1, image_guardrail_max_off_palette_pct=0.15),
             "p", "fal")
         assert out["status"] == "accepted"
-        assert "Use only white" in prompts[1]
+        assert all(ink in prompts[1] for ink in ("white", "black", "red", "yellow"))
 
     def test_off_palette_rejected_then_passes(self, monkeypatch):
         # First image is mostly blue (unrenderable), second is on-palette red.

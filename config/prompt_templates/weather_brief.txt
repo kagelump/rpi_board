@@ -77,8 +77,17 @@ ART DIRECTION
   metaphor. Give INPUT_JSON.visual_angle and INPUT_JSON.composition a strong
   role in the idea.
 - Describe WHAT happens in the scene, the viewpoint, spatial arrangement,
-  weather, motion, light, and emotional beat. Leave rendering style, mark-making,
-  and palette to the next stage. Never name an art movement or specify colors.
+  weather, motion, and emotional beat. Physical palette constraints take
+  priority: only opaque white, black, red and yellow inks exist. Describe night
+  sky as solid black, moon/stars as white, daylight sky as white, foliage as
+  black or yellow, glass as black dividers with white/yellow panes, reflections
+  as repeated white/yellow shapes, and light as solid yellow shapes with hard
+  edges. Suggest cool air through posture or motion, never coloured lighting.
+  Tone comes from separated ink marks rather than soft shading, transparency,
+  gradients or glow. Keep the scene and weather; translate its materials and
+  atmosphere into these ink equivalents. Leave art style, mark-making and
+  palette emphasis to the next stage. Never name an art movement or specify
+  colours outside these four inks.
 - Avoid the default weather-icon layout: no automatic yellow sun in the upper
   left, black cloud in the upper right, centered silhouette, and ground line.
   Use that arrangement only when recent_history proves it is genuinely fresh.

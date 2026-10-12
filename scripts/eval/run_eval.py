@@ -329,9 +329,10 @@ def judge(result, settings, judge_model, timeout):
                 ],
             }
         ],
-        "temperature": 0,
         "response_format": {"type": "json_object"},
     }
+    if not judge_model.startswith(("openai/gpt-6", "gpt-6")):
+        body["temperature"] = 0
     url = settings["openrouter"]["base_url"].rstrip("/") + "/chat/completions"
     key = get_openrouter_api_key(settings)
     req = urllib.request.Request(

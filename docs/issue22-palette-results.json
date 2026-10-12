@@ -1,0 +1,1426 @@
+{
+  "issue": "https://github.com/kagelump/rpi_board/issues/22",
+  "evaluated_on": "2026-10-12 JST",
+  "starting_revision": "b175c03",
+  "baseline_archive_revision": "2a4b8e8f60f79ea49ae67dbbf9a2a51c53750358",
+  "metric": "Unmodified scripts/render/palette_metrics.py analyze() on raw provider output",
+  "threshold": 0.15,
+  "model": "fal-ai/flux-2/klein/9b",
+  "parameters": {
+    "image_size": {
+      "width": 960,
+      "height": 480
+    },
+    "num_inference_steps": 8,
+    "output_format": "png"
+  },
+  "seed_pairs": [
+    [
+      910921837,
+      1664093912
+    ],
+    [
+      424242,
+      424243
+    ]
+  ],
+  "candidate_generator_sha256": "2f9b86eed48d025a3f7f82c25d2f9ffc9e2438dfb4db011773360cb266285c09",
+  "candidate_template_sha256": "f6de68ca785aa34bd2e2550bd4cd696631b326bab0ac1a884e215b98ef5f5a6f",
+  "summary": {
+    "baseline": {
+      "flows": 8,
+      "fallbacks": 3,
+      "accepted_flows": 5,
+      "unverified_flows": 0,
+      "error_flows": 0,
+      "first": {
+        "measured": 8,
+        "over_threshold": 3,
+        "mean_off_palette_pct": 0.0886,
+        "max_off_palette_pct": 0.1935
+      },
+      "retry_diagnostic": {
+        "measured": 8,
+        "over_threshold": 4,
+        "mean_off_palette_pct": 0.2076,
+        "max_off_palette_pct": 0.5084
+      }
+    },
+    "candidate": {
+      "flows": 8,
+      "fallbacks": 0,
+      "accepted_flows": 8,
+      "unverified_flows": 0,
+      "error_flows": 0,
+      "first": {
+        "measured": 8,
+        "over_threshold": 0,
+        "mean_off_palette_pct": 0.0,
+        "max_off_palette_pct": 0.0
+      },
+      "retry_diagnostic": {
+        "measured": 8,
+        "over_threshold": 0,
+        "mean_off_palette_pct": 0.0,
+        "max_off_palette_pct": 0.0
+      }
+    }
+  },
+  "rows": [
+    {
+      "variant": "baseline",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 910921837,
+          "diagnostic_only": false,
+          "image_sha256": "fba9abd743486abc313bd9fc29d0218447a178eb9de0ca7aab4119b7235c3b33",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 0.0,
+            "coverage": {
+              "white": 0.0016,
+              "black": 0.9509,
+              "red": 0.0065,
+              "yellow": 0.041
+            },
+            "off_palette_pct": 0.1935,
+            "off_palette_hue": "blue",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "No lettering; single consistent illustrated building scene."
+          },
+          "reasons": [
+            "off_palette=19%"
+          ],
+          "status": "rejected",
+          "elapsed_s": 7.71
+        },
+        {
+          "attempt": 2,
+          "seed": 1664093912,
+          "diagnostic_only": false,
+          "image_sha256": "36ce8b34759f8b9bb7634c21c12032810389206cb1b2bf3fadd1845aac7c14f0",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 0.0,
+            "coverage": {
+              "white": 0.0278,
+              "black": 0.9141,
+              "red": 0.0003,
+              "yellow": 0.0578
+            },
+            "off_palette_pct": 0.5084,
+            "off_palette_hue": "blue",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "No lettering; single cohesive illustration style without photo inserts."
+          },
+          "reasons": [
+            "off_palette=51%"
+          ],
+          "status": "rejected",
+          "elapsed_s": 6.38
+        }
+      ],
+      "operational_status": "rejected",
+      "fallback": true
+    },
+    {
+      "variant": "baseline",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 424242,
+          "diagnostic_only": false,
+          "image_sha256": "07912b4a0ec2b598c6d2f302323ba98ca7407b006d54eb0ed7068f3a41e70e69",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 3.0,
+            "coverage": {
+              "white": 0.0082,
+              "black": 0.7241,
+              "red": 0.0205,
+              "yellow": 0.2472
+            },
+            "off_palette_pct": 0.0008,
+            "off_palette_hue": "green",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Single flat illustration of building at night; no lettering."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 8.74
+        },
+        {
+          "attempt": 2,
+          "seed": 424243,
+          "diagnostic_only": true,
+          "image_sha256": "de83c3cea27791ae8662e221c4daae69138e755ca2780bf7ce3a2185b775f397",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.0334,
+              "black": 0.7938,
+              "red": 0.0088,
+              "yellow": 0.164
+            },
+            "off_palette_pct": 0.2461,
+            "off_palette_hue": "blue",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Single flat illustration of building at night; no lettering."
+          },
+          "reasons": [
+            "off_palette=25%"
+          ],
+          "status": "rejected",
+          "elapsed_s": 8.07
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    },
+    {
+      "variant": "baseline",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 910921837,
+          "diagnostic_only": false,
+          "image_sha256": "3c7bcd6caf89b0a38bb32ea55c93f2c48d10bca01626efdb5ee5049f5fd635fb",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 0.0,
+            "coverage": {
+              "white": 0.0016,
+              "black": 0.9509,
+              "red": 0.0065,
+              "yellow": 0.041
+            },
+            "off_palette_pct": 0.1935,
+            "off_palette_hue": "blue",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Single flat illustration of building; no lettering or photo elements."
+          },
+          "reasons": [
+            "off_palette=19%"
+          ],
+          "status": "rejected",
+          "elapsed_s": 6.04
+        },
+        {
+          "attempt": 2,
+          "seed": 1664093912,
+          "diagnostic_only": false,
+          "image_sha256": "7bc6fa4e6f6c16ce8c4da2d699270bc7a7230e80a9e031fca0d2726fc3be2308",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 0.0,
+            "coverage": {
+              "white": 0.0278,
+              "black": 0.9141,
+              "red": 0.0003,
+              "yellow": 0.0578
+            },
+            "off_palette_pct": 0.5084,
+            "off_palette_hue": "blue",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Night building illustration; no visible lettering or mixed-media collage elements."
+          },
+          "reasons": [
+            "off_palette=51%"
+          ],
+          "status": "rejected",
+          "elapsed_s": 6.25
+        }
+      ],
+      "operational_status": "rejected",
+      "fallback": true
+    },
+    {
+      "variant": "baseline",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 424242,
+          "diagnostic_only": false,
+          "image_sha256": "e11b2497371a68c41717531dc7e671854d25685b9ae1fc173e4b152d86dda353",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 3.0,
+            "coverage": {
+              "white": 0.0082,
+              "black": 0.7241,
+              "red": 0.0205,
+              "yellow": 0.2472
+            },
+            "off_palette_pct": 0.0008,
+            "off_palette_hue": "green",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat illustration of building at night; no text or photo inserts."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 6.81
+        },
+        {
+          "attempt": 2,
+          "seed": 424243,
+          "diagnostic_only": true,
+          "image_sha256": "6f1fbfbda3f85e8327797cf7fe9647ea7a9ea89c469449cdba8426d2374f1bec",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.0334,
+              "black": 0.7938,
+              "red": 0.0088,
+              "yellow": 0.164
+            },
+            "off_palette_pct": 0.2461,
+            "off_palette_hue": "blue",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Single flat illustration; no visible letters or numbers."
+          },
+          "reasons": [
+            "off_palette=25%"
+          ],
+          "status": "rejected",
+          "elapsed_s": 6.35
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    },
+    {
+      "variant": "baseline",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 910921837,
+          "diagnostic_only": false,
+          "image_sha256": "af887d0ce932b1b205e7d855b4f4b978827880f002c9edf4d3d6f766b23f2bf1",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1602,
+              "black": 0.6288,
+              "red": 0.0527,
+              "yellow": 0.1584
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat rainy city illustration; no lettering or photo elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 7.58
+        },
+        {
+          "attempt": 2,
+          "seed": 1664093912,
+          "diagnostic_only": true,
+          "image_sha256": "a21f0f459fd832ccf8048af648c14798573bec47b70cc3714863a443e55d3f62",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.2767,
+              "black": 0.5392,
+              "red": 0.059,
+              "yellow": 0.1251
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Single cohesive illustration; no visible text or mixed photo elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 6.65
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    },
+    {
+      "variant": "baseline",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 424242,
+          "diagnostic_only": false,
+          "image_sha256": "1663928ee4c211d13dec671720831e84ffbdfef11c41192f6e69307dd045fa00",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.2053,
+              "black": 0.5212,
+              "red": 0.0283,
+              "yellow": 0.2452
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": false,
+            "status": "rejected",
+            "has_text": true,
+            "is_collage": false,
+            "note": "Small signage/label text appears on left-side buildings."
+          },
+          "reasons": [
+            "has_text"
+          ],
+          "status": "rejected",
+          "elapsed_s": 7.39
+        },
+        {
+          "attempt": 2,
+          "seed": 424243,
+          "diagnostic_only": false,
+          "image_sha256": "e1b472baf9af5b10279d6d79d735d90cb20b0437c983336a9f6e34d9394657d8",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1735,
+              "black": 0.6463,
+              "red": 0.0283,
+              "yellow": 0.1519
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": false,
+            "status": "rejected",
+            "has_text": true,
+            "is_collage": false,
+            "note": "Storefront signage and stop sign contain readable letters."
+          },
+          "reasons": [
+            "has_text"
+          ],
+          "status": "rejected",
+          "elapsed_s": 7.25
+        }
+      ],
+      "operational_status": "rejected",
+      "fallback": true
+    },
+    {
+      "variant": "baseline",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 910921837,
+          "diagnostic_only": false,
+          "image_sha256": "2a8712325bce7e8c667f2e799aa41dae6c9af136a4a147154ae7201346488f8d",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1234,
+              "black": 0.5271,
+              "red": 0.0151,
+              "yellow": 0.3344
+            },
+            "off_palette_pct": 0.1894,
+            "off_palette_hue": "green",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "No text; single consistent illustrated landscape style."
+          },
+          "reasons": [
+            "off_palette=19%"
+          ],
+          "status": "rejected",
+          "elapsed_s": 5.27
+        },
+        {
+          "attempt": 2,
+          "seed": 1664093912,
+          "diagnostic_only": false,
+          "image_sha256": "03163bde435a7b32476ea6650335bd5974f3defecc7e116da762dee553c944d9",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.2168,
+              "black": 0.3651,
+              "red": 0.0595,
+              "yellow": 0.3587
+            },
+            "off_palette_pct": 0.1454,
+            "off_palette_hue": "green",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Single flat illustration; no text or mixed photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 5.96
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    },
+    {
+      "variant": "baseline",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 424242,
+          "diagnostic_only": false,
+          "image_sha256": "74802ed41f0d3467223d7f3bac27c1541b3137c6092ab2c8fa299ebc67a1105f",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.0793,
+              "black": 0.5023,
+              "red": 0.0108,
+              "yellow": 0.4076
+            },
+            "off_palette_pct": 0.1309,
+            "off_palette_hue": "green",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "No lettering; single consistent illustrated landscape style."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 8.25
+        },
+        {
+          "attempt": 2,
+          "seed": 424243,
+          "diagnostic_only": true,
+          "image_sha256": "b27bc513ddc1e9bb19c6f00f7dcc07e985a31cbd8c52945f97fe408a53ef57b8",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1952,
+              "black": 0.5023,
+              "red": 0.0152,
+              "yellow": 0.2873
+            },
+            "off_palette_pct": 0.0063,
+            "off_palette_hue": "blue",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "No text; consistent illustrated style, not photographic collage."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 7.1
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    },
+    {
+      "variant": "candidate",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 910921837,
+          "diagnostic_only": false,
+          "image_sha256": "617d774f491b1505616699045a22c2e1bfaa5c14639a1c6ec0cc62750cc6059a",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1298,
+              "black": 0.7314,
+              "red": 0.0078,
+              "yellow": 0.1309
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": false,
+            "status": "rejected",
+            "has_text": true,
+            "is_collage": false,
+            "note": "Pixelated symbol resembles a number or punctuation mark."
+          },
+          "reasons": [
+            "has_text"
+          ],
+          "status": "rejected",
+          "elapsed_s": 7.4
+        },
+        {
+          "attempt": 2,
+          "seed": 1664093912,
+          "diagnostic_only": false,
+          "image_sha256": "1ef7b258a9d50c87dc7690983fe7976495a04ae9c3ec8e7c9481b667a57cae4e",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1302,
+              "black": 0.7425,
+              "red": 0.0,
+              "yellow": 0.1273
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Pixel-art night city scene; no lettering or collage elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 6.36
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    },
+    {
+      "variant": "candidate",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 424242,
+          "diagnostic_only": false,
+          "image_sha256": "ff94fd023689dab70b23fcf68fef6e6a4f6e896c5ba07317f6572b1c09f62f69",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 4.0,
+            "coverage": {
+              "white": 0.097,
+              "black": 0.8034,
+              "red": 0.0238,
+              "yellow": 0.0757
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": false,
+            "status": "rejected",
+            "has_text": true,
+            "is_collage": false,
+            "note": "Some window pixels form letter-like shapes resembling characters."
+          },
+          "reasons": [
+            "has_text"
+          ],
+          "status": "rejected",
+          "elapsed_s": 8.66
+        },
+        {
+          "attempt": 2,
+          "seed": 424243,
+          "diagnostic_only": false,
+          "image_sha256": "e083d0de75816c2f060ff7e5277e8d3711291db9bfcf2bc89f46ec74c7a78eb0",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1031,
+              "black": 0.7277,
+              "red": 0.0072,
+              "yellow": 0.162
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Pixel-art night city scene; no lettering; single consistent style."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 5.93
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    },
+    {
+      "variant": "candidate",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 910921837,
+          "diagnostic_only": false,
+          "image_sha256": "b143ce22ab302f8e0a2bd6ecf065d651a290e650ef66bf12905ca9c3c0d4327a",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1191,
+              "black": 0.747,
+              "red": 0.0672,
+              "yellow": 0.0667
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat vector building scene; no lettering or photo elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 6.48
+        },
+        {
+          "attempt": 2,
+          "seed": 1664093912,
+          "diagnostic_only": true,
+          "image_sha256": "33e113faed427341d952649a070ae31a738bb942144ef594208b86b7d47f7bc8",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1306,
+              "black": 0.727,
+              "red": 0.0351,
+              "yellow": 0.1073
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "No lettering; single flat vector illustration style throughout."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 6.32
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    },
+    {
+      "variant": "candidate",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 424242,
+          "diagnostic_only": false,
+          "image_sha256": "ff13502a1ced9b43de35f633c87203adcc7f2cde8d8580ba10ddc53b3e3c825b",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.0722,
+              "black": 0.7456,
+              "red": 0.0777,
+              "yellow": 0.1045
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat illustrated building and night sky; no text or photo inserts"
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 5.09
+        },
+        {
+          "attempt": 2,
+          "seed": 424243,
+          "diagnostic_only": true,
+          "image_sha256": "b586ae04f80417dc63232c613681062950e4c01bd5407be9ac9c55ca0a2a4954",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1375,
+              "black": 0.711,
+              "red": 0.0112,
+              "yellow": 0.1402
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat stylized night city illustration with no text or photo elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 5.41
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    },
+    {
+      "variant": "candidate",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 910921837,
+          "diagnostic_only": false,
+          "image_sha256": "dadb80636ec1dfb7f7b7a853880dadaa6b5842df188b2e60055c40bbdf78bd3a",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1468,
+              "black": 0.7031,
+              "red": 0.0133,
+              "yellow": 0.1368
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "No lettering; single flat illustration style throughout."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 4.99
+        },
+        {
+          "attempt": 2,
+          "seed": 1664093912,
+          "diagnostic_only": true,
+          "image_sha256": "bdd447a96014d862a8bb4d5f6b93619418110d6be78f7638bd2d9492feb68be5",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.2417,
+              "black": 0.5906,
+              "red": 0.048,
+              "yellow": 0.1197
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat vector street scene with umbrella; no lettering or photo elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 4.74
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    },
+    {
+      "variant": "candidate",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 424242,
+          "diagnostic_only": false,
+          "image_sha256": "4a4a363f2adcb0f3f8b5c4f1fe935c19df9e3cf3482e07d66283888376834aee",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1501,
+              "black": 0.7155,
+              "red": 0.0184,
+              "yellow": 0.1161
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat vector-style night cityscape; no lettering or mixed media."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 6.07
+        },
+        {
+          "attempt": 2,
+          "seed": 424243,
+          "diagnostic_only": true,
+          "image_sha256": "24bef739dc46107d0cf601549559fe83041d8b403031098dcd58df9c608b1af4",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.0821,
+              "black": 0.7856,
+              "red": 0.0094,
+              "yellow": 0.1229
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "No text elements; consistent flat illustration style throughout."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 6.71
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    },
+    {
+      "variant": "candidate",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 910921837,
+          "diagnostic_only": false,
+          "image_sha256": "85d761a69ef75c5b521f03441f20bc355858c002d0b2d55b53ae8d801c0ebf1a",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1692,
+              "black": 0.6155,
+              "red": 0.012,
+              "yellow": 0.2034
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat silhouette landscape illustration; no text or photo elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 7.5
+        },
+        {
+          "attempt": 2,
+          "seed": 1664093912,
+          "diagnostic_only": true,
+          "image_sha256": "d554a1a23b99548f8276bba448a0193a1cc14ed5d5cc4549b5457ce89ce927f9",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.169,
+              "black": 0.6189,
+              "red": 0.003,
+              "yellow": 0.2091
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat illustrated landscape; no lettering or mixed photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 5.98
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    },
+    {
+      "variant": "candidate",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "seed": 424242,
+          "diagnostic_only": false,
+          "image_sha256": "5d98e2eb188fc2478f51d278e2d99e28c9382751269dd82b73817a3d76bfbe96",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.0938,
+              "black": 0.6442,
+              "red": 0.0053,
+              "yellow": 0.2567
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "No text; single flat vector-style landscape illustration."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 5.99
+        },
+        {
+          "attempt": 2,
+          "seed": 424243,
+          "diagnostic_only": true,
+          "image_sha256": "605053a310dca97c2423f123b5310f8b9699f67bda479564c4aac6bce3e74c6a",
+          "image_size": [
+            1024,
+            512
+          ],
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1348,
+              "black": 0.6412,
+              "red": 0.0036,
+              "yellow": 0.2203
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "No lettering; single flat vector landscape style throughout."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "elapsed_s": 5.99
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false
+    }
+  ],
+  "post_evaluation_weather_protection": {
+    "evaluated_generator_sha256": "2f9b86eed48d025a3f7f82c25d2f9ffc9e2438dfb4db011773360cb266285c09",
+    "final_generator_sha256": "a605e1aba17160f8c78040df5008c081594fcb61262a1cca98a4708aaca019bd",
+    "evaluated_prompts_byte_identical": 16
+  }
+}

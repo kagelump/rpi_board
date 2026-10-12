@@ -1,0 +1,4635 @@
+{
+  "evaluated_on": "2026-10-12 JST",
+  "model_catalog": {
+    "openai/gpt-6-luna": {
+      "pricing": {
+        "prompt": "0.0000001",
+        "completion": "0.0000005",
+        "web_search": "0.01",
+        "input_cache_read": "0.00000001",
+        "input_cache_write": "0.000000125",
+        "overrides": [
+          {
+            "min_prompt_tokens": 272000,
+            "prompt": "0.0000002",
+            "completion": "0.00000075",
+            "input_cache_read": "0.00000002",
+            "input_cache_write": "0.00000025"
+          }
+        ]
+      },
+      "architecture": {
+        "modality": "text+image+file->text",
+        "input_modalities": [
+          "file",
+          "image",
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "GPT",
+        "instruct_type": null
+      }
+    },
+    "openai/gpt-5.2": {
+      "pricing": {
+        "prompt": "0.00000175",
+        "completion": "0.000014",
+        "web_search": "0.01",
+        "input_cache_read": "0.000000175"
+      },
+      "architecture": {
+        "modality": "text+image+file->text",
+        "input_modalities": [
+          "file",
+          "image",
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "GPT",
+        "instruct_type": null
+      }
+    }
+  },
+  "guardrail_cost_comparison": [
+    {
+      "model": "openai/gpt-5.2",
+      "sample": "trees-linocut",
+      "verdict": {
+        "ok": true,
+        "status": "accepted",
+        "has_text": false,
+        "is_collage": false,
+        "note": "Flat vector landscape illustration; no text or collage elements."
+      },
+      "elapsed_s": 2.4,
+      "api": {
+        "model": "openai/gpt-5.2",
+        "usage": {
+          "prompt_tokens": 729,
+          "completion_tokens": 59,
+          "total_tokens": 788,
+          "cost": 0.00210175,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00210175,
+            "upstream_inference_prompt_cost": 0.00127575,
+            "upstream_inference_completions_cost": 0.000826
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 24,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "model": "openai/gpt-5.2",
+      "sample": "known-text",
+      "verdict": {
+        "ok": false,
+        "status": "rejected",
+        "has_text": true,
+        "is_collage": false,
+        "note": "Contains visible text: \"RAIN 24C\"."
+      },
+      "elapsed_s": 4.04,
+      "api": {
+        "model": "openai/gpt-5.2",
+        "usage": {
+          "prompt_tokens": 729,
+          "completion_tokens": 73,
+          "total_tokens": 802,
+          "cost": 0.00229775,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00229775,
+            "upstream_inference_prompt_cost": 0.00127575,
+            "upstream_inference_completions_cost": 0.001022
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 38,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "model": "openai/gpt-5.2",
+      "sample": "known-inset",
+      "verdict": {
+        "ok": false,
+        "status": "rejected",
+        "has_text": false,
+        "is_collage": true,
+        "note": "Photographic building image placed within bold graphic color borders."
+      },
+      "elapsed_s": 5.1,
+      "api": {
+        "model": "openai/gpt-5.2",
+        "usage": {
+          "prompt_tokens": 729,
+          "completion_tokens": 156,
+          "total_tokens": 885,
+          "cost": 0.00345975,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00345975,
+            "upstream_inference_prompt_cost": 0.00127575,
+            "upstream_inference_completions_cost": 0.002184
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 121,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "sample": "trees-linocut",
+      "verdict": {
+        "ok": true,
+        "status": "accepted",
+        "has_text": false,
+        "is_collage": false,
+        "note": "Flat stylized landscape illustration with no visible lettering or photographic elements."
+      },
+      "elapsed_s": 3.74,
+      "api": {
+        "model": "openai/gpt-6-luna",
+        "usage": {
+          "prompt_tokens": 729,
+          "completion_tokens": 72,
+          "total_tokens": 801,
+          "cost": 0.0001089,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0001089,
+            "upstream_inference_prompt_cost": 7.29e-05,
+            "upstream_inference_completions_cost": 3.6e-05
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 35,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "sample": "known-text",
+      "verdict": {
+        "ok": false,
+        "status": "rejected",
+        "has_text": true,
+        "is_collage": false,
+        "note": "Poster text appears over a unified flat illustrated landscape."
+      },
+      "elapsed_s": 2.19,
+      "api": {
+        "model": "openai/gpt-6-luna",
+        "usage": {
+          "prompt_tokens": 729,
+          "completion_tokens": 65,
+          "total_tokens": 794,
+          "cost": 0.0001054,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0001054,
+            "upstream_inference_prompt_cost": 7.29e-05,
+            "upstream_inference_completions_cost": 3.25e-05
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 31,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "sample": "known-inset",
+      "verdict": {
+        "ok": false,
+        "status": "rejected",
+        "has_text": false,
+        "is_collage": true,
+        "note": "Detailed building scene framed by bold flat-color blocks."
+      },
+      "elapsed_s": 6.12,
+      "api": {
+        "model": "openai/gpt-6-luna",
+        "usage": {
+          "prompt_tokens": 729,
+          "completion_tokens": 307,
+          "total_tokens": 1036,
+          "cost": 0.0002264,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0002264,
+            "upstream_inference_prompt_cost": 7.29e-05,
+            "upstream_inference_completions_cost": 0.0001535
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 273,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    }
+  ],
+  "guardrail_capability_controls": [
+    {
+      "name": "glass-pixel",
+      "expected_has_text": false,
+      "expected_is_collage": false,
+      "verdict": {
+        "ok": true,
+        "status": "accepted",
+        "has_text": false,
+        "is_collage": false,
+        "note": "Pixel-art grid with moons, stars, and figures; no text or photographic elements."
+      },
+      "elapsed_s": 4.77,
+      "api": {
+        "model": "openai/gpt-6-luna",
+        "usage": {
+          "prompt_tokens": 729,
+          "completion_tokens": 97,
+          "total_tokens": 826,
+          "cost": 0.0001214,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0001214,
+            "upstream_inference_prompt_cost": 7.29e-05,
+            "upstream_inference_completions_cost": 4.85e-05
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 56,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "matches_expected": true
+    },
+    {
+      "name": "glass-stained",
+      "expected_has_text": false,
+      "expected_is_collage": false,
+      "verdict": {
+        "ok": true,
+        "status": "accepted",
+        "has_text": false,
+        "is_collage": false,
+        "note": "Flat graphic illustration with stylized building, stars, and moon."
+      },
+      "elapsed_s": 3.79,
+      "api": {
+        "model": "openai/gpt-6-luna",
+        "usage": {
+          "prompt_tokens": 729,
+          "completion_tokens": 74,
+          "total_tokens": 803,
+          "cost": 0.0001099,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0001099,
+            "upstream_inference_prompt_cost": 7.29e-05,
+            "upstream_inference_completions_cost": 3.7e-05
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 37,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "matches_expected": true
+    },
+    {
+      "name": "rain-ukiyo",
+      "expected_has_text": false,
+      "expected_is_collage": false,
+      "verdict": {
+        "ok": true,
+        "status": "accepted",
+        "has_text": false,
+        "is_collage": false,
+        "note": "Flat illustrated rainy city scene with no visible lettering or photographic elements."
+      },
+      "elapsed_s": 5.11,
+      "api": {
+        "model": "openai/gpt-6-luna",
+        "usage": {
+          "prompt_tokens": 729,
+          "completion_tokens": 84,
+          "total_tokens": 813,
+          "cost": 0.0001149,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0001149,
+            "upstream_inference_prompt_cost": 7.29e-05,
+            "upstream_inference_completions_cost": 4.2e-05
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 47,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "matches_expected": true
+    },
+    {
+      "name": "trees-linocut",
+      "expected_has_text": false,
+      "expected_is_collage": false,
+      "verdict": {
+        "ok": true,
+        "status": "accepted",
+        "has_text": false,
+        "is_collage": false,
+        "note": "Unified flat illustration with no visible lettering or photographic elements."
+      },
+      "elapsed_s": 3.59,
+      "api": {
+        "model": "openai/gpt-6-luna",
+        "usage": {
+          "prompt_tokens": 729,
+          "completion_tokens": 71,
+          "total_tokens": 800,
+          "cost": 0.0001084,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0001084,
+            "upstream_inference_prompt_cost": 7.29e-05,
+            "upstream_inference_completions_cost": 3.55e-05
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 36,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "matches_expected": true
+    },
+    {
+      "name": "known-text",
+      "expected_has_text": true,
+      "expected_is_collage": false,
+      "verdict": {
+        "ok": false,
+        "status": "rejected",
+        "has_text": true,
+        "is_collage": false,
+        "note": "Flat, cohesive illustration with a text banner; no photographic collage."
+      },
+      "elapsed_s": 3.69,
+      "api": {
+        "model": "openai/gpt-6-luna",
+        "usage": {
+          "prompt_tokens": 729,
+          "completion_tokens": 108,
+          "total_tokens": 837,
+          "cost": 0.0001269,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0001269,
+            "upstream_inference_prompt_cost": 7.29e-05,
+            "upstream_inference_completions_cost": 5.4e-05
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 71,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "matches_expected": true
+    },
+    {
+      "name": "known-inset",
+      "expected_has_text": false,
+      "expected_is_collage": true,
+      "verdict": {
+        "ok": false,
+        "status": "rejected",
+        "has_text": false,
+        "is_collage": true,
+        "note": "Photographic nighttime building is inset within bold graphic color blocks."
+      },
+      "elapsed_s": 4.9,
+      "api": {
+        "model": "openai/gpt-6-luna",
+        "usage": {
+          "prompt_tokens": 729,
+          "completion_tokens": 245,
+          "total_tokens": 974,
+          "cost": 0.0001954,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0001954,
+            "upstream_inference_prompt_cost": 7.29e-05,
+            "upstream_inference_completions_cost": 0.0001225
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 209,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "matches_expected": true
+    }
+  ],
+  "hypothesis_rows": [
+    {
+      "variant": "concise",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1278,
+              "black": 0.7433,
+              "red": 0.0348,
+              "yellow": 0.0941
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Only abstract blocks and pictograms; no text or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "9a447a04222e6b80547ebe0339f9c0ca3e3550afc934ac98ee1dc4d5dc2c3ffd",
+          "elapsed_s": 7.31
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A has a crisp, consistent pixel grid and keeps the pedestrian and night-sky motifs relatively restrained. B adds more pixel-level marks, but its multiple prominent moons, stars, and scattered streaks make the reflection feel cluttered; both leave substantial empty space around the building rather than cropping tightly.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 386,
+          "total_tokens": 1913,
+          "cost": 0.0003838,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003838,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000193
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 265,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "concise",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1626,
+              "black": 0.6771,
+              "red": 0.0366,
+              "yellow": 0.1237
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Pixel-art weather scene with colored blocks, moon, stars, and a small figure."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "5b138bec882098c2bd5c1c22b645e29c190d85b85064f09c7699a07262df45e8",
+          "elapsed_s": 8.53
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 3,
+          "expressive_detail": 2,
+          "scene_fidelity": 2
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "preference": "control",
+        "reason": "A\u2019s curved, tightly cropped facade reads more clearly as a close-up building, and its stepped moon and small pedestrian add pixel-art character. B leaves much of the frame empty and its broken window grid weakens the facade; both use mostly flat blocks and show little reflective texture or atmospheric depth.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 502,
+          "total_tokens": 2029,
+          "cost": 0.0004418,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004418,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000251
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 381,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "concise",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1262,
+              "black": 0.7191,
+              "red": 0.058,
+              "yellow": 0.0967
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat geometric night scene with a stylized building and pedestrian."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "55368411902ee6d93e9c6c1ecb6b374906ead0f32c4d5b22cfe4b1250ace9782",
+          "elapsed_s": 4.38
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "Both use bold black pane divisions that evoke stained glass. A crops the facade more tightly and keeps the scene focused; B leaves more open space and adds conspicuous floating red and yellow shapes. Both make the moon and pedestrian too prominent, and show many brightly colored windows rather than mostly dark ones.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 435,
+          "total_tokens": 1962,
+          "cost": 0.0004083,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004083,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.0002175
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 314,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "concise",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1154,
+              "black": 0.7127,
+              "red": 0.0669,
+              "yellow": 0.1051
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat graphic illustration with abstract windows, moon, and stars; no text or photo."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "a376731579fc7d1e3ac80072b45af8b14d322151199044e37915794694b56d86",
+          "elapsed_s": 7.36
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "Both use bold lead-like divisions and jewel-toned glass panes. B\u2019s tightly cropped, angled facade feels more dimensional, and its small dark pedestrian reads more like a faint reflection; A is cleaner but flatter, with a very prominent moon and a bright outlined figure.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 528,
+          "total_tokens": 2055,
+          "cost": 0.0004548,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004548,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000264
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 413,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "concise",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1477,
+              "black": 0.5813,
+              "red": 0.0869,
+              "yellow": 0.1841
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat illustrated rainy city scene with no text or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "1e9f2a8d5fd97f2c2eff604ea19c00a16a94d5596417cdd9d85a2af941c4b175",
+          "elapsed_s": 7.7
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A uses bold flat silhouettes, a prominent umbrella, slanted rain marks, and a heavy low sky to capture the scene. B has crisp graphic shapes, but its moon, stars, and leafy framing suggest a clear night rather than a rain-swept dusk.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 382,
+          "total_tokens": 1826,
+          "cost": 0.000371425,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000371425,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.000191
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 267,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "concise",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.2717,
+              "black": 0.6009,
+              "red": 0.0265,
+              "yellow": 0.1009
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat, cohesive rainy city illustration with a red umbrella and puddles."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "9fc995d64e7edf62522ad57f482d0a624846917a8e8a147e731820135c7459de",
+          "elapsed_s": 7.61
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "B\u2019s rain strokes, textured heavy sky, puddle shapes, and distant flat skyline give the scene stronger atmosphere while keeping the umbrella clear. A has bold graphic silhouettes, but its moon and stars make the sky feel clear rather than rain-swept.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 446,
+          "total_tokens": 1890,
+          "cost": 0.000403425,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000403425,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.000223
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 333,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "concise",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1783,
+              "black": 0.3902,
+              "red": 0.1484,
+              "yellow": 0.283
+            },
+            "off_palette_pct": 0.0001,
+            "off_palette_hue": "cyan",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized landscape illustration with no lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "94764c4bca678780cc2548eb10d706e87154552a2f858630d78722aa2345300e",
+          "elapsed_s": 7.47
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "A combines bold cutout shapes with more varied carved-looking marks in the bark, foliage, and water, and its tiny walker reads as distant. B has a strong framed composition, but the larger foreground walker and broad, less varied shapes depart more from the scene.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 560,
+          "total_tokens": 1999,
+          "cost": 0.0004598,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004598,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.00028
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 445,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "concise",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1613,
+              "black": 0.5026,
+              "red": 0.0737,
+              "yellow": 0.2624
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized autumn landscape illustration with no text or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "928dda77bf0ae3256736ce8129ebf8e6ed2c82fd940d071487b0a1b080d50f0b",
+          "elapsed_s": 8.48
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 5,
+          "scene_fidelity": 2
+        },
+        "control": {
+          "style_fidelity": 5,
+          "expressive_detail": 4,
+          "scene_fidelity": 3
+        },
+        "preference": "control",
+        "reason": "A\u2019s bold cut shapes and broken river reflections feel convincingly linocut, and its small walker reads as distant. B has richer foliage and water marks, but the prominent foreground walker shifts the scene away from the requested distant riverside view. Both use strongly graphic rather than translucent light.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 590,
+          "total_tokens": 2029,
+          "cost": 0.0004748,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004748,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.000295
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 470,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "style_first",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1326,
+              "black": 0.7523,
+              "red": 0.0234,
+              "yellow": 0.0916
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat graphic grid with weather-like symbols; no text or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "8a00aee6a3b98795498653bbe8bb10772bd50eb620ea80ce81431a81dd7c0f6e",
+          "elapsed_s": 7.88
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 3,
+          "expressive_detail": 2,
+          "scene_fidelity": 3
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "B places a single small moon and a few stars within the glass reflection, with the pedestrian below; A has prominent moons out in the surrounding sky. A adds more pixelated reflection marks, but both show many bright windows rather than mostly dark ones.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 572,
+          "total_tokens": 2099,
+          "cost": 0.0004768,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004768,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000286
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 460,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "style_first",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.146,
+              "black": 0.7031,
+              "red": 0.0296,
+              "yellow": 0.1212
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat pixel-style weather graphic with colored blocks and icons; no lettering or photos."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "656dd30cc9f4eb913eaab7b090a095cfa3fbd0a4d86acaa68855ecc6200abf15",
+          "elapsed_s": 7.54
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 3,
+          "expressive_detail": 2,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 3
+        },
+        "preference": "control",
+        "reason": "B has a more deliberately shaped pixel grid and stronger perspective, while A crops closer to the facade. B leaves too much open sky and makes the moon and pedestrian more prominent than the scene calls for.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 618,
+          "total_tokens": 2145,
+          "cost": 0.0004998,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004998,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000309
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 516,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "style_first",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1334,
+              "black": 0.7019,
+              "red": 0.0815,
+              "yellow": 0.0832
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat illustration with colored windows, a person, and stars; no text or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "8ca24df582eb6291c778f396df15436b05059bac44382cb1f9555e8c35bdedb4",
+          "elapsed_s": 7.69
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 3,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "Both use bold pane-like shapes and dark leading, but B keeps the scene more coherent. A adds large red and yellow abstract shapes outside the building; B better preserves the close grid facade, reflected night sky, and small pedestrian, though its moon is too prominent and the facade too curved.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 606,
+          "total_tokens": 2133,
+          "cost": 0.0004938,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004938,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000303
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 486,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "style_first",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1285,
+              "black": 0.7003,
+              "red": 0.0587,
+              "yellow": 0.1124
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat geometric illustration with no lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "f1d5b59ec45a4d38f3d46fc51d03419581e5602b0f920b2f609f4180c15f0887",
+          "elapsed_s": 9.19
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "Both use bold, lead-like black divisions and jewel-toned panes. A crops the gridded facade tightly and keeps the pedestrian subdued; B leaves broad areas of sky and makes the pedestrian conspicuously outlined. Both show a large bright crescent and many brightly colored windows rather than a barely visible moon and mostly dark windows.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 562,
+          "total_tokens": 2089,
+          "cost": 0.0004718,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004718,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000281
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 434,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "style_first",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.2343,
+              "black": 0.5423,
+              "red": 0.0822,
+              "yellow": 0.1412
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat illustrated rainy city scene with no visible lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "323b0201f56555054870f8c6feb4a91ea026e58f6ba68f2211300bb59ee99b1f",
+          "elapsed_s": 6.55
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 5
+        },
+        "control": {
+          "style_fidelity": 2,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "B\u2019s rain strokes, grainy print texture, heavy sky and sweeping reflections evoke Ukiyo-e while keeping the umbrella and street legible. A has bold graphic shapes, but the moon, stars, tree and bright windows distract, and rain is less apparent.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 431,
+          "total_tokens": 1875,
+          "cost": 0.000395925,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000395925,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.0002155
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 317,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "style_first",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.244,
+              "black": 0.6116,
+              "red": 0.0292,
+              "yellow": 0.1152
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Unified flat illustration of a rainy city street and red umbrella."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "e87ba34b090535fd6222abaa2d2cb823c90783d4d2a0042c944453eb8668107f",
+          "elapsed_s": 6.71
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 3
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A\u2019s horizontal sky texture, sweeping puddles, and distant flat silhouettes create more atmospheric print-like depth. Its yellow reflections depart from the requested cool streetlight, but B\u2019s moon, stars, and vivid lit windows make the scene read as a clear night rather than a dusk under a heavy grey sky.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 410,
+          "total_tokens": 1854,
+          "cost": 0.000385425,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000385425,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.000205
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 287,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "style_first",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.184,
+              "black": 0.3872,
+              "red": 0.1446,
+              "yellow": 0.2842
+            },
+            "off_palette_pct": 0.0002,
+            "off_palette_hue": "cyan",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Single stylized landscape illustration with no lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "fd23a8e4638a8491eebd029f0eac9a40b9d2175179d1ed2559c4cde5e2d0bbfa",
+          "elapsed_s": 6.5
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "B has more varied carved-looking marks, grain, and textured water reflections that build depth, while keeping the distant walker legible. A\u2019s bold framing is effective, but its large areas read more like clean, flat silhouettes and the walker is prominent in the foreground.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 443,
+          "total_tokens": 1882,
+          "cost": 0.0004013,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004013,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.0002215
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 328,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "style_first",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1655,
+              "black": 0.5295,
+              "red": 0.0585,
+              "yellow": 0.2464
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat, stylized autumn landscape illustration with no lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "f117c09043801d9cb869b003f6d7f621a64ecba9f1b083970d57eee3f532ab50",
+          "elapsed_s": 7.23
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 5,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "preference": "candidate",
+        "reason": "A has more varied carved-looking marks in the trunks, grasses, and broken water reflections, with the river receding between strongly framing trees. B clearly includes a sun and walker, but relies more on broad, flat silhouettes.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 679,
+          "total_tokens": 2118,
+          "cost": 0.0005193,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0005193,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.0003395
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 572,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.0877,
+              "black": 0.7843,
+              "red": 0.0445,
+              "yellow": 0.0836
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Abstract grid of colored blocks and weather-like symbols; no text or photographs."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "61165765979ebc90e5efc8fc5566cd9ab9561120fdec8695d4f5db4e19d69240",
+          "elapsed_s": 7.04
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A uses crisp pixel grids and dithered window texture while keeping the facade tightly dominant; its small moon, stars, and pedestrian read as details in the reflection. B has clean pixel shapes, but oversized moons and stars in the open sky make the reflection less subtle and the building less immersive.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 429,
+          "total_tokens": 1956,
+          "cost": 0.0004053,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004053,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.0002145
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 308,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1405,
+              "black": 0.7184,
+              "red": 0.0545,
+              "yellow": 0.0867
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Abstract colored blocks and symbols; no lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "e8c832088cdbbbf1ef5645e6c9fe993684d446a381d745be40a4781c9cb5a2c9",
+          "elapsed_s": 9.36
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "preference": "control",
+        "reason": "A gives the facade a convincing close-up perspective and keeps the crescent and stars in open night sky around it. B has a crisp pixel grid, but the moon and stars appear mixed into the windows, making the reflection and scene less legible.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 414,
+          "total_tokens": 1941,
+          "cost": 0.0003978,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003978,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000207
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 302,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1123,
+              "black": 0.7687,
+              "red": 0.0469,
+              "yellow": 0.0721
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat graphic illustration of a lit building beneath stars and a crescent moon."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "886bab5712c5729ef54c331fc7a27e167dbb35186ece75e7be24c04eb5794eb0",
+          "elapsed_s": 6.54
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A\u2019s textured panes and tightly cropped facade suit the stained-glass look, with a small moon, sparse stars, and a faint pedestrian. B has crisp lead-like geometry, but its large moon and bold floating red and yellow shapes overpower the quiet reflected-night scene.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 393,
+          "total_tokens": 1920,
+          "cost": 0.0003873,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003873,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.0001965
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 278,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.0849,
+              "black": 0.7544,
+              "red": 0.0688,
+              "yellow": 0.092
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat geometric nighttime city illustration with moon and stars; no text or photo."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "e59bc8614f1b5b994763cf78a39ac5f5d34ad55cf54c2bd36f6aa58cf0ade1e6",
+          "elapsed_s": 7.52
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 2
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "Both use bold black lead-like dividers and geometric panes effectively. B has a denser, more carefully varied window grid and fills more of the frame; both depart from the scene with many bright panes, an oversized crescent, and a clearly outlined pedestrian rather than faint reflections.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 758,
+          "total_tokens": 2285,
+          "cost": 0.0005698,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0005698,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000379
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 640,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.2528,
+              "black": 0.5523,
+              "red": 0.0699,
+              "yellow": 0.125
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized rainy-city illustration with no lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "12fb32d73f5a05c97ed2a78e14de47ca47be291048a96a7c2e4c30ef5267a008",
+          "elapsed_s": 7.25
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 5
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A uses textured, slanting rain, a heavy sky, distant flat silhouettes, and readable street reflections to convey the specified rainy dusk scene. B has crisp graphic shapes, but its moon and stars suggest clear night, and the umbrella stands alone without a visible holder.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 311,
+          "total_tokens": 1755,
+          "cost": 0.000335925,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000335925,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.0001555
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 195,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.2112,
+              "black": 0.6155,
+              "red": 0.0523,
+              "yellow": 0.1211
+            },
+            "off_palette_pct": 0.0002,
+            "off_palette_hue": "blue",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Illustrated rainy city scene with no visible lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "1da609bbffb25483bc632f32f144fb28aeb1ee4b732d29179826ff1965eeffdc",
+          "elapsed_s": 7.02
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 3,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 2,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "A uses bold, flat silhouettes and a clear umbrella shape, but its starry moonlit sky lacks rain and the heavy dusk atmosphere. B\u2019s rain strokes, textured puddles and layered street add stronger mark-making and depth, though its detailed buildings are less minimal and the sky reads very dark.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 618,
+          "total_tokens": 2062,
+          "cost": 0.000489425,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000489425,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.000309
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 497,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1749,
+              "black": 0.4541,
+              "red": 0.0991,
+              "yellow": 0.272
+            },
+            "off_palette_pct": 0.0001,
+            "off_palette_hue": "blue",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Flat, cohesive illustration with no visible lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "64fdca22ba906134121b7181942c4a8c3ea711e60922e710b451eeb80452628f",
+          "elapsed_s": 7.43
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 5,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 5,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "A has varied carved-looking branch, foliage, and water marks, with the river leading to a small distant walker. B has bold linocut silhouettes, but its large foreground walker and solid canopy feel less faithful to the distant figure and translucent leaves.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 411,
+          "total_tokens": 1850,
+          "cost": 0.0003853,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003853,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.0002055
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 299,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1467,
+              "black": 0.5641,
+              "red": 0.048,
+              "yellow": 0.2411
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized autumn landscape illustration with no text or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "1b0a550934beb64f209020737284984634690e3a79e217842102a155d2025911",
+          "elapsed_s": 7.84
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 5,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 3,
+          "scene_fidelity": 4
+        },
+        "preference": "candidate",
+        "reason": "B has varied carved-looking bark, foliage and water marks, with layered banks and reflections that create stronger depth. A reads clearly as a bold print, but its large solid silhouettes and broad, smooth water shapes feel less textured and atmospheric. Both show the riverside trees and a distant walker.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 488,
+          "total_tokens": 1927,
+          "cost": 0.0004238,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004238,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.000244
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 368,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "materials",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 1.5,
+            "coverage": {
+              "white": 0.0173,
+              "black": 0.869,
+              "red": 0.0084,
+              "yellow": 0.1054
+            },
+            "off_palette_pct": 0.5387,
+            "off_palette_hue": "blue",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized grid illustration with no lettering or photographic elements."
+          },
+          "reasons": [
+            "off_palette=54%"
+          ],
+          "status": "rejected",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "34cd7853684d04e7c94ac4174832b9a1ae658c512fd3a27f53e92bd1b5890c6c",
+          "elapsed_s": 8.09
+        },
+        {
+          "metrics": {
+            "palette_balance": 5.5,
+            "coverage": {
+              "white": 0.1196,
+              "black": 0.7385,
+              "red": 0.0191,
+              "yellow": 0.1227
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized weather grid with abstract icons and silhouettes; no lettering or photos."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 2,
+          "seed": 1664093912,
+          "image_sha256": "284668f4ed921012d5554e5b61f798945a5a8d7abd987cd357a46c75d979e0cc",
+          "elapsed_s": 5.63
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 3
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "B has a more coherent pixel-grid facade, with the small moon and stars integrated into its reflections and a pedestrian near the base. A\u2019s oversized moon and stars sit conspicuously outside the building, while its pedestrian reads as a bright symbol rather than a faint reflection.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 481,
+          "total_tokens": 2008,
+          "cost": 0.0004313,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004313,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.0002405
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 365,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "materials",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1077,
+              "black": 0.731,
+              "red": 0.0498,
+              "yellow": 0.1115
+            },
+            "off_palette_pct": 0.0539,
+            "off_palette_hue": "blue",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized nighttime city illustration with no visible lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "5a1717be73b494dda10864a7f10cc9a970d95f1f79804ba1762102f0306600ed",
+          "elapsed_s": 6.38
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A uses varied pixel clusters and crisp reflections across a tightly cropped facade, with a faint pedestrian-like reflection and a thin crescent nearby. B has clean pixel shapes, but the building is narrower, its windows are mostly bright, and the moon, stars, and pedestrian read as separate foreground elements rather than reflections.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 409,
+          "total_tokens": 1936,
+          "cost": 0.0003953,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003953,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.0002045
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 285,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "materials",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 6.0,
+            "coverage": {
+              "white": 0.0208,
+              "black": 0.8366,
+              "red": 0.0865,
+              "yellow": 0.0561
+            },
+            "off_palette_pct": 0.0407,
+            "off_palette_hue": "blue",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized illustrated building facade with no lettering or photographic insert."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "374dd1e4d70286960e5936e01f77c8a4f2214d968180e5fb93b0a2cf01ba2acd",
+          "elapsed_s": 6.6
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 2,
+          "expressive_detail": 2,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "B uses varied glass-like panes, bold lead lines, and textured stippling, with the moon, stars, and pedestrian incorporated into the facade reflections. A is cleaner and flatter, places the moon and stars in the surrounding sky, and adds large unrelated shapes.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 374,
+          "total_tokens": 1901,
+          "cost": 0.0003778,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003778,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000187
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 260,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "materials",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.0823,
+              "black": 0.7993,
+              "red": 0.054,
+              "yellow": 0.0644
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized nighttime building illustration with no lettering or photographic collage."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "a6e9c478f4977abb0a7e1abcb54cc1e37defd6ab6358ce13c9d895417216bd6a",
+          "elapsed_s": 6.88
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 3
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 2,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A\u2019s intricate black leading, varied window facets, and fine reflective hatching give the stained-glass treatment more texture while keeping the pedestrian faint and the facade tightly cropped. B is cleanly paneled but flatter, with an oversized crescent, prominent stars, and a conspicuous pedestrian that depart from the quiet scene.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 548,
+          "total_tokens": 2075,
+          "cost": 0.0004648,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004648,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000274
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 422,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "materials",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.2122,
+              "black": 0.6337,
+              "red": 0.1109,
+              "yellow": 0.0433
+            },
+            "off_palette_pct": 0.0468,
+            "off_palette_hue": "cyan",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized rainy city illustration with no visible lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "9c8e7a394454cd4b324955029e648b1e6221705b0a2605b156e362739646b179",
+          "elapsed_s": 5.94
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 5
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 2,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "B combines flat city silhouettes with textured print-like marks, slanting rain, cool puddle reflections, and a heavy grey sky. A has bold graphic shapes, but its stars, moon, and yellow reflections miss the rainy dusk atmosphere.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 381,
+          "total_tokens": 1825,
+          "cost": 0.000370925,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000370925,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.0001905
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 271,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "materials",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.2095,
+              "black": 0.631,
+              "red": 0.057,
+              "yellow": 0.1025
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized rainy city illustration with no visible text or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "3802b27a6636c4cf534349d1ac4bf50a5fcf698e4843650753688e097b870fdc",
+          "elapsed_s": 7.68
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A\u2019s varied rain strokes, stippled heavy sky and reflective street give it more print-like texture and match the rainy dusk scene. B has crisp flat silhouettes, but its moon and stars suggest clear night rather than rain beneath a low sky.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 526,
+          "total_tokens": 1970,
+          "cost": 0.000443425,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000443425,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.000263
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 416,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "materials",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1218,
+              "black": 0.5061,
+              "red": 0.0764,
+              "yellow": 0.2957
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized screenprint landscape with no lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "acbd67b2b25a8084a0eca090ec480efe8f638c03a6b89fee1a7f96e284bce483",
+          "elapsed_s": 8.54
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 5,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 2,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "B has varied carved-looking marks, textured foliage, water reflections, and layered depth; its small walker reads as distant. A uses bold silhouettes effectively but feels flatter, with smoother, less varied marks and a prominent foreground walker.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 359,
+          "total_tokens": 1798,
+          "cost": 0.0003593,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003593,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.0001795
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 252,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "materials",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1198,
+              "black": 0.5723,
+              "red": 0.0571,
+              "yellow": 0.2508
+            },
+            "off_palette_pct": 0.0001,
+            "off_palette_hue": "green",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized illustrated landscape with no text or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "4528e4ae69793a9f1514aaf3147cb1cdf65f5972beaea9dc8b28366d7e4878ae",
+          "elapsed_s": 7.79
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 5,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 4
+        },
+        "preference": "candidate",
+        "reason": "A uses varied carved-looking bark, leaf, and ripple marks to build a framed, layered river scene with a distant walker. B reads clearly too, but relies more on broad flat silhouettes and has less textural and atmospheric variation.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 494,
+          "total_tokens": 1933,
+          "cost": 0.0004268,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004268,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.000247
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 386,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "targeted",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.2122,
+              "black": 0.6337,
+              "red": 0.1109,
+              "yellow": 0.0433
+            },
+            "off_palette_pct": 0.0468,
+            "off_palette_hue": "cyan",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized rainy city illustration with no visible lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "9c8e7a394454cd4b324955029e648b1e6221705b0a2605b156e362739646b179",
+          "elapsed_s": 5.94
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 5
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 2,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "B combines flat city silhouettes with textured print-like marks, slanting rain, cool puddle reflections, and a heavy grey sky. A has bold graphic shapes, but its stars, moon, and yellow reflections miss the rainy dusk atmosphere.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 381,
+          "total_tokens": 1825,
+          "cost": 0.000370925,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000370925,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.0001905
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 271,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "reused_from": "materials"
+    },
+    {
+      "variant": "targeted",
+      "scenario": {
+        "name": "rain-ukiyo",
+        "subject": "A lone red umbrella on a rain-swept city street at dusk, puddles reflecting cool streetlight, a low heavy grey sky pressing down, distant buildings as flat silhouettes. No text.",
+        "style": "Minimal Ukiyo-e",
+        "palette": "Red Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.2095,
+              "black": 0.631,
+              "red": 0.057,
+              "yellow": 0.1025
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized rainy city illustration with no visible text or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "3802b27a6636c4cf534349d1ac4bf50a5fcf698e4843650753688e097b870fdc",
+          "elapsed_s": 7.68
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A\u2019s varied rain strokes, stippled heavy sky and reflective street give it more print-like texture and match the rainy dusk scene. B has crisp flat silhouettes, but its moon and stars suggest clear night rather than rain beneath a low sky.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 526,
+          "total_tokens": 1970,
+          "cost": 0.000443425,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000443425,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.000263
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 416,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "reused_from": "materials"
+    },
+    {
+      "variant": "targeted",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1218,
+              "black": 0.5061,
+              "red": 0.0764,
+              "yellow": 0.2957
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized screenprint landscape with no lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "acbd67b2b25a8084a0eca090ec480efe8f638c03a6b89fee1a7f96e284bce483",
+          "elapsed_s": 8.54
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 5,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 2,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "B has varied carved-looking marks, textured foliage, water reflections, and layered depth; its small walker reads as distant. A uses bold silhouettes effectively but feels flatter, with smoother, less varied marks and a prominent foreground walker.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 359,
+          "total_tokens": 1798,
+          "cost": 0.0003593,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003593,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.0001795
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 252,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "reused_from": "materials"
+    },
+    {
+      "variant": "targeted",
+      "scenario": {
+        "name": "trees-linocut",
+        "subject": "A low viewpoint under green trees beside a river on a clear afternoon, blue sky reflected in the water, soft golden sunlight through translucent leaves and a distant walker. No text.",
+        "style": "Linocut",
+        "palette": "Yellow Field"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 10.0,
+            "coverage": {
+              "white": 0.1198,
+              "black": 0.5723,
+              "red": 0.0571,
+              "yellow": 0.2508
+            },
+            "off_palette_pct": 0.0001,
+            "off_palette_hue": "green",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized illustrated landscape with no text or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "4528e4ae69793a9f1514aaf3147cb1cdf65f5972beaea9dc8b28366d7e4878ae",
+          "elapsed_s": 7.79
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 5,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 4
+        },
+        "preference": "candidate",
+        "reason": "A uses varied carved-looking bark, leaf, and ripple marks to build a framed, layered river scene with a distant walker. B reads clearly too, but relies more on broad flat silhouettes and has less textural and atmospheric variation.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 494,
+          "total_tokens": 1933,
+          "cost": 0.0004268,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004268,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.000247
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 386,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "reused_from": "materials"
+    },
+    {
+      "variant": "targeted",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 1.5,
+            "coverage": {
+              "white": 0.0007,
+              "black": 0.8948,
+              "red": 0.0,
+              "yellow": 0.1045
+            },
+            "off_palette_pct": 0.0,
+            "off_palette_hue": "",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized nighttime building illustration with no lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "3bb486522977ff679a2cb04e0c18e7d0790efb86544d5e028af9a4e868283b23",
+          "elapsed_s": 7.59
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 2,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A uses crisp pixel-grid mullions, varied dark windows, restrained lit offices, subtle glass texture, and a faint pedestrian near the bottom. B has a blocky pixel look, but its oversized moons and stars sit outside a simplified facade, and the bright, uniform windows weaken the quiet reflective night scene.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 272,
+          "total_tokens": 1799,
+          "cost": 0.0003268,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003268,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000136
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 149,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "targeted",
+      "scenario": {
+        "name": "glass-pixel",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Retro Pixel Art",
+        "palette": "Golden Light"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 4.0,
+            "coverage": {
+              "white": 0.038,
+              "black": 0.8341,
+              "red": 0.0213,
+              "yellow": 0.1067
+            },
+            "off_palette_pct": 0.0001,
+            "off_palette_hue": "green",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Pixel-art city scene with abstract lit windows and no lettering."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "0cee31937dd6c14c20fe2c95091aca0f281fbe8633f6ff16f115633da35ac935",
+          "elapsed_s": 6.92
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 2,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "B has more dimensional pixel-art glazing and texture, with the moon, stars, and pedestrian appearing as faint reflections within the facade. A uses a simpler flat grid, puts the oversized moon in the open sky, and makes the pedestrian conspicuous.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 453,
+          "total_tokens": 1980,
+          "cost": 0.0004173,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004173,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.0002265
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 342,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "targeted",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        910921837,
+        1664093912
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 6.0,
+            "coverage": {
+              "white": 0.0019,
+              "black": 0.854,
+              "red": 0.0851,
+              "yellow": 0.0591
+            },
+            "off_palette_pct": 0.0001,
+            "off_palette_hue": "green",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized illustrated night building with no lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 910921837,
+          "image_sha256": "7f61251ad262a809c26a1a88bd8ffc47e25dcd3d1ccd52deebb17db5a8a9bbcd",
+          "elapsed_s": 6.73
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 3
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 2,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A has crisp lead-like pane outlines and varied etched marks, with a tightly cropped facade and a few lit windows. B is flatter and leaves more empty sky; both make the moon and pedestrian too prominent, but B also adds unexplained colored shapes.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 330,
+          "total_tokens": 1857,
+          "cost": 0.0003558,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003558,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000165
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 218,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "targeted",
+      "scenario": {
+        "name": "glass-stained",
+        "subject": "An extreme close-up of a single tall glass office building at night, cropped tightly by the frame. The building facade fills the scene, with a repeating grid of dark windows showing a few lit ones. In the reflection on the glass, a barely visible thin new moon and a few stars appear, along with the faint ghost of a passing pedestrian below. The sky is clear and dark, with a soft cool night air suggested by the crisp reflections. The composition is cropped close, focusing on the quiet after-dark detail of office lights and the reflected night sky. No text, letters, numbers, signs, or logos.",
+        "style": "Stained Glass",
+        "palette": "Night Signal"
+      },
+      "seeds": [
+        424242,
+        424243
+      ],
+      "attempts": [
+        {
+          "metrics": {
+            "palette_balance": 8.5,
+            "coverage": {
+              "white": 0.0324,
+              "black": 0.823,
+              "red": 0.0359,
+              "yellow": 0.1087
+            },
+            "off_palette_pct": 0.0002,
+            "off_palette_hue": "green",
+            "dominant_ink": "black",
+            "monochrome": false
+          },
+          "vision": {
+            "ok": true,
+            "status": "accepted",
+            "has_text": false,
+            "is_collage": false,
+            "note": "Stylized graphic illustration with no visible lettering or photographic elements."
+          },
+          "reasons": [],
+          "status": "accepted",
+          "attempt": 1,
+          "seed": 424242,
+          "image_sha256": "7f88a7d1c8252cfd188b4dcb272e281b7cdf02f01efdfc5e604e5e9222419228",
+          "elapsed_s": 6.8
+        }
+      ],
+      "operational_status": "accepted",
+      "fallback": false,
+      "art_comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 5,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 2,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "B uses a richly worked leaded-glass grid, varied pane textures, and places the moon and stars within the reflective facade. A has bold panes, but its oversized moon and stars sit in open sky, and the pedestrian reads as a prominent cartoon silhouette rather than a faint reflection.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 393,
+          "total_tokens": 1920,
+          "cost": 0.0003873,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003873,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.0001965
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 274,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    }
+  ],
+  "initial_summary": {
+    "concise": {
+      "flows": 8,
+      "accepted": 8,
+      "fallbacks": 0,
+      "first_off_palette_failures": 0,
+      "first_mean_off_palette": 0.0,
+      "first_explicit_rejections": 0,
+      "art_comparisons": 8,
+      "candidate_wins": 6,
+      "control_wins": 2,
+      "ties": 0,
+      "mean_expressive_detail_delta": 0.25
+    },
+    "style_first": {
+      "flows": 8,
+      "accepted": 8,
+      "fallbacks": 0,
+      "first_off_palette_failures": 0,
+      "first_mean_off_palette": 0.0,
+      "first_explicit_rejections": 0,
+      "art_comparisons": 8,
+      "candidate_wins": 7,
+      "control_wins": 1,
+      "ties": 0,
+      "mean_expressive_detail_delta": 0.12
+    },
+    "texture": {
+      "flows": 8,
+      "accepted": 8,
+      "fallbacks": 0,
+      "first_off_palette_failures": 0,
+      "first_mean_off_palette": 0.0,
+      "first_explicit_rejections": 0,
+      "art_comparisons": 8,
+      "candidate_wins": 7,
+      "control_wins": 1,
+      "ties": 0,
+      "mean_expressive_detail_delta": 1.25
+    },
+    "materials": {
+      "flows": 8,
+      "accepted": 8,
+      "fallbacks": 0,
+      "first_off_palette_failures": 1,
+      "first_mean_off_palette": 0.085,
+      "first_explicit_rejections": 1,
+      "art_comparisons": 8,
+      "candidate_wins": 8,
+      "control_wins": 0,
+      "ties": 0,
+      "mean_expressive_detail_delta": 1.75
+    }
+  },
+  "device_comparisons": [
+    {
+      "variant": "texture",
+      "scenario": "glass-pixel",
+      "seed": 910921837,
+      "comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 3
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A has a more carefully textured pixel grid and keeps the moon and pedestrian relatively integrated with the dark facade. B\u2019s oversized moon and stars dominate outside the building, while its bright window blocks weaken the quiet, reflective night scene.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 372,
+          "total_tokens": 1899,
+          "cost": 0.0003768,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003768,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000186
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 265,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": "glass-pixel",
+      "seed": 424242,
+      "comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 2,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "B\u2019s tightly cropped window grid fills the frame and its small reflected moon, scattered stars, diagonal glass glints, and ghosted pedestrian fit the quiet scene. A has a much larger moon and broad areas of empty sky, while its facade and marks feel more basic.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 387,
+          "total_tokens": 1914,
+          "cost": 0.0003843,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003843,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.0001935
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 271,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": "glass-stained",
+      "seed": 910921837,
+      "comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "A uses textured, varied glass-like panes and a tightly cropped facade that fills the frame, with the moon, stars, and faint pedestrian integrated into the reflection. B has crisp stained-glass-like divisions, but the more open, centered tower and detached decorative shapes feel less faithful to the close-up scene.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 390,
+          "total_tokens": 1917,
+          "cost": 0.0003858,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003858,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000195
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 267,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": "glass-stained",
+      "seed": 424242,
+      "comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "B\u2019s more regular, perspective-aware pane grid reads more convincingly as a glass office fa\u00e7ade, while retaining the crescent, stars, and passing figure. A has appealing bold panes, but its looser window arrangement and larger areas of open sky make the close-up building feel less cohesive.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 439,
+          "total_tokens": 1966,
+          "cost": 0.0004103,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004103,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.0002195
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 319,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": "rain-ukiyo",
+      "seed": 910921837,
+      "comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 3,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A uses diagonal rain marks, reflective puddles, and distant flat silhouettes beneath a dark, weighty sky. Its bold umbrella and figure make the rainy scene clear, though the halftone texture feels less like a restrained woodblock print. B has clean, flat shapes and a strong street perspective, but the moon and stars, leafy tree, and lack of visible rain shift it away from the requested dusk storm.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 601,
+          "total_tokens": 2045,
+          "cost": 0.000480925,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000480925,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.0003005
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 456,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": "rain-ukiyo",
+      "seed": 424242,
+      "comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 3,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "A has strong flat, graphic shapes, but its moonlit starry sky and lack of visible rain weaken the dusk rain-street scene. B adds rain, broad reflective puddles, a heavy sky, and distant silhouettes; its fine building and stipple detail is busier than minimal Ukiyo-e, but the linework is expressive and the scene reads more clearly.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 374,
+          "total_tokens": 1818,
+          "cost": 0.000367425,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000367425,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.000187
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 238,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": "trees-linocut",
+      "seed": 910921837,
+      "comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "A uses crisp carved contours, varied foliage marks, and streaked river reflections to build a convincing low, receding riverside view with a small distant walker. B has bold linocut shapes and an effective canopy frame, but its walker is prominent in the foreground and the scene feels less distant.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 469,
+          "total_tokens": 1908,
+          "cost": 0.0004143,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004143,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.0002345
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 347,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "texture",
+      "scenario": "trees-linocut",
+      "seed": 424242,
+      "comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 4
+        },
+        "preference": "candidate",
+        "reason": "B has varied carved leaf, bark, and water marks, with banks and reflections drawing the eye into the distance. A has bold, effective linocut silhouettes and a readable distant walker, but its water and treeline feel flatter; B\u2019s prominent red foreground shape is a little ambiguous.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 847,
+          "total_tokens": 2286,
+          "cost": 0.0006033,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0006033,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.0004235
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 727,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "targeted",
+      "scenario": "rain-ukiyo",
+      "seed": 910921837,
+      "comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 5,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A uses sweeping rain lines, a bold umbrella, and textured puddle reflections to create a crafted, rain-swept street scene. B has clean flat silhouettes, but its moon, stars, and leafy canopy suggest a clear night rather than a low, rainy dusk.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 382,
+          "total_tokens": 1826,
+          "cost": 0.000371425,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000371425,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.000191
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 266,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "targeted",
+      "scenario": "rain-ukiyo",
+      "seed": 424242,
+      "comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 2,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "preference": "control",
+        "reason": "A\u2019s bold flat silhouettes, restrained shapes, and clear umbrella-and-puddle composition better suit Minimal Ukiyo-e. B has lively rain streaks and reflective marks, but its dense perspective detail and hatching feel less minimal. B conveys rain and city depth more clearly; A\u2019s starry moonlit sky misses the heavy grey dusk.",
+        "usage": {
+          "prompt_tokens": 1444,
+          "completion_tokens": 409,
+          "total_tokens": 1853,
+          "cost": 0.000384925,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1441,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000384925,
+            "upstream_inference_prompt_cost": 0.000180425,
+            "upstream_inference_completions_cost": 0.0002045
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 280,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "targeted",
+      "scenario": "trees-linocut",
+      "seed": 910921837,
+      "comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 5,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "A uses varied carved-looking lines and textured foliage, with a low riverside view, overhanging trees, reflections, and a small distant walker. B has bold linocut silhouettes but less mark variation, and its walker is prominent in the foreground rather than distant.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 408,
+          "total_tokens": 1847,
+          "cost": 0.0003838,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003838,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.000204
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 292,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "targeted",
+      "scenario": "trees-linocut",
+      "seed": 424242,
+      "comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 5,
+          "scene_fidelity": 5
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 4
+        },
+        "preference": "candidate",
+        "reason": "B uses varied carved-looking strokes and speckled foliage to give the river and tree canopy more texture and depth, while keeping the distant walker legible. A has bold linocut shapes and a clear sun, but its foliage and water are comparatively flat.",
+        "usage": {
+          "prompt_tokens": 1439,
+          "completion_tokens": 601,
+          "total_tokens": 2040,
+          "cost": 0.0004803,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1436,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004803,
+            "upstream_inference_prompt_cost": 0.0001798,
+            "upstream_inference_completions_cost": 0.0003005
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 487,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "targeted",
+      "scenario": "glass-pixel",
+      "seed": 910921837,
+      "comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 5,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A uses fine pixel dithering and crisp facade reflections to give the dark window grid texture; its small moon and faint pedestrian fit the reflected, quiet scene. B has chunkier pixels, but its oversized moons and stars sit outside the building and its bright, numerous windows weaken the close-up night-reflection effect.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 545,
+          "total_tokens": 2072,
+          "cost": 0.0004633,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004633,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.0002725
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 421,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "targeted",
+      "scenario": "glass-pixel",
+      "seed": 424242,
+      "comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 3,
+          "expressive_detail": 2,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "B uses crisp pixel-grid perspective, textured reflections, and a faint pedestrian to create depth; its tight crop and small reflected crescent fit the scene better. A reads clearly but has a flatter facade, broad empty margins, and a much more prominent moon and figure.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 449,
+          "total_tokens": 1976,
+          "cost": 0.0004153,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004153,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.0002245
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 334,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "targeted",
+      "scenario": "glass-stained",
+      "seed": 910921837,
+      "comparison": {
+        "order": "candidate_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 3,
+          "scene_fidelity": 2
+        },
+        "preference": "candidate",
+        "reason": "A\u2019s tightly cropped facade has varied pane textures, crisp reflections, and faint pedestrian silhouettes; B has bold stained-glass-like divisions but a more isolated building, oversized moon, and decorative floating shapes that weaken the scene\u2019s quiet reflected-night feeling.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 606,
+          "total_tokens": 2133,
+          "cost": 0.0004938,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0004938,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000303
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 495,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    },
+    {
+      "variant": "targeted",
+      "scenario": "glass-stained",
+      "seed": 424242,
+      "comparison": {
+        "order": "control_first",
+        "candidate": {
+          "style_fidelity": 4,
+          "expressive_detail": 4,
+          "scene_fidelity": 4
+        },
+        "control": {
+          "style_fidelity": 4,
+          "expressive_detail": 2,
+          "scene_fidelity": 3
+        },
+        "preference": "candidate",
+        "reason": "B gives the tightly cropped facade a more convincing glass-panel grid, with etched textures and reflections that add depth; the moon, stars, and small pedestrian silhouettes feel embedded in the glass. A has bold stained-glass-like panes, but its oversized moon and conspicuous foreground pedestrian make the scene less quiet and reflective.",
+        "usage": {
+          "prompt_tokens": 1527,
+          "completion_tokens": 356,
+          "total_tokens": 1883,
+          "cost": 0.0003688,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1524,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.0003688,
+            "upstream_inference_prompt_cost": 0.0001908,
+            "upstream_inference_completions_cost": 0.000178
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 231,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      }
+    }
+  ],
+  "local_default": "control",
+  "palette_limit": 0.15,
+  "new_generated_images": 37,
+  "targeted_reused_flows": 4,
+  "raw_comparison_order_randomized": true,
+  "user_selected_control": true
+}

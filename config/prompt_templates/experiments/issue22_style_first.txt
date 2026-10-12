@@ -1,0 +1,8 @@
+{{STYLE_GUIDANCE}}
+
+A four-ink print using only white, black, red and yellow. Every tonal mark is made from one of these inks, with the inks kept separate. One cohesive illustration fills a 960x480 landscape canvas edge to edge. No text, letters, numbers, logos or borders.
+
+Palette emphasis: {{PALETTE_GUIDANCE}}
+
+Scene (translate all materials, light and atmosphere into the specified ink shapes):
+{{IMAGE_PROMPT}}

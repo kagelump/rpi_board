@@ -1,0 +1,10 @@
+Four-ink illustration, printed with solid white, black, red and yellow inks only. The ink specification takes priority over the subject and style. All surfaces are opaque flat ink shapes, edges crisp. Tone comes from separated ink marks, with the paper white between marks. Night sky and shadows are solid black; moon and stars solid white. Day sky is white; leaves are black or yellow. Glass is a black window grid with opaque white or yellow panes. Reflections repeat white or yellow shapes on black. Light is a solid yellow shape with a hard edge. Every ink stays separate, even at overlaps. ONE unified illustration fills a 960x480 landscape canvas, edge to edge. Absolutely NO TEXT, letters, numbers, signs, logos or watermarks.
+
+Palette emphasis: {{PALETTE_GUIDANCE}}
+
+{{STYLE_GUIDANCE}}
+
+Scene (translate all materials, light and atmosphere into the specified ink shapes):
+{{IMAGE_PROMPT}}
+
+Solid ink shapes following the palette emphasis; large readable silhouettes.

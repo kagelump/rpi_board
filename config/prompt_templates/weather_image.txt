@@ -1,37 +1,10 @@
-SUBJECT (this is the most important part, render exactly this scene):
+Four-ink illustration, printed with solid white, black, red and yellow inks only. The ink specification takes priority over the subject and style. All surfaces are opaque flat ink shapes, edges crisp. Tone comes from separated ink marks, with the paper white between marks. Night sky and shadows are solid black; moon and stars solid white. Day sky is white; leaves are black or yellow. Glass is a black window grid with opaque white or yellow panes. Reflections repeat white or yellow shapes on black. Light is a solid yellow shape with a hard edge. Every ink stays separate, even at overlaps. ONE unified illustration fills a 960x480 landscape canvas, edge to edge. Absolutely NO TEXT, letters, numbers, signs, logos or watermarks.
+
+Palette emphasis: {{PALETTE_GUIDANCE}}
+
+{{STYLE_GUIDANCE}}
+
+Scene (translate all materials, light and atmosphere into the specified ink shapes):
 {{IMAGE_PROMPT}}
 
-{{RECIPE_GUIDANCE}}
-
-Render the SUBJECT above as ONE single, cohesive illustration filling a 960x480
-landscape frame (2:1), edge to edge, drawn entirely in the one style named
-below. Subject and style are not separate layers: there is a single unified
-artwork with one consistent aesthetic from edge to edge. Do NOT frame, inset,
-collage, vignette, or place a realistic or photographic image inside a graphic
-border or block -- the whole canvas is the same drawing in the same style. There
-is NO reserved text area; copy is added on a separate strip below by the board,
-so use the whole canvas.
-
-Physical display constraints:
-- Only four inks exist: white, black, red, and yellow. Follow the palette
-  strategy below; it may intentionally emphasize only two or three inks.
-- NEVER use any other colour: no blue, green, teal, purple, pink, brown, orange,
-  or grey. Render everything in the four inks -- a sky becomes flat white, black,
-  or yellow (never blue); water becomes black or white; foliage becomes black or
-  yellow. Foreign colours turn to muddy speckle on the panel.
-- No gradients, soft shading, or grey mid-tones -- the panel can only dither them
-  into noise. Build tone and texture using deliberate ink marks such as hatching,
-  dots, rough edges, carved gaps, or repeated shapes when the selected style
-  calls for them. Keep those marks large enough to survive the display.
-- Preserve a strong readable silhouette or value structure from across a room,
-  while allowing the selected style to control detail, texture, and line quality.
-- Absolutely NO TEXT, letters, numbers, logos, or watermarks.
-- The weather mood must read at a glance from across a room.
-
-Palette strategy for this forecast day:
-{{PALETTE_GUIDANCE}}
-
-Style treatment (apply this to the WHOLE image, as the single unifying
-aesthetic, not as a frame or border around the subject). This guidance is
-authoritative for mark-making, texture, shape language, and visual density:
-{{STYLE_GUIDANCE}}
+Solid ink shapes following the palette emphasis; large readable silhouettes.
