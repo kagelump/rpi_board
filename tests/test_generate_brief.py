@@ -166,6 +166,30 @@ class TestBriefModelAttempts:
 
 
 class TestRequestBriefWithFallback:
+    @pytest.mark.parametrize("model,temperature,json_mode", [
+        ("openai/gpt-6-luna", None, True),
+        ("openai/gpt-6-luna:online", None, False),
+        ("deepseek/deepseek-v4-flash", 0.5, True),
+    ])
+    def test_brief_request_model_parameter_compatibility(self, monkeypatch, model, temperature, json_mode):
+        requests = []
+        monkeypatch.setattr("scripts.openrouter.generate_brief.get_openrouter_api_key", lambda s: "k")
+
+        def fetch(request, **kwargs):
+            requests.append(json.loads(request.data))
+            return json.dumps({"choices": [{"message": {"content": json.dumps(self._valid())}}]}).encode()
+
+        monkeypatch.setattr("scripts.openrouter.generate_brief.fetch_bytes_with_deadline", fetch)
+        settings = self._settings()
+        settings["openrouter"]["base_url"] = "https://example.invalid"
+        assert _call_openrouter(settings, "prompt", model_override=model) == self._valid()
+        assert requests[0]["model"] == model
+        assert requests[0].get("temperature") == temperature
+        assert ("temperature" in requests[0]) is (temperature is not None)
+        assert ("response_format" in requests[0]) is json_mode
+        if json_mode:
+            assert requests[0]["response_format"] == {"type": "json_object"}
+
     def _settings(self):
         return {
             "openrouter": {"text_model": "provider/model", "brief_temperature": 0.5},

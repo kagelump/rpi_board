@@ -167,7 +167,8 @@ Key sections:
   the remaining budget. The deterministic fallback art subject is a plain
   scene with no numbers or poster/forecast wording, so it never feeds caption
   material into the image model when the brief stage degrades.
-- `openrouter.text_model`: model for text brief.
+- `openrouter.text_model`: model for text brief (default: `openai/gpt-6-luna`). GPT-6 uses its default reasoning configuration and omits the unsupported `brief_temperature` parameter.
+  Its `:online` attempt omits API JSON mode because native web search rejects it; the prompt, JSON parser, and full brief validator still enforce the same output contract. Non-online attempts retain JSON mode.
 - `openrouter.image_model`: image generation model (default: `google/gemini-3.1-flash-image-preview`).
 - `openrouter.image_tool_model`: model used for art validation and to invoke the OpenRouter image server tool (default: `openai/gpt-6-luna`).
 

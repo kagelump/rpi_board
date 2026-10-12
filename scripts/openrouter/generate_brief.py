@@ -407,6 +407,19 @@ def _render_prompt(template, payload):
     )
 
 
+def _brief_model_parameters(settings, model):
+    # GPT-6 reasoning requests do not accept temperature. Preserve the
+    # configured creativity setting for other models and explicit overrides.
+    parameters = {"response_format": {"type": "json_object"}}
+    if _offline_text_model(model).startswith(("openai/gpt-6", "gpt-6")):
+        # OpenRouter uses native web search for GPT-6 :online, which rejects
+        # JSON mode. The prompt still requests strict JSON and the same parser
+        # and output validator gate acceptance before publishing the brief.
+        return {} if _is_online_model(model) else parameters
+    parameters["temperature"] = settings.get("openrouter", {}).get("brief_temperature", 0.85)
+    return parameters
+
+
 def _call_openrouter(
     settings, prompt, model_override=None, *, timeout=None, deadline=None, deadline_scope="attempt"
 ):
@@ -420,12 +433,10 @@ def _call_openrouter(
         timeout = settings["pipeline"]["brief_timeout_seconds"]
     url = settings["openrouter"]["base_url"].rstrip("/") + "/chat/completions"
     model = model_override or settings["openrouter"]["text_model"]
-    temperature = settings["openrouter"].get("brief_temperature", 0.85)
     body = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": temperature,
-        "response_format": {"type": "json_object"},
+        **_brief_model_parameters(settings, model),
     }
     request = urllib.request.Request(
         url=url,
@@ -654,7 +665,8 @@ def _request_brief_with_fallback(
             "attempt": index,
             "attempt_count": len(models),
             "fallback": is_fallback,
-            "temperature": settings.get("openrouter", {}).get("brief_temperature", 0.85),
+            "temperature": _brief_model_parameters(settings, model_name).get("temperature"),
+            "json_mode_enabled": "response_format" in _brief_model_parameters(settings, model_name),
             "signature": signature,
             "timeout_seconds": round(attempt_budget, 3),
             "configured_timeout_seconds": attempt_timeout,

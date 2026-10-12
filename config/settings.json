@@ -106,7 +106,7 @@
   },
   "openrouter": {
     "base_url": "https://openrouter.ai/api/v1",
-    "text_model": "deepseek/deepseek-v4-flash",
+    "text_model": "openai/gpt-6-luna",
     "brief_temperature": 0.85,
     "image_tool_model": "openai/gpt-6-luna",
     "image_model": "google/gemini-3.1-flash-image-preview",
