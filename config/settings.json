@@ -67,7 +67,7 @@
     "image_guardrail_check_text": false,
     "image_guardrail_max_retries": 1,
     "image_guardrail_timeout_seconds": 30,
-    "image_guardrail_max_off_palette_pct": 0.15,
+    "image_guardrail_max_off_palette_pct": 0.40,
     "skip_unchanged": true,
     "regen_min_interval_seconds": 86400,
     "afternoon_art_prompt_similarity_threshold": 0.8

@@ -15,6 +15,7 @@ from scripts.common import ROOT, absolute_path, get_fal_api_key, get_openrouter_
 from scripts.history.store import record_current_log, record_current_snapshot
 from scripts.openrouter.network import describe_network_error, urlopen_with_context
 from scripts.openrouter import art_recipes
+from scripts.openrouter.art_direction import artwork_context
 from scripts.openrouter.art_guardrail import inspect_art
 from scripts.render.palette_metrics import analyze as analyze_palette
 
@@ -38,7 +39,7 @@ ART_STYLE_POOL = [
     },
     {
         "name": "De Stijl",
-        "prompt": "De Stijl treatment applied to the WHOLE scene: the entire subject simplified into orthogonal black dividing lines and flat primary color blocks, the forms themselves abstracted into rectilinear shapes -- NOT a realistic image placed inside a Mondrian grid or border",
+        "prompt": "De Stijl-inspired illustration: orthogonal rhythms, black dividing lines and red, yellow and white color blocks integrated across the scene, with drawn material detail and depth; keep the whole scene illustrated rather than placing a photo inside a grid",
     },
     {
         "name": "WPA Travel Poster",
@@ -58,7 +59,7 @@ ART_STYLE_POOL = [
     },
     {
         "name": "Paper Cutout",
-        "prompt": "hand-cut paper collage rendered as one unified illustration: irregular scissor edges, overlapping color silhouettes, playful depth from shape boundaries",
+        "prompt": "hand-cut paper illustration: irregular scissor edges, overlapping ink silhouettes with each ink kept separate, playful depth from shape boundaries across one continuous scene",
     },
     {
         "name": "Scratchboard Engraving",
@@ -110,7 +111,7 @@ ART_STYLE_POOL = [
     },
     {
         "name": "Noir Shadow",
-        "prompt": "noir shadow play: black-dominant composition, oblique viewpoints, sharp beams of light, cropped silhouettes, tense empty space and rain-sliced geometry",
+        "prompt": "noir-inspired ink illustration: oblique viewpoints, strong daylight shadows, cropped silhouettes, tense empty space and expressive directional marks; dark ink does not imply nighttime",
     },
     {
         "name": "Retro Railway Poster",
@@ -130,7 +131,7 @@ PALETTE_STRATEGY_POOL = [
     },
     {
         "name": "Night Signal",
-        "prompt": "Make black the dominant field with white carved openings and one concentrated red or yellow light source.",
+        "prompt": "Make black the dominant printed field with white carved openings and one concentrated red or yellow accent. This is an ink balance, not a nighttime setting; preserve the scene's daylight.",
     },
     {
         "name": "Yellow Field",
@@ -155,11 +156,12 @@ PALETTE_STRATEGY_POOL = [
 ]
 
 NEGATIVE_STYLE_CONSTRAINTS = (
-    "Avoid photorealism, 3D rendering, blur, depth of field, smooth gradients, "
-    "photographic lighting, and tiny illegible detail. Texture and tonal variation "
+    "Use drawn detail and mark spacing for depth instead of photographic blur, "
+    "depth of field, smooth gradients or 3D rendering. Texture and tonal variation "
     "must come from deliberate marks in the selected style using the device inks. "
-    "The result must be one unified illustration edge to edge -- not a collage, "
-    "not a framed or inset image, and not a realistic photo with a graphic border."
+    "Keep a continuous illustrated scene edge to edge, including detailed "
+    "backgrounds and unified paper-cut forms where appropriate; no inserted "
+    "photographs or framed or inset pictures."
 )
 
 
@@ -253,7 +255,7 @@ def _inject_style_prompt(template, illustration_prompt, style, palette, recipe=N
                          *, forecast=None):
     style_block = (
         f"Style: {style['name']}. {style['prompt']}. "
-        "Apply this style using only the specified solid inks."
+        "Let this style control the drawing and texture, using the four device inks."
     )
     # Issue #20: the accepted brief/forecast is authoritative. When the selected
     # recipe's staging would contradict it (for example an umbrella crowd on a
@@ -264,7 +266,15 @@ def _inject_style_prompt(template, illustration_prompt, style, palette, recipe=N
         forecast is not None and art_recipes.recipe_conflicts_with_brief(recipe, forecast)
     ):
         recipe_block = art_recipes.recipe_directive(recipe)
-    prompt = template.replace("{{IMAGE_PROMPT}}", _rewrite_palette_scene(illustration_prompt.strip()))
+    prompt = template.replace("{{IMAGE_PROMPT}}", _rewrite_scene_direction(illustration_prompt.strip()))
+    lighting = (artwork_context(forecast)["guidance"] if forecast is not None else
+                "Keep the time of day explicitly described in the scene. Do not "
+                "add celestial objects or change the scene's lighting to match "
+                "a palette or style example.")
+    if "{{LIGHTING_GUIDANCE}}" in prompt:
+        prompt = prompt.replace("{{LIGHTING_GUIDANCE}}", lighting)
+    elif forecast is not None:
+        prompt += "\n\nScene lighting:\n" + lighting
     if "{{PALETTE_GUIDANCE}}" in prompt:
         palette_block = palette['prompt']
         prompt = prompt.replace("{{PALETTE_GUIDANCE}}", palette_block)
@@ -490,24 +500,59 @@ _RETRY_PROMPT_CLAUSES = {
     ),
     "is_collage": (
         "The previous attempt was rejected as a collage or framed image. Produce "
-        "ONE unified illustration edge to edge with a single aesthetic; never "
-        "frame, inset, or nest one image inside a border, grid, or block."
+        "ONE unified illustration edge to edge. Draw the foreground and background "
+        "as parts of one scene; retain illustrated detail, depth or unified "
+        "paper-cut forms without inserting photographs or framed pictures."
     ),
 }
 _OFF_PALETTE_RETRY_CLAUSE = (
-    "Print every surface as one opaque white, black, red or yellow ink. "
-    "Use black for night and shadows, white for moon and stars, solid yellow "
-    "for light, and repeated white/yellow shapes for reflections. Keep ink "
-    "regions separate with crisp edges."
+    "Use only white, black, red and yellow ink marks with paper between them. "
+    "Replace unsupported hues and blended shading with hatching, stippling, "
+    "carved marks or separated ink shapes in the selected style. Preserve the "
+    "scene's lighting, weather, composition and material detail; a palette "
+    "correction must not turn daylight into night or introduce new objects."
 )
 
-_SCENE_HEADING = (
+_SCENE_HEADING = "Scene:\n"
+_LEGACY_SCENE_HEADING = (
     "Scene (translate all materials, light and atmosphere into the specified ink shapes):\n"
 )
 
 
+def _rewrite_palette_colors(scene):
+    """Map incompatible surface hues without flattening light or materials."""
+    replacements = [
+        (r"\b(?:grey|gray)\s+sky\b", "overcast sky"),
+        (r"\b(?:blue|cyan|teal|azure)\b(?=\s+(?:sky|water|river|sea|clouds?|panes?|windows?|light|hue))", "white"),
+        (r"\b(?:green|brown|grey|gray|purple|violet|indigo)\b(?=\s+(?:trees?|leaves|foliage|sky|water|river|clouds?|panes?|windows?|light|hue))", "black"),
+        (r"\b(?:pink|magenta)\b(?=\s+(?:sky|clouds?|blossoms?|flowers?|light|hue))", "red"),
+        (r"\borange\b(?=\s+(?:sky|light|glow|clouds?|leaves|hue))", "yellow"),
+    ]
+    for pattern, replacement in replacements:
+        scene = re.sub(pattern, replacement, scene, flags=re.IGNORECASE)
+    return scene
+
+
+def _rewrite_scene_direction(scene):
+    """Keep cached scene depth without asking the image model for camera blur."""
+    for pattern, replacement in (
+        (r"\b(?:softly\s+)?(?:blurred|blurry)\b", "less detailed"),
+        (r"\bout[- ]of[- ]focus\b", "drawn with fewer distant marks"),
+        (r"\bin\s+(?:sharp|soft)\s+focus\b", "with deliberate drawn detail"),
+        (r"\b(?:shallow\s+)?depth of field\b", "foreground and background separation through drawn detail"),
+        (r"\bbokeh\b", "sparse background ink marks"),
+    ):
+        def replace(match):
+            prefix = scene[max(0, match.start() - 24):match.start()]
+            if re.search(r"\b(?:no|not|without|avoid)\s+(?:any\s+)?$", prefix, re.I):
+                return match.group(0)
+            return replacement
+        scene = re.sub(pattern, replace, scene, flags=re.I)
+    return _rewrite_palette_colors(scene)
+
+
 def _rewrite_palette_scene(scene):
-    """Translate common conflicting cues without another network dependency.
+    """Stricter material translation used only after a palette rejection.
 
     Only the scene is edited; exclusions and style directions are not subject
     to colour replacement. This bounded vocabulary complements the rendering
@@ -523,14 +568,10 @@ def _rewrite_palette_scene(scene):
         (r"\bfaint ghost\b", "white silhouette"),
         (r"\b(?:soft(?:\s+(?:cool|warm|golden))?|cool|warm|golden)\s+(?:sunlight|streetlight|light|glow)\b(?!\s+(?:rain|drizzle|snow|breeze|wind)\b)", "solid yellow shapes with hard edges"),
         (r"\btranslucent leaves\b", "opaque black or yellow leaves"),
-        (r"\b(?:blue|cyan|teal|azure)\b(?=\s+(?:sky|water|river|sea|clouds?|panes?|windows?|light|hue))", "white"),
-        (r"\b(?:green|brown|grey|gray|purple|violet|indigo)\b(?=\s+(?:trees?|leaves|foliage|sky|water|river|clouds?|panes?|windows?|light|hue))", "black"),
-        (r"\b(?:pink|magenta)\b(?=\s+(?:sky|clouds?|blossoms?|flowers?|light|hue))", "red"),
-        (r"\borange\b(?=\s+(?:sky|light|glow|clouds?|leaves|hue))", "yellow"),
     ]
     for pattern, replacement in replacements:
         scene = re.sub(pattern, replacement, scene, flags=re.IGNORECASE)
-    return scene
+    return _rewrite_scene_direction(scene)
 
 
 def _sha256_bytes(data):
@@ -606,10 +647,12 @@ def _retry_prompt(prompt, reasons):
             clauses.append(clause)
     if any(str(reason).startswith("off_palette=") for reason in reasons or []):
         clauses.append(_OFF_PALETTE_RETRY_CLAUSE)
-        before, separator, after = prompt.partition(_SCENE_HEADING)
-        if separator:
-            scene, ending, tail = after.partition("\n\n")
-            prompt = before + separator + _rewrite_palette_scene(scene) + ending + tail
+        for heading in (_SCENE_HEADING, _LEGACY_SCENE_HEADING):
+            before, separator, after = prompt.partition(heading)
+            if separator:
+                scene, ending, tail = after.partition("\n\n")
+                prompt = before + separator + _rewrite_palette_scene(scene) + ending + tail
+                break
         prompt = prompt.replace(
             "Solid ink shapes following the palette emphasis; large readable silhouettes.",
             "Separate opaque ink shapes, crisp edges, a readable silhouette.")
@@ -648,7 +691,7 @@ def _generate_with_guardrail(settings, prompt, provider):
         }
 
     max_retries = int(pipeline.get("image_guardrail_max_retries", 1))
-    max_off_palette = float(pipeline.get("image_guardrail_max_off_palette_pct", 0.15))
+    max_off_palette = float(pipeline.get("image_guardrail_max_off_palette_pct", 0.40))
     attempts = []
     rejected_reasons = []
     for attempt in range(max_retries + 1):
@@ -1004,6 +1047,7 @@ def main():
     record_current_snapshot("image_generation_input", {
         "target_date": target_date,
         "daypart_role": daypart_role,
+        "artwork_context": artwork_context(payload),
         "illustration_prompt": illustration_prompt,
         "selected_style": style,
         "selected_palette": palette,

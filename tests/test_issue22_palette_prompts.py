@@ -15,27 +15,27 @@ def _prompt():
                                    FIXTURE['selected_style'], FIXTURE['selected_palette'])
 
 
-def test_night_scene_is_subordinate_to_concrete_ink_specification():
+def test_first_attempt_preserves_materials_while_retaining_ink_palette():
     prompt = _prompt()
-    scene = gi._rewrite_palette_scene(FIXTURE['illustration_prompt'])
-    assert prompt.index('ink specification takes priority') < prompt.index(scene)
-    assert 'render exactly this scene' not in prompt
-    assert 'black window dividers and opaque white or yellow panes' in scene
-    assert 'repeated white or yellow shapes' in scene
+    scene = gi._rewrite_palette_colors(FIXTURE['illustration_prompt'])
+    assert scene in prompt
+    assert 'glass office building' in scene and 'faint ghost' in scene
+    assert 'only white, black, red and yellow inks' in prompt.lower()
     assert 'Retro Pixel Art' in prompt
     assert FIXTURE['selected_palette']['prompt'] in prompt
 
 
-def test_selected_control_template_matches_saved_experiment_control():
+def test_archived_control_is_preserved_but_live_prompt_allows_texture():
     selected = (ROOT / 'config/prompt_templates/weather_image.txt').read_text()
     control = (ROOT / 'config/prompt_templates/experiments/issue22_control.txt').read_text()
-    assert selected == control
-    assert 'All surfaces are opaque flat ink shapes' in _prompt()
+    assert 'All surfaces are opaque flat ink shapes' in control
+    assert 'All surfaces are opaque flat ink shapes' not in selected
+    assert 'hatching, stippling, rough edges' in selected
 
 
 def test_palette_retry_rewrites_scene_and_preserves_composition():
     # Exercise a cached/legacy subject that has not yet been translated.
-    prompt = _prompt().replace(gi._rewrite_palette_scene(FIXTURE['illustration_prompt']),
+    prompt = _prompt().replace(gi._rewrite_palette_colors(FIXTURE['illustration_prompt']),
                                FIXTURE['illustration_prompt'])
     retry = gi._retry_prompt(prompt, ['off_palette=19%', 'has_text', 'is_collage'])
     scene = retry.split(gi._SCENE_HEADING, 1)[1].split('\n\n', 1)[0]
@@ -51,7 +51,7 @@ def test_palette_retry_rewrites_scene_and_preserves_composition():
 
 def test_non_palette_rejection_does_not_rewrite_scene():
     prompt = _prompt()
-    scene = gi._rewrite_palette_scene(FIXTURE['illustration_prompt'])
+    scene = gi._rewrite_palette_colors(FIXTURE['illustration_prompt'])
     assert scene in gi._retry_prompt(prompt, ['has_text'])
     assert gi._retry_prompt(prompt, []) == prompt
 

@@ -1189,11 +1189,12 @@ def recipe_directive(recipe: dict[str, Any]) -> str:
     tags = extract_tags(recipe)
     motif = ", ".join(tags.get("motifs") or []) or "no distinct motif"
     return (
-        "Artwork recipe for this forecast day. The weather, light and emotional "
-        "beat described in SUBJECT remain authoritative and must not be "
-        "contradicted. Within that weather, stage the scene with this "
+        "Artwork recipe for this forecast day. Forecast conditions, the explicit "
+        "scene-lighting direction and the four allowed inks remain authoritative. "
+        "Preserve the scene's weather and emotional beat within that lighting. "
+        "Stage the scene with this "
         "subject/motif, setting, viewpoint and composition (these control staging "
-        "and framing only; keep the four-ink e-ink constraints below):\n"
+        "and framing only, without changing the available inks or daylight):\n"
         f"- Subject and motif: {tags.get('subject_text') or tags.get('subject') or 'unspecified'} "
         f"(motif: {motif})\n"
         f"- Setting: {tags.get('setting_text') or tags.get('setting') or 'unspecified'}\n"

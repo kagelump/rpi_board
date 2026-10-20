@@ -82,6 +82,56 @@ def test_deterministic_fallback_subject_stays_caption_free_downstream():
     assert "hint=" not in prompt
 
 
+def test_daylight_survives_dark_palette_and_legacy_night_scene_on_retry():
+    template = (ROOT / "config/prompt_templates/weather_image.txt").read_text()
+    style = next(s for s in ART_STYLE_POOL if s["name"] == "Noir Shadow")
+    palette = next(p for p in PALETTE_STRATEGY_POOL if p["name"] == "Night Signal")
+    prompt = _inject_style_prompt(
+        template, "A glass office building under a night sky with a thin moon.",
+        style, palette, forecast={"day_context": {
+            "part_of_day": "night", "daypart_role": "primary",
+            "run_date_iso": "2026-10-20", "target_date_iso": "2026-10-21",
+        }},
+    )
+    assert "forecast day's daytime outdoor conditions in daylight" in prompt
+    assert "overrides conflicting night cues" in prompt
+    assert "not a nighttime setting" in prompt
+    retry = gi._retry_prompt(prompt, ["off_palette=20%"])
+    assert "forecast day's daytime outdoor conditions in daylight" in retry
+    assert "must not turn daylight into night" in retry
+    assert "white for moon and stars" not in retry
+    assert "{{" not in retry
+
+
+def test_daytime_scene_gets_no_global_positive_night_examples():
+    template = (ROOT / "config/prompt_templates/weather_image.txt").read_text()
+    prompt = _inject_style_prompt(
+        template, "Rain over a Tokyo street in daylight.",
+        ART_STYLE_POOL[0], PALETTE_STRATEGY_POOL[0], forecast={"day_context": {
+            "daypart_role": "afternoon",
+        }},
+    )
+    assert "afternoon outdoor conditions in daylight" in prompt
+    assert "Night sky and shadows are solid black" not in prompt
+    assert "moon and stars solid white" not in prompt
+
+
+def test_first_attempt_keeps_atmosphere_and_normalizes_only_surface_hues():
+    template = (ROOT / "config/prompt_templates/weather_image.txt").read_text()
+    prompt = _inject_style_prompt(
+        template,
+        "Green trees under a blue sky; soft golden sunlight through translucent leaves. "
+        "A blue jay beside green tea and an orange; cool light breeze and soft light rain.",
+        ART_STYLE_POOL[0], PALETTE_STRATEGY_POOL[0],
+    )
+    assert "black trees under a white sky" in prompt
+    assert "soft golden sunlight through translucent leaves" in prompt
+    assert "blue jay beside green tea and an orange" in prompt
+    assert "cool light breeze and soft light rain" in prompt
+    assert gi._rewrite_palette_colors("Grey sky over green trees") == (
+        "overcast sky over black trees")
+
+
 # ---------------------------------------------------------------------------
 # Issue #3: rejected artwork must never be published or reused
 # ---------------------------------------------------------------------------
@@ -785,7 +835,7 @@ def test_inject_style_prompt_suppresses_conflicting_recipe_on_dry_brief():
     )
 
     lowered = prompt.lower()
-    assert "artwork recipe" not in lowered
+    assert "artwork recipe for this forecast day" not in lowered
     assert "umbrella" not in lowered
     assert "ginkgo" in lowered  # the accepted brief's SUBJECT still drives the art
 

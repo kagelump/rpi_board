@@ -20,6 +20,7 @@ from scripts.openrouter.network import (
     fetch_bytes_with_deadline,
 )
 from scripts.openrouter import art_recipes
+from scripts.openrouter.art_direction import artwork_context
 from scripts.ops.render_gate import compute_signature, should_regenerate
 from scripts.render.compose_board import fit_panel_copy
 
@@ -316,7 +317,7 @@ _VISUAL_ANGLES = [
     "a close-up seasonal detail that implies the larger weather",
     "an abstract visual metaphor grounded in today's real conditions",
     "a dramatic study of the sky and its relationship to the city",
-    "a quiet after-dark scene with one revealing detail",
+    "a quiet daylight scene with one revealing seasonal detail",
     "motion: gusts, rain, shadows, people, or objects crossing the frame",
     "a pattern or rhythm found in weather and the built environment",
     "an unexpected outdoor object made expressive by the conditions",
@@ -383,6 +384,18 @@ def _enrich_payload(payload, settings):
     enriched["visual_angle"] = _rotating_choice(_VISUAL_ANGLES, seed_basis, offset=3)
     enriched["composition"] = _rotating_choice(_COMPOSITIONS, seed_basis, offset=7)
     enriched["time_frame"] = _time_frame(day_context.get("part_of_day"))
+    if (day_context.get("daypart_role") == "primary"
+            and day_context.get("target_date_iso")
+            and day_context.get("run_date_iso")
+            and day_context["target_date_iso"] != day_context["run_date_iso"]):
+        enriched["time_frame"] = (
+            "Advance briefing for the forecast day: describe tomorrow's daytime "
+            "weather and practical plans, then mention overnight risks if useful. "
+            "This is prepared the evening before, not a picture of tonight. "
+            "The copy stays on the board into that morning: prefer the forecast "
+            "weekday or omit relative day words instead of writing 'tomorrow'."
+        )
+    enriched["artwork_context"] = artwork_context(payload)
     return enriched
 
 

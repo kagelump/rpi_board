@@ -205,7 +205,7 @@ def main():
     for variant in dict.fromkeys(args.variants):
         group=[r for r in rows if r['variant']==variant];judged=[r['art_comparison'] for r in group if 'art_comparison' in r and 'error' not in r['art_comparison']]
         summary[variant]={'flows':len(group),'accepted':sum(r['operational_status']=='accepted' for r in group),
-            'fallbacks':sum(r['fallback'] for r in group),'first_off_palette_failures':sum(r['attempts'][0].get('metrics',{}).get('off_palette_pct',0)>.15 for r in group),
+            'fallbacks':sum(r['fallback'] for r in group),'first_off_palette_failures':sum(r['attempts'][0].get('metrics',{}).get('off_palette_pct',0)>settings['pipeline']['image_guardrail_max_off_palette_pct'] for r in group),
             'first_mean_off_palette':round(sum(r['attempts'][0].get('metrics',{}).get('off_palette_pct',0) for r in group)/len(group),4),
             'first_explicit_rejections':sum(r['attempts'][0]['status']=='rejected' for r in group),
             'art_comparisons':len(judged),'candidate_wins':sum(j['preference']=='candidate' for j in judged),

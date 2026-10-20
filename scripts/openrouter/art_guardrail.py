@@ -20,8 +20,10 @@ from scripts.openrouter.network import urlopen_with_context
 
 
 INSPECT_PROMPT = (
-    "You are a strict QA check for a flat, minimal weather-poster illustration. "
-    "Answer ONLY about the artwork itself. Return STRICT JSON, no markdown:\n"
+    "You are a QA check for a four-ink weather illustration. "
+    "Answer ONLY about the artwork itself. Detailed illustrated backgrounds, "
+    "drawn atmospheric depth and unified paper-cut forms are valid illustration "
+    "treatments and are not themselves collage. Return STRICT JSON, no markdown:\n"
     '{"has_text": <true if ANY letters, words, numbers, or garbled/fake '
     'lettering appear anywhere in the image>, '
     '"is_collage": <true if it is a collage, or a realistic/photographic image '
@@ -32,6 +34,9 @@ INSPECT_PROMPT = (
 
 COLLAGE_ONLY_PROMPT = (
     "Check whether this artwork mixes competing visual aesthetics. "
+    "Detailed illustrated backgrounds, drawn atmospheric depth and unified "
+    "paper-cut forms are valid illustration treatments and are not themselves "
+    "collage. "
     "Ignore all text, lettering, signs, labels, numbers and logos; they are "
     "allowed and must not affect your verdict. "
     "Return STRICT JSON, no markdown:\n"

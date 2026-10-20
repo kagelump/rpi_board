@@ -318,6 +318,36 @@ class TestEnrichPayload:
         assert a == b
         assert isinstance(a, str) and a
 
+    def test_evening_advance_brief_illustrates_next_day_in_daylight(self, tmp_path):
+        payload = {"day_context": {
+            "run_date_iso": "2026-10-20", "target_date_iso": "2026-10-21",
+            "part_of_day": "night", "daypart_role": "primary",
+        }}
+        out = _enrich_payload(payload, self._settings(tmp_path))
+        assert out["artwork_context"]["target_date"] == "2026-10-21"
+        assert out["artwork_context"]["scene_period"] == "daytime"
+        assert "tomorrow's daytime" in out["time_frame"]
+        assert "instead of writing 'tomorrow'" in out["time_frame"]
+        assert payload["day_context"]["part_of_day"] == "night"
+
+    def test_afternoon_copy_and_art_keep_afternoon_context(self, tmp_path):
+        payload = {"day_context": {
+            "target_date_iso": "2026-10-21", "part_of_day": "midday",
+            "daypart_role": "afternoon",
+        }}
+        out = _enrich_payload(payload, self._settings(tmp_path))
+        assert out["artwork_context"]["scene_period"] == "afternoon"
+        assert out["time_frame"] == _time_frame("midday")
+
+    def test_daily_visual_rotation_does_not_request_after_dark(self, tmp_path):
+        from datetime import date, timedelta
+
+        for offset in range(24):
+            payload = {"day_context": {"target_date_iso": str(date(2026, 10, 1) + timedelta(days=offset))}}
+            out = _enrich_payload(payload, self._settings(tmp_path))
+            assert "after-dark" not in out["visual_angle"]
+            assert out["artwork_context"]["scene_period"] == "daytime"
+
     def test_visual_direction_advances_for_next_target_day(self, tmp_path):
         settings = self._settings(tmp_path)
         first = self._payload()

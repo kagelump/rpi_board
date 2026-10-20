@@ -1,10 +1,22 @@
-Four-ink illustration, printed with solid white, black, red and yellow inks only. The ink specification takes priority over the subject and style. All surfaces are opaque flat ink shapes, edges crisp. Tone comes from separated ink marks, with the paper white between marks. Night sky and shadows are solid black; moon and stars solid white. Day sky is white; leaves are black or yellow. Glass is a black window grid with opaque white or yellow panes. Reflections repeat white or yellow shapes on black. Light is a solid yellow shape with a hard edge. Every ink stays separate, even at overlaps. ONE unified illustration fills a 960x480 landscape canvas, edge to edge. Absolutely NO TEXT, letters, numbers, signs, logos or watermarks.
+Use only white, black, red and yellow inks. Every visible color must be one of these four inks; create tonal richness with marks and white paper, never additional pigments or blended hues. Keep this ink set throughout the foreground, background, reflections, foliage and sky.
 
-Palette emphasis: {{PALETTE_GUIDANCE}}
-
-{{STYLE_GUIDANCE}}
-
-Scene (translate all materials, light and atmosphere into the specified ink shapes):
+Scene:
 {{IMAGE_PROMPT}}
 
-Solid ink shapes following the palette emphasis; large readable silhouettes.
+Scene lighting:
+{{LIGHTING_GUIDANCE}}
+
+Create ONE cohesive illustration filling a 960x480 landscape canvas edge to edge. Forecast conditions and the scene lighting above are authoritative. Use the scene's subject and viewpoint unless an artwork recipe below supplies its staging; a recipe may change subject, setting and framing while preserving the forecast, daylight and emotional beat. There is no reserved text area; the board adds its copy separately. Layered paper-cut forms and detailed illustrated backgrounds are welcome as one continuous artwork. Do not insert photographs, framed pictures or separate image panels. Absolutely NO TEXT, letters, numbers, signs, logos or watermarks.
+
+Style treatment (apply to the WHOLE scene):
+{{STYLE_GUIDANCE}}
+Let this style guide line quality, shape language, visual density, texture and depth. Expressive contours, carved gaps, hatching, stippling, rough edges and subtle material detail are welcome where they serve the drawing. Keep a readable silhouette and marks large enough to survive the display. Use variation in drawn detail and mark spacing to separate foreground and distance; keep both part of the same illustrated scene. Interpret any inherited camera-focus wording as variation in drawn detail.
+
+Use only white, black, red and yellow inks. This rule applies to every style and material: foliage can use black or yellow marks with white gaps; water and glass can use white, black and yellow marks for reflected forms. Preserve their veins, droplets, reflections and depth in the drawing. Keep overlapping ink layers separate rather than mixing new colors. Build light, shade and atmosphere through ink-mark density and spacing. Depict translucency, haze and distance with drawing, without photographic blur, smooth digital gradients or broad gray washes. A clear value structure matters more than using every ink.
+
+Palette emphasis:
+{{PALETTE_GUIDANCE}}
+
+{{RECIPE_GUIDANCE}}
+
+Keep the scene lighting above even when a style, palette or recipe suggests a darker mood. Finish with expressive drawing, material detail and atmosphere. Use only white, black, red and yellow inks. Check the entire foreground and background: replace any other hue with marks in those same four inks, keeping their colors separate.

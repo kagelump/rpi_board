@@ -74,6 +74,14 @@ published-art ledger. The "major update" sensitivity and afternoon
 re-render threshold are tunable in `config/settings.json`
 (`regen_min_interval_seconds`, `afternoon_art_prompt_similarity_threshold`).
 
+Artwork lighting follows the forecast day's daylight, independently of the run
+clock: the 21:00 advance briefing illustrates tomorrow in daytime, while the
+13:00 refresh illustrates afternoon daylight. Overnight risks stay in the copy.
+Style controls linework, texture and depth within the four device inks; material
+simplification is reserved for palette-rejection retries. See the
+[daylight art-direction draft](docs/art-direction-daylight.md) for the local
+proposal, validation limits and rollout plan.
+
 ## Eval framework
 
 Reusable harness under `scripts/eval/` for trying prompt/model changes against
@@ -124,8 +132,9 @@ Key sections:
     older configurations that omit this key retain their previous text check.
   - `image_guardrail_max_retries` (default `1`): extra attempts on a rejection.
   - `image_guardrail_timeout_seconds` (default `30`): vision-check timeout.
-  - `image_guardrail_max_off_palette_pct` (default `0.15`): reject art with more
-    than this fraction of pixels in colours the panel cannot show.
+  - `image_guardrail_max_off_palette_pct` (default `0.40`): reject raw art with
+    more than 40% of pixels in colours the panel cannot show. This allows richer
+    source artwork; final display conversion still uses only the four panel inks.
   Each check fails open, so the guardrail never blocks a board from rendering:
   when the vision check is unavailable (no key, timeout, network error) or the
   palette analyzer raises, the image is published but recorded as *unverified*,

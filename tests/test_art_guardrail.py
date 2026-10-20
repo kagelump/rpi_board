@@ -286,6 +286,19 @@ class TestGenerateWithGuardrail:
         assert out["status"] == "accepted"
         assert out["image_bytes"] == red
 
+    @pytest.mark.parametrize("fraction,status", [
+        (0.1926, "accepted"), (0.40, "accepted"), (0.4001, "rejected"),
+    ])
+    def test_shipped_forty_percent_palette_limit(self, monkeypatch, fraction, status):
+        settings = gi.load_settings()
+        settings["pipeline"]["image_guardrail_max_retries"] = 0
+        monkeypatch.setattr(gi, "_call_image_api", lambda s, p, pr: b"art")
+        monkeypatch.setattr(gi, "inspect_art", lambda b, s: {"ok": True, "status": "accepted"})
+        monkeypatch.setattr(gi, "_off_palette_pct", lambda b: fraction)
+        result = gi._generate_with_guardrail(settings, "prompt", "fal")
+        assert result["status"] == status
+        assert result["image_bytes"] == (b"art" if status == "accepted" else None)
+
     def test_exhausted_off_palette_returns_rejected(self, monkeypatch):
         blue = _png((0, 0, 255))
         monkeypatch.setattr(gi, "_call_image_api", lambda s, p, pr: blue)
