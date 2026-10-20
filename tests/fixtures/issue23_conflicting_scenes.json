@@ -1,0 +1,112 @@
+[
+  {
+    "name": "window_worker_balcony_vs_canal",
+    "brief_scene": "A canal and long embankment recede through fine drizzle in soft overcast daylight. A low-angle panorama keeps the horizon wide and empty. No people.",
+    "forecast_weather_cues": ["drizzle", "overcast", "daylight"],
+    "conflicting_terms": ["canal", "embankment"],
+    "recipe": {
+      "status": "selected",
+      "recipe_id": "issue23-window-worker",
+      "tags": {
+        "subject": "window_worker",
+        "subject_text": "a worker seen through a rain-streaked window",
+        "motif": "desk lamp",
+        "motifs": ["desk lamp"],
+        "setting": "apartment_balcony",
+        "setting_text": "an apartment balcony",
+        "viewpoint": "low_angle",
+        "viewpoint_text": "low angle looking up",
+        "composition": "low_horizon_panorama",
+        "composition_text": "low-horizon panorama"
+      }
+    }
+  },
+  {
+    "name": "delivery_rider_vs_elevated_railway",
+    "brief_scene": "An upward view beneath an elevated railway with a small plant in diffuse grey daylight. The tracks and girders fill the frame. No people.",
+    "forecast_weather_cues": ["grey daylight"],
+    "conflicting_terms": ["elevated railway", "girders", "plant"],
+    "recipe": {
+      "status": "selected",
+      "recipe_id": "issue23-delivery-rider-railway",
+      "tags": {
+        "subject": "delivery_rider",
+        "subject_text": "a delivery rider pausing at a corner",
+        "motif": "insulated box",
+        "motifs": ["insulated box"],
+        "setting": "corner_store",
+        "setting_text": "a corner convenience store",
+        "viewpoint": "close_crop",
+        "viewpoint_text": "tight crop on the main motif",
+        "composition": "emblem",
+        "composition_text": "near-symmetrical emblem with one deliberate disruption"
+      }
+    }
+  },
+  {
+    "name": "delivery_rider_vs_spider_web",
+    "brief_scene": "A spider web strung between tall buildings catches pale morning light. The web fills the frame. No people.",
+    "forecast_weather_cues": ["pale morning light"],
+    "conflicting_terms": ["spider web", "tall buildings"],
+    "recipe": {
+      "status": "selected",
+      "recipe_id": "issue23-delivery-rider-web",
+      "tags": {
+        "subject": "delivery_rider",
+        "subject_text": "a delivery rider pausing at a corner",
+        "motif": "insulated box",
+        "motifs": ["insulated box"],
+        "setting": "corner_store",
+        "setting_text": "a corner convenience store",
+        "viewpoint": "close_crop",
+        "viewpoint_text": "tight crop on the main motif",
+        "composition": "emblem",
+        "composition_text": "near-symmetrical emblem with one deliberate disruption"
+      }
+    }
+  },
+  {
+    "name": "delivery_rider_vs_ginkgo",
+    "brief_scene": "From pavement level, look straight up at a tall ginkgo tree rising between facades in overcast daylight. A single leaf falls. No people.",
+    "forecast_weather_cues": ["overcast daylight"],
+    "conflicting_terms": ["ginkgo", "facades", "pavement level"],
+    "recipe": {
+      "status": "selected",
+      "recipe_id": "issue23-delivery-rider-ginkgo",
+      "tags": {
+        "subject": "delivery_rider",
+        "subject_text": "a delivery rider pausing at a corner",
+        "motif": "insulated box",
+        "motifs": ["insulated box"],
+        "setting": "corner_store",
+        "setting_text": "a corner convenience store",
+        "viewpoint": "close_crop",
+        "viewpoint_text": "tight crop on the main motif",
+        "composition": "emblem",
+        "composition_text": "near-symmetrical emblem with one deliberate disruption"
+      }
+    }
+  },
+  {
+    "name": "gardener_vs_plaza",
+    "brief_scene": "A bird's-eye plaza with one lone pedestrian in cool morning light. Wide paving patterns dominate the frame.",
+    "forecast_weather_cues": ["cool morning light"],
+    "conflicting_terms": ["plaza", "pedestrian", "paving patterns"],
+    "recipe": {
+      "status": "selected",
+      "recipe_id": "issue23-gardener-plaza",
+      "tags": {
+        "subject": "gardener",
+        "subject_text": "a gardener tending a raised bed",
+        "motif": "watering can",
+        "motifs": ["watering can"],
+        "setting": "empty_parking_lot",
+        "setting_text": "an empty parking lot",
+        "viewpoint": "over_shoulder",
+        "viewpoint_text": "over-the-shoulder view",
+        "composition": "upward",
+        "composition_text": "upward view through the scene toward the sky"
+      }
+    }
+  }
+]

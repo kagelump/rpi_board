@@ -261,12 +261,26 @@ def _inject_style_prompt(template, illustration_prompt, style, palette, recipe=N
     # recipe's staging would contradict it (for example an umbrella crowd on a
     # forecast that explicitly stays dry), inject no recipe guidance so the
     # brief's original SUBJECT wins instead of forcing contradictory rain art.
-    recipe_block = ""
+    #
+    # Issue #23: when the recipe is compatible, do not put the accepted brief's
+    # concrete scene and a second recipe staging block in the same prompt. The
+    # provider followed the first scene and the ledger still claimed the appended
+    # recipe had guided the hero. Synthesize ONE scene instead: the recipe owns
+    # subject/motif, setting, viewpoint and composition, while only bounded
+    # weather/light cues and the emotional beat carry over from the accepted
+    # brief.
+    scene_text = illustration_prompt.strip()
     if recipe and not (
         forecast is not None and art_recipes.recipe_conflicts_with_brief(recipe, forecast)
     ):
-        recipe_block = art_recipes.recipe_directive(recipe)
-    prompt = template.replace("{{IMAGE_PROMPT}}", _rewrite_scene_direction(illustration_prompt.strip()))
+        synthesized_scene = art_recipes.synthesize_recipe_scene(
+            recipe, brief_scene=illustration_prompt, forecast=forecast
+        )
+        if synthesized_scene is not None:
+            scene_text = synthesized_scene
+    prompt = template.replace(
+        "{{IMAGE_PROMPT}}", _rewrite_scene_direction(scene_text)
+    )
     lighting = (artwork_context(forecast)["guidance"] if forecast is not None else
                 "Keep the time of day explicitly described in the scene. Do not "
                 "add celestial objects or change the scene's lighting to match "
@@ -278,11 +292,11 @@ def _inject_style_prompt(template, illustration_prompt, style, palette, recipe=N
     if "{{PALETTE_GUIDANCE}}" in prompt:
         palette_block = palette['prompt']
         prompt = prompt.replace("{{PALETTE_GUIDANCE}}", palette_block)
+    # Recipe content is already integrated into the single Scene block above.
+    # Keeping this slot empty prevents a second, potentially conflicting scene
+    # description from being appended to the provider request.
     if "{{RECIPE_GUIDANCE}}" in prompt:
-        prompt = prompt.replace("{{RECIPE_GUIDANCE}}", recipe_block)
-    elif recipe_block:
-        # Older templates without the slot still receive the recipe direction.
-        prompt = prompt + "\n\n" + recipe_block
+        prompt = prompt.replace("{{RECIPE_GUIDANCE}}", "")
     if "{{STYLE_GUIDANCE}}" in prompt:
         prompt = prompt.replace("{{STYLE_GUIDANCE}}", style_block)
     else:
@@ -1015,7 +1029,19 @@ def main():
         art_recipe is not None
         and art_recipes.recipe_conflicts_with_brief(art_recipe, payload)
     )
-    used_recipe = None if recipe_suppressed else art_recipe
+    recipe_dimensions = (
+        art_recipes.recipe_scene_dimensions(art_recipe)
+        if art_recipe is not None else
+        {"complete": False, "present": [], "missing": [], "tags": {}}
+    )
+    recipe_not_realized = bool(
+        art_recipe is not None
+        and not recipe_suppressed
+        and not recipe_dimensions["complete"]
+    )
+    used_recipe = (
+        None if recipe_suppressed or recipe_not_realized else art_recipe
+    )
     if recipe_suppressed:
         record_current_log(
             "generate_image", "art_recipe_suppressed",
@@ -1037,12 +1063,53 @@ def main():
                 ),
             },
         )
+    elif recipe_not_realized:
+        # Issue #23: a selected recipe is audit-only unless all of its staging
+        # dimensions can be integrated into one coherent prompt scene. Merely
+        # appending a few tags to the accepted brief is not proof of realization.
+        record_current_log(
+            "generate_image", "art_recipe_not_realized",
+            "Selected artwork recipe lacks dimensions needed for a coherent scene",
+            level="warning",
+            data={
+                "target_date": target_date,
+                "daypart_role": daypart_role,
+                "recipe_id": art_recipe.get("recipe_id"),
+                "tags": art_recipes.extract_tags(art_recipe),
+                "dimensions_present": recipe_dimensions["present"],
+                "dimensions_missing": recipe_dimensions["missing"],
+                "used_for_hero": False,
+                "rationale": (
+                    "The accepted brief's scene is used unchanged; the selected "
+                    "recipe was not realized and must not enter publication history."
+                ),
+            },
+        )
+
+    realization_status = "not_selected"
+    if art_recipe is not None:
+        if recipe_suppressed:
+            realization_status = "suppressed_forecast_conflict"
+        elif recipe_not_realized:
+            realization_status = "not_realized"
+        else:
+            realization_status = "prompt_synthesized"
+    recipe_realization = {
+        "status": realization_status,
+        "used_for_hero": used_recipe is not None,
+        "recipe_id": art_recipe.get("recipe_id") if art_recipe is not None else None,
+        "dimensions_present": list(recipe_dimensions["present"]),
+        "dimensions_missing": list(recipe_dimensions["missing"]),
+        "brief_scene_replaced": used_recipe is not None,
+        "prompt_sha256": None,
+    }
 
     template_path = ROOT / "config" / "prompt_templates" / "weather_image.txt"
     template = template_path.read_text(encoding="utf-8")
     prompt = _inject_style_prompt(
-        template, illustration_prompt, style, palette, recipe=art_recipe, forecast=payload
+        template, illustration_prompt, style, palette, recipe=used_recipe, forecast=payload
     )
+    recipe_realization["prompt_sha256"] = _sha256_bytes(prompt.encode("utf-8"))
     provider = _resolve_image_provider(settings, args.force_openrouter)
     record_current_snapshot("image_generation_input", {
         "target_date": target_date,
@@ -1054,6 +1121,7 @@ def main():
         "art_recipe": art_recipe,
         "art_recipe_suppressed": recipe_suppressed,
         "art_recipe_used": used_recipe,
+        "art_recipe_realization": recipe_realization,
         "provider": provider,
     })
     record_current_snapshot("image_prompt", prompt, content_type="text/plain; charset=utf-8")
@@ -1083,11 +1151,13 @@ def main():
             palette=palette["name"], provider=provider, image_bytes=image_bytes,
             attempts=outcome.get("attempts", []), reasons=outcome.get("reasons", []),
         )
-        # Issue #21: persist which recipe actually guided this hero so the
-        # published-art ledger can distinguish a used recipe from one that was
-        # selected for audit but suppressed for contradicting the forecast.
+        # Issue #21/#23: persist which recipe actually guided this hero and the
+        # evidence that its dimensions were integrated into a single coherent
+        # prompt scene. A selected-but-suppressed or dimensionally incomplete
+        # recipe remains audit-only and is never booked as published art.
         style_state["art_recipe_used"] = used_recipe
         style_state["art_recipe_suppressed"] = recipe_suppressed
+        style_state["art_recipe_realization"] = recipe_realization
         _save_style_state(settings, style_state)
         if status == "unverified":
             generated_message = (

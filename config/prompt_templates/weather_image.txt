@@ -6,7 +6,7 @@ Scene:
 Scene lighting:
 {{LIGHTING_GUIDANCE}}
 
-Create ONE cohesive illustration filling a 960x480 landscape canvas edge to edge. Forecast conditions and the scene lighting above are authoritative. Use the scene's subject and viewpoint unless an artwork recipe below supplies its staging; a recipe may change subject, setting and framing while preserving the forecast, daylight and emotional beat. There is no reserved text area; the board adds its copy separately. Layered paper-cut forms and detailed illustrated backgrounds are welcome as one continuous artwork. Do not insert photographs, framed pictures or separate image panels. Absolutely NO TEXT, letters, numbers, signs, logos or watermarks.
+Create ONE cohesive illustration filling a 960x480 landscape canvas edge to edge. Follow the single Scene above. When that scene contains an integrated artwork recipe, its subject/motif, setting, viewpoint and composition define the complete staging; the forecast conditions, daylight and emotional beat remain authoritative. There is no reserved text area; the board adds its copy separately. Layered paper-cut forms and detailed illustrated backgrounds are welcome as one continuous artwork. Do not insert photographs, framed pictures or separate image panels. Absolutely NO TEXT, letters, numbers, signs, logos or watermarks.
 
 Style treatment (apply to the WHOLE scene):
 {{STYLE_GUIDANCE}}

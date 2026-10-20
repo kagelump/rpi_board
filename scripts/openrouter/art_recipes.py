@@ -20,6 +20,10 @@ Issue #21: a mistaken ``recipe_published`` row is never edited or deleted.
 An appended ``recipe_publication_corrected`` row keyed by the exact
 ``artwork_sha256`` retires it from every reader while the original row stays
 in the ledger for audit.
+
+Issue #23: a selected recipe is only marked as used when its subject/motif,
+setting, viewpoint and composition can be synthesized into one coherent scene.
+Prompt text appended behind a different concrete scene is not realization.
 """
 from __future__ import annotations
 
@@ -28,6 +32,7 @@ import hashlib
 import json
 import os
 import random
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -1201,6 +1206,176 @@ def recipe_directive(recipe: dict[str, Any]) -> str:
         f"- Viewpoint / camera distance: {tags.get('viewpoint_text') or tags.get('viewpoint') or 'unspecified'}\n"
         f"- Composition: {tags.get('composition_text') or tags.get('composition') or 'unspecified'}"
     )
+
+
+# A recipe can only be recorded as published when all of these staging
+# dimensions are actually present. Subject/motif and viewpoint/composition are
+# the two dimensions the variety policy compares; setting is part of the
+# coherent scene the provider receives. The audit path may keep a recipe with
+# missing dimensions, but it must not claim the recipe guided a hero.
+RECIPE_SCENE_DIMENSIONS = (
+    ("subject", ("subject_text", "subject")),
+    ("setting", ("setting_text", "setting")),
+    ("viewpoint", ("viewpoint_text", "viewpoint")),
+    ("composition", ("composition_text", "composition")),
+)
+
+# Bounded vocabulary for carrying the accepted brief's weather and light into
+# the synthesized recipe scene. Deliberately do not copy whole clauses: a
+# recipe supplies the subject and setting, while the brief remains authoritative
+# for atmosphere. This is a lexical filter, not scene inference.
+_WEATHER_CUE_PATTERNS = (
+    r"\b(?:light|heavy|steady|intermittent|fine|freezing|soft)\s+"
+    r"(?:rain|drizzle|showers?|snow)\b",
+    r"\b(?:rain|drizzle|downpour|showers?|snowfall|snow|fog|mist|haze|"
+    r"sunlight|daylight|wind|breeze)\b",
+    r"\b(?:overcast|cloudy|clear|sunny|humid|windy|breezy)\s+"
+    r"(?:sky|weather|air|conditions?|daylight|light)\b",
+    r"\b(?:wet|rain[- ]slick|snowy|foggy|misty)\s+"
+    r"(?:leaf|leaves|pavement|asphalt|street|ground)\b",
+    r"\b(?:soft|grey|gray|pale|diffuse|golden)\s+"
+    r"(?:light|sky|overcast|daylight)\b",
+    r"\b(?:pale|cool|warm|morning|evening|afternoon|midday|soft|diffuse|"
+    r"golden|grey|gray)\s+(?:[a-z][a-z-]*\s+){0,2}light\b",
+)
+
+
+def _dedupe_cues(cues: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for cue in cues:
+        cleaned = " ".join(str(cue or "").split()).strip(" .,;:-")
+        key = cleaned.lower()
+        if cleaned and key not in seen:
+            seen.add(key)
+            result.append(cleaned)
+    return result
+
+
+def _brief_weather_cues(brief_scene: str | None) -> list[str]:
+    """Extract only bounded weather/light cues from an accepted scene."""
+    scene = str(brief_scene or "")
+    cues: list[str] = []
+    for pattern in _WEATHER_CUE_PATTERNS:
+        for match in re.finditer(pattern, scene, flags=re.IGNORECASE):
+            cues.append(match.group(0))
+    return _dedupe_cues(cues)
+
+
+def _forecast_weather_cues(payload: dict[str, Any] | None) -> list[str]:
+    """Return compact, non-numeric forecast context for the recipe scene."""
+    if not isinstance(payload, dict):
+        return []
+    daily = payload.get("today", {})
+    if not isinstance(daily, dict):
+        return []
+    daily = daily.get("daily_summary", {})
+    if not isinstance(daily, dict):
+        return []
+    cues: list[str] = []
+    condition = str(daily.get("condition") or "").strip()
+    if condition and not any(ch.isdigit() for ch in condition):
+        cues.append(condition)
+    try:
+        rain_mm = float(daily.get("rain_sum_mm") or 0.0)
+    except (TypeError, ValueError):
+        rain_mm = 0.0
+    try:
+        rain_probability = int(daily.get("rain_prob_max_pct") or 0)
+    except (TypeError, ValueError):
+        rain_probability = 0
+    if rain_mm > 0:
+        cues.append("wet conditions")
+    elif condition and rain_probability <= 20:
+        cues.append("dry conditions")
+    return _dedupe_cues(cues)
+
+
+def _emotional_beat(brief_scene: str | None) -> str | None:
+    match = re.search(
+        r"emotional\s+beat\s*:\s*(.+?)(?:\.\s|$)",
+        str(brief_scene or ""), flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    beat = " ".join(match.group(1).split()).strip(" .,;:-")
+    return beat or None
+
+
+def recipe_scene_dimensions(recipe: Any) -> dict[str, Any]:
+    """Report whether a recipe has the staging dimensions needed for a scene."""
+    tags = extract_tags(recipe)
+    present: list[str] = []
+    missing: list[str] = []
+    for dimension, keys in RECIPE_SCENE_DIMENSIONS:
+        if any(tags.get(key) for key in keys):
+            present.append(dimension)
+        else:
+            missing.append(dimension)
+    return {
+        "complete": not missing,
+        "present": present,
+        "missing": missing,
+        "tags": tags,
+    }
+
+
+def synthesize_recipe_scene(
+    recipe: Any,
+    *,
+    brief_scene: str | None = None,
+    forecast: dict[str, Any] | None = None,
+) -> str | None:
+    """Build ONE internally consistent scene from the selected recipe.
+
+    The old prompt path kept the accepted brief's complete scene and then
+    appended a second recipe staging block. Image providers repeatedly followed
+    the first concrete scene, while the ledger still claimed the appended recipe
+    had guided the hero (issue #23). Here the recipe supplies subject/motif,
+    setting, viewpoint and composition; only the accepted brief's bounded
+    weather/light cues and emotional beat carry across. If a recipe lacks any
+    required staging dimension, no scene is returned so callers can record an
+    explicit non-realized state instead of treating prompt injection as proof.
+    """
+    dimensions = recipe_scene_dimensions(recipe)
+    if not dimensions["complete"]:
+        return None
+    brief_cues = _brief_weather_cues(brief_scene)
+    forecast_cues = _forecast_weather_cues(forecast)
+    brief_text = " ".join(brief_cues).lower()
+    if any(
+        word in brief_text
+        for word in ("rain", "drizzle", "wet", "snow", "shower", "storm")
+    ):
+        # The accepted brief is authoritative for weather. Do not add a
+        # contradictory dry-forecast marker from a stale structured summary.
+        forecast_cues = [
+            cue for cue in forecast_cues if cue.lower() != "dry conditions"
+        ]
+    cues = _dedupe_cues(brief_cues + forecast_cues)
+    if not any("daylight" in cue.lower() for cue in cues):
+        cues.append("daylight")
+    lines = [recipe_directive(recipe)]
+    if cues:
+        lines.append(
+            "Accepted brief weather and lighting (authoritative): "
+            + ", ".join(cues)
+            + "."
+        )
+    else:
+        lines.append(
+            "Keep the accepted brief's weather and lighting authoritative "
+            "in this scene."
+        )
+    beat = _emotional_beat(brief_scene)
+    if beat:
+        lines.append(f"Emotional beat: {beat}.")
+    lines.append(
+        "Depict only this coherent scene. The recipe subject/motif, setting, "
+        "viewpoint and composition above are the complete staging; do not add "
+        "the accepted brief's original subject or a second setting."
+    )
+    return "\n".join(lines)
 
 
 def _score_candidate(

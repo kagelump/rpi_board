@@ -6,6 +6,7 @@ import json
 import sys
 import urllib.error
 
+import pytest
 from PIL import Image
 
 from scripts.common import ROOT
@@ -1143,3 +1144,169 @@ def test_archived_dry_oct6_eight_and_one_deliveries_skip_ledger(monkeypatch, tmp
 
     assert ar.published_recipes(settings) == []
     assert ar.history_summary(settings)["count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Issue #23: recipe dimensions must become the one scene the provider sees
+# ---------------------------------------------------------------------------
+
+ISSUE23_CONFLICT_FIXTURE = (
+    ROOT / "tests" / "fixtures" / "issue23_conflicting_scenes.json"
+)
+
+
+def _issue23_cases():
+    return json.loads(ISSUE23_CONFLICT_FIXTURE.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    "case",
+    _issue23_cases(),
+    ids=[case["name"] for case in _issue23_cases()],
+)
+def test_issue23_conflicting_brief_scene_becomes_one_recipe_scene(case):
+    """The archived prompt conflict is replaced, not appended.
+
+    The regression fixture represents the Oct 18-19 failures: a concrete brief
+    scene (canal, elevated railway, spider web, ginkgo, plaza) and a different
+    selected recipe. The provider must receive a single Scene that carries every
+    recipe staging dimension, not the old brief scene followed by a recipe.
+    """
+    template = (
+        ROOT / "config/prompt_templates/weather_image.txt"
+    ).read_text(encoding="utf-8")
+    prompt = _inject_style_prompt(
+        template,
+        case["brief_scene"],
+        ART_STYLE_POOL[0],
+        PALETTE_STRATEGY_POOL[0],
+        recipe=case["recipe"],
+    )
+    scene = prompt.split("Scene:\n", 1)[1].split("\n\n", 1)[0].strip()
+    lowered = scene.lower()
+    tags = case["recipe"]["tags"]
+
+    for dimension in ("subject", "setting", "viewpoint", "composition"):
+        expected = tags.get(f"{dimension}_text") or tags.get(dimension)
+        assert expected.lower() in lowered
+    for motif in tags["motifs"]:
+        assert motif.lower() in lowered
+    for conflict in case["conflicting_terms"]:
+        assert conflict.lower() not in lowered
+    for weather_cue in case["forecast_weather_cues"]:
+        assert weather_cue.lower() in lowered
+
+    # Exactly one scene direction and one recipe staging block were emitted.
+    assert scene.count("Subject and motif:") == 1
+    assert "Artwork recipe for this forecast day" in scene
+    assert "{{" not in prompt
+
+
+def test_issue23_used_recipe_is_booked_from_synthesized_coherent_prompt(
+        monkeypatch, tmp_path):
+    from scripts.history import record as record_mod
+    from scripts.openrouter import art_recipes as ar
+
+    case = next(
+        item for item in _issue23_cases()
+        if item["name"] == "delivery_rider_vs_ginkgo"
+    )
+    settings = _issue21_settings(tmp_path)
+    payload = _archived_dry_payload()
+    payload["brief"]["illustration_prompt"] = case["brief_scene"]
+    with open(settings["runtime"]["brief_file"], "w", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+    _lock_recipe(settings, case["recipe"])
+
+    captured = {}
+    _accept_generation(monkeypatch, captured)
+    logs = []
+    _run_main(monkeypatch, settings, logs)
+
+    scene = captured["prompt"].split("Scene:\n", 1)[1].split("\n\n", 1)[0]
+    assert "delivery rider" in scene.lower()
+    assert "insulated box" in scene.lower()
+    assert "corner convenience store" in scene.lower()
+    assert "tight crop" in scene.lower()
+    assert "near-symmetrical emblem" in scene.lower()
+    assert "ginkgo" not in scene.lower()
+    assert "facades" not in scene.lower()
+
+    state = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    tags = case["recipe"]["tags"]
+    assert state["art_recipe_used"]["tags"] == tags
+    assert state["art_recipe_suppressed"] is False
+    assert state["art_recipe_realization"]["status"] == "prompt_synthesized"
+    assert state["art_recipe_realization"]["used_for_hero"] is True
+    assert state["art_recipe_realization"]["brief_scene_replaced"] is True
+    assert len(state["art_recipe_realization"]["prompt_sha256"]) == 64
+
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+    monkeypatch.setenv("GENERATION_RUN_ID", "run-issue23-coherent")
+    result = record_mod._record_published_recipe(
+        _RecipeHistoryLog(), mode="pi_display")
+
+    assert result["status"] == "published"
+    entries = ar.published_recipes(settings)
+    assert len(entries) == 1
+    assert entries[0]["tags"]["subject"] == "delivery rider"
+    assert entries[0]["tags"]["motif"] == "insulated box"
+    assert entries[0]["tags"]["setting"] == "corner store"
+    assert entries[0]["tags"]["viewpoint"] == "close crop"
+    assert entries[0]["tags"]["composition"] == "emblem"
+    # The panel recipe, not the brief's absent staging, drives cooldown.
+    assert ar.evaluate_recipe(settings, case["recipe"])["status"] == "cooldown"
+    assert ar.history_summary(settings)["count"] == 1
+
+
+def test_issue23_unrealized_recipe_is_audit_only_and_not_in_cooldown(
+        monkeypatch, tmp_path):
+    from scripts.history import record as record_mod
+    from scripts.openrouter import art_recipes as ar
+
+    case = next(
+        item for item in _issue23_cases()
+        if item["name"] == "delivery_rider_vs_ginkgo"
+    )
+    invalid_recipe = json.loads(json.dumps(case["recipe"]))
+    invalid_recipe["tags"].pop("viewpoint")
+    invalid_recipe["tags"].pop("viewpoint_text")
+
+    settings = _issue21_settings(tmp_path)
+    payload = _archived_dry_payload()
+    payload["brief"]["illustration_prompt"] = case["brief_scene"]
+    with open(settings["runtime"]["brief_file"], "w", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+    _lock_recipe(settings, invalid_recipe)
+
+    captured = {}
+    _accept_generation(monkeypatch, captured)
+    logs = []
+    _run_main(monkeypatch, settings, logs)
+
+    # With no coherent recipe scene, the accepted brief remains the only scene.
+    assert "ginkgo" in captured["prompt"].lower()
+    assert "delivery rider" not in captured["prompt"].lower()
+    assert any(log["event_type"] == "art_recipe_not_realized" for log in logs)
+
+    state = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    assert state["art_recipe_used"] is None
+    assert state["art_recipe_suppressed"] is False
+    assert state["art_recipe_realization"]["status"] == "not_realized"
+    assert state["art_recipe_realization"]["used_for_hero"] is False
+    assert "viewpoint" in state["art_recipe_realization"]["dimensions_missing"]
+
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+    monkeypatch.setenv("GENERATION_RUN_ID", "run-issue23-not-realized")
+    store = _RecipeHistoryLog()
+    result = record_mod._record_published_recipe(store, mode="pi_display")
+
+    assert result["status"] == "skipped_not_realized"
+    assert ar.published_recipes(settings) == []
+    assert ar.recent_published_recipes(settings) == []
+    assert ar.history_summary(settings)["count"] == 0
+    assert ar.evaluate_recipe(settings, invalid_recipe)["status"] == "novel"
+    assert any(
+        entry.get("event_type") == "recipe_skipped_not_realized"
+        for entry in store.entries
+    )

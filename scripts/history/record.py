@@ -188,7 +188,10 @@ def _record_published_recipe(store, mode=None, source="scheduled"):
 
     A recipe selected for audit but suppressed because it contradicted the
     accepted forecast is deliberately *not* booked: the ledger must describe the
-    artwork that reached the panel, and those motifs were omitted from it.
+    artwork that reached the panel, and those motifs were omitted from it. The
+    same applies to a recipe whose staging dimensions could not be integrated
+    into one coherent generation scene (issue #23); it is recorded as
+    ``skipped_not_realized`` and does not enter cooldown/novelty history.
     """
     settings = load_settings()
     # update_display.sh always passes --mode "${DISPLAY_MODE_OVERRIDE}". That is
@@ -235,6 +238,40 @@ def _record_published_recipe(store, mode=None, source="scheduled"):
     artwork_sha = _sha256_file(absolute_path(hero_path))
 
     locked_recipe = state.get("art_recipe")
+    realization = state.get("art_recipe_realization")
+    if (
+        isinstance(realization, dict)
+        and realization.get("used_for_hero") is False
+    ):
+        # Issue #23: generation now records whether the recipe's dimensions were
+        # integrated into one coherent prompt scene. A selected recipe that was
+        # suppressed for a forecast conflict, or that could not be realized at
+        # all, is audit-only and must never enter cooldown/novelty history.
+        realization_status = realization.get("status")
+        if realization_status == "suppressed_forecast_conflict":
+            status = "skipped_suppressed"
+            reason = (
+                "selected artwork recipe was suppressed for a forecast conflict "
+                "and did not guide the published hero"
+            )
+        else:
+            status = "skipped_not_realized"
+            reason = (
+                "selected artwork recipe was not realized in the published hero "
+                "and must not enter publication history"
+            )
+        return _log_publication_result(store, {
+            "status": status,
+            "reason": reason,
+            "recipe_id": (
+                locked_recipe.get("recipe_id")
+                if isinstance(locked_recipe, dict)
+                and locked_recipe.get("recipe_id")
+                else realization.get("recipe_id")
+            ),
+            "dimensions_missing": realization.get("dimensions_missing") or [],
+        })
+
     if "art_recipe_used" in state:
         # generate_image.py records the recipe that actually guided the current
         # hero. ``None`` (with a locked recipe present) means the selected recipe
