@@ -1310,3 +1310,84 @@ def test_issue23_unrealized_recipe_is_audit_only_and_not_in_cooldown(
         entry.get("event_type") == "recipe_skipped_not_realized"
         for entry in store.entries
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #24: synthesized scene must preserve negated/dry daytime semantics
+# ---------------------------------------------------------------------------
+
+ISSUE24_ARCHIVED_FIXTURE = (
+    ROOT / "tests" / "fixtures" / "issue24_archived_oct22_brief.json"
+)
+
+
+def _issue24_delivery_rider_recipe():
+    return {
+        "status": "selected",
+        "recipe_id": "issue24-delivery-rider",
+        "forecast_weather": "dry",
+        "recipe_weather": "neutral",
+        "tags": {
+            "subject": "delivery_rider",
+            "subject_text": "a delivery rider pausing at a roadside bus stop",
+            "motif": "insulated box",
+            "motifs": ["insulated box"],
+            "setting": "bus_stop",
+            "setting_text": "a roadside bus stop",
+            "viewpoint": "eye_level",
+            "viewpoint_text": "eye-level medium shot",
+            "composition": "emblem",
+            "composition_text": (
+                "near-symmetrical emblem with one deliberate disruption"
+            ),
+        },
+    }
+
+
+def test_issue24_archived_run_prompt_stays_dry_and_still_books_recipe(
+        monkeypatch, tmp_path):
+    from scripts.history import record as record_mod
+    from scripts.openrouter import art_recipes as ar
+
+    payload = json.loads(ISSUE24_ARCHIVED_FIXTURE.read_text(encoding="utf-8"))
+    settings = _issue21_settings(tmp_path)
+    with open(settings["runtime"]["brief_file"], "w", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+    recipe = _issue24_delivery_rider_recipe()
+    _lock_recipe(settings, recipe, target_date="2026-10-22")
+
+    captured = {}
+    _accept_generation(monkeypatch, captured)
+    logs = []
+    _run_main(monkeypatch, settings, logs)
+    assert any(log["event_type"] == "image_generated" for log in logs)
+
+    scene = captured["prompt"].split("Scene:\n", 1)[1].split("\n\n", 1)[0]
+    lowered = scene.lower()
+    for contradictory in ("rain", "drizzle", "wet conditions"):
+        assert contradictory not in lowered
+    assert "dry conditions" in lowered
+    assert "daylight" in lowered
+    assert "breeze" in lowered
+    assert "delivery rider" in lowered
+    assert "roadside bus stop" in lowered
+    assert scene.count("Subject and motif:") == 1
+
+    state = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    assert state["art_recipe_used"]["tags"] == recipe["tags"]
+    assert state["art_recipe_suppressed"] is False
+    assert state["art_recipe_realization"]["status"] == "prompt_synthesized"
+    assert state["art_recipe_realization"]["used_for_hero"] is True
+    assert state["art_recipe_realization"]["brief_scene_replaced"] is True
+    assert len(state["art_recipe_realization"]["prompt_sha256"]) == 64
+
+    monkeypatch.setattr(record_mod, "load_settings", lambda: settings)
+    monkeypatch.setenv("GENERATION_RUN_ID", "run-issue24-dry")
+    result = record_mod._record_published_recipe(
+        _RecipeHistoryLog(), mode="pi_display")
+
+    assert result["status"] == "published"
+    entries = ar.published_recipes(settings)
+    assert len(entries) == 1
+    assert entries[0]["tags"]["subject"] == "delivery rider"
+    assert entries[0]["tags"]["setting"] == "bus stop"

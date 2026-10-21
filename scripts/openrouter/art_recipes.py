@@ -1015,6 +1015,11 @@ _EXPLICIT_DRY_PHRASES = (
     "largely dry",
     "no showers",
     "no drizzle",
+    "no precipitation",
+    "without showers",
+    "without drizzle",
+    "dry despite",
+    "dry except",
     "won't rain",
     "will not rain",
     "umbrella not needed",
@@ -1239,6 +1244,54 @@ _WEATHER_CUE_PATTERNS = (
     r"golden|grey|gray)\s+(?:[a-z][a-z-]*\s+){0,2}light\b",
 )
 
+_PRECIPITATION_CUE_RE = re.compile(
+    r"\b(?:rain(?:y|fall)?|drizzle|showers?|snow(?:y|fall)?|sleet|"
+    r"storm(?:y)?|downpour|wet|rain[- ]slick)\b",
+    flags=re.IGNORECASE,
+)
+
+# Issue #24: a positive regex match is not enough. Keep negation scoped to the
+# cue itself (or to immediately adjacent precipitation wording) so "no rain"
+# cannot become a positive rain cue while an independent "breeze" survives in
+# the same sentence.
+_NEGATION_BEFORE_RE = re.compile(
+    r"\b(?:no|not|never|without|free\s+(?:of|from)|absence\s+of|zero)\b"
+    r"(?:\W+(?:any|a|an|the|chance|risk|possibility|sign|trace|of|more|"
+    r"further|significant|measurable|appreciable|expected|likely|late|"
+    r"early|overnight))*\W*$",
+    flags=re.IGNORECASE,
+)
+# Coordinated precipitation wording remains inside one negated scope:
+# "no rain or drizzle" negates both nouns. Do not use this broader form for
+# light/wind cues, so "no rain and a light breeze" still keeps the breeze.
+_NEGATION_COORDINATED_BEFORE_RE = re.compile(
+    r"\b(?:no|not|never|without|free\s+(?:of|from)|absence\s+of|zero)\b"
+    r"(?:\W+(?:any|a|an|the|chance|risk|possibility|sign|trace|of|more|"
+    r"further|significant|measurable|appreciable|expected|likely|late|"
+    r"early|overnight|rain|rainfall|drizzle|showers?|snow|sleet|storm|"
+    r"precipitation|wet|weather|or|and|nor))*\W*$",
+    flags=re.IGNORECASE,
+)
+_DRY_CONTRAST_BEFORE_RE = re.compile(
+    r"\b(?:dry|drier|clearing|clear)\b(?:\W+\w+){0,12}\W+"
+    r"\b(?:despite|except(?:\s+for)?|apart\s+from|save\s+for)\b"
+    r"(?:\W+\w+){0,6}\W*$",
+    flags=re.IGNORECASE,
+)
+_NEGATION_AFTER_RE = re.compile(
+    r"^\s*(?:[- ]?free\b|less\b|unlikely\b|"
+    r"(?:is|are|was|were)?\s*not\b|"
+    r"(?:is|are|was|were)\s+(?:unlikely|not\s+expected)\b)",
+    flags=re.IGNORECASE,
+)
+
+# The hero is always a daytime scene (the afternoon refresh changes the light,
+# not the time of day). Use sunrise/sunset when available, with a conservative
+# daylight fallback for older payloads that do not carry solar times.
+_SCENE_DAYLIGHT_START_MIN = 6 * 60
+_SCENE_DAYLIGHT_END_MIN = 18 * 60
+_SCENE_AFTERNOON_START_MIN = 12 * 60
+
 
 def _dedupe_cues(cues: list[str]) -> list[str]:
     result: list[str] = []
@@ -1252,41 +1305,189 @@ def _dedupe_cues(cues: list[str]) -> list[str]:
     return result
 
 
+def _text_declares_dry(text: str | None) -> bool:
+    """True when weather prose explicitly says the relevant scene stays dry."""
+    normalized = _norm_text(text)
+    if not normalized:
+        return False
+    return any(phrase in normalized for phrase in _EXPLICIT_DRY_PHRASES)
+
+
+def _cue_is_negated(scene: str, match: re.Match[str]) -> bool:
+    """Detect a negated or explicitly-excepted weather cue at ``match``."""
+    cue = match.group(0)
+    # Commas do not end a clause; periods, semicolons and newlines do. This
+    # keeps "no rain, just breeze" from treating the breeze as negated.
+    prefix = re.split(r"[.!?;\n]", scene[:match.start()])[-1]
+    suffix = scene[match.end():match.end() + 40]
+    is_precipitation = bool(_PRECIPITATION_CUE_RE.search(cue))
+    negation_before = _NEGATION_BEFORE_RE.search(prefix)
+    if is_precipitation:
+        negation_before = negation_before or _NEGATION_COORDINATED_BEFORE_RE.search(
+            prefix
+        )
+    if negation_before or _NEGATION_AFTER_RE.match(suffix):
+        return True
+    # "dry despite late drizzle" / "dry except one shower": the precipitation
+    # mention is acknowledged but must not become the scene's weather cue.
+    return bool(is_precipitation and _DRY_CONTRAST_BEFORE_RE.search(prefix))
+
+
 def _brief_weather_cues(brief_scene: str | None) -> list[str]:
-    """Extract only bounded weather/light cues from an accepted scene."""
+    """Extract only bounded, positive weather/light cues from an accepted scene."""
     scene = str(brief_scene or "")
     cues: list[str] = []
     for pattern in _WEATHER_CUE_PATTERNS:
         for match in re.finditer(pattern, scene, flags=re.IGNORECASE):
-            cues.append(match.group(0))
+            if not _cue_is_negated(scene, match):
+                cues.append(match.group(0))
+    cues = _dedupe_cues(cues)
+    # Preserve the accepted brief's dry meaning even when its only original
+    # weather wording was a negation ("no rain"). The positive token is omitted,
+    # but the authoritative scene remains explicitly dry.
+    if not any(_PRECIPITATION_CUE_RE.search(cue) for cue in cues):
+        if _text_declares_dry(scene):
+            cues.append("dry conditions")
     return _dedupe_cues(cues)
 
 
-def _forecast_weather_cues(payload: dict[str, Any] | None) -> list[str]:
-    """Return compact, non-numeric forecast context for the recipe scene."""
-    if not isinstance(payload, dict):
-        return []
-    daily = payload.get("today", {})
-    if not isinstance(daily, dict):
-        return []
-    daily = daily.get("daily_summary", {})
-    if not isinstance(daily, dict):
-        return []
-    cues: list[str] = []
-    condition = str(daily.get("condition") or "").strip()
-    if condition and not any(ch.isdigit() for ch in condition):
-        cues.append(condition)
+def _clock_minutes(value: Any) -> int | None:
+    # Do not use ``\b`` here: ISO timestamps such as ``...T03:00`` have no word
+    # boundary between the ``T`` and the hour.
+    match = re.search(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", str(value or ""))
+    if not match:
+        return None
+    hour, minute = int(match.group(1)), int(match.group(2))
+    if hour > 23 or minute > 59:
+        return None
+    return hour * 60 + minute
+
+
+def _scene_window_minutes(payload: dict[str, Any]) -> tuple[int, int]:
+    """Return the daylight/display window represented by this hero."""
+    day = payload.get("day_context")
+    if not isinstance(day, dict):
+        day = {}
+    role = str(day.get("daypart_role") or "").strip().lower()
+    start = _clock_minutes(day.get("sunrise")) or _SCENE_DAYLIGHT_START_MIN
+    end = _clock_minutes(day.get("sunset")) or _SCENE_DAYLIGHT_END_MIN
+    if role == "afternoon":
+        start = max(start, _SCENE_AFTERNOON_START_MIN)
+    if end <= start:
+        start, end = _SCENE_DAYLIGHT_START_MIN, _SCENE_DAYLIGHT_END_MIN
+    return start, end
+
+
+def _hour_minutes(row: dict[str, Any]) -> int | None:
+    return _clock_minutes(row.get("time"))
+
+
+def _row_is_wet(row: dict[str, Any]) -> bool:
+    """Whether one hourly row visually supports precipitation in the scene."""
     try:
-        rain_mm = float(daily.get("rain_sum_mm") or 0.0)
+        rain_mm = float(row.get("rain_mm") or 0.0)
     except (TypeError, ValueError):
         rain_mm = 0.0
+    if rain_mm >= 0.1:
+        return True
     try:
-        rain_probability = int(daily.get("rain_prob_max_pct") or 0)
+        probability = int(row.get("rain_probability_pct") or 0)
     except (TypeError, ValueError):
-        rain_probability = 0
-    if rain_mm > 0:
+        probability = 0
+    try:
+        code = int(row.get("weather_code"))
+    except (TypeError, ValueError):
+        code = None
+    # A wet code with only a low chance is not enough to paint rain. Require a
+    # meaningful probability in the *scene window* when no measurable mm exists.
+    return code in _WET_WEATHER_CODES and probability >= 35
+
+
+def _window_hourly_rows(
+    payload: dict[str, Any], hourly: Any, daily: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Return hourly rows that overlap the hero's daylight/display window."""
+    if not isinstance(hourly, list):
+        return []
+    day = payload.get("day_context")
+    if not isinstance(day, dict):
+        day = {}
+    target_date = str(
+        day.get("target_date_iso") or day.get("date_iso") or daily.get("date") or ""
+    )
+    start, end = _scene_window_minutes(payload)
+    rows: list[dict[str, Any]] = []
+    for row in hourly:
+        if not isinstance(row, dict):
+            continue
+        timestamp = str(row.get("time") or "")
+        if target_date and timestamp[:10] and timestamp[:10] != target_date:
+            continue
+        minute = _hour_minutes(row)
+        if minute is not None and start <= minute < end:
+            rows.append(row)
+    return rows
+
+
+def _forecast_weather_cues(payload: dict[str, Any] | None) -> list[str]:
+    """Return compact forecast context relevant to the daytime hero.
+
+    Whole-day precipitation is not a sufficient signal: a trace at 03:00 must
+    not repaint a dry daylight scene. When hourly data is available, summarize
+    only the scene window; otherwise retain the old daily fallback so payloads
+    without hourly rows remain supported.
+    """
+    if not isinstance(payload, dict):
+        return []
+    today = payload.get("today", {})
+    if not isinstance(today, dict):
+        return []
+    daily = today.get("daily_summary", {})
+    if not isinstance(daily, dict):
+        return []
+    condition = str(daily.get("condition") or "").strip()
+    condition_has_digits = any(ch.isdigit() for ch in condition)
+    condition_is_wet = any(
+        word in condition.lower() for word in _WET_CONDITION_WORDS
+    )
+
+    scene_rows = _window_hourly_rows(payload, today.get("hourly"), daily)
+    if scene_rows:
+        wet = any(_row_is_wet(row) for row in scene_rows)
+        probabilities: list[int] = []
+        for row in scene_rows:
+            try:
+                probabilities.append(int(row.get("rain_probability_pct") or 0))
+            except (TypeError, ValueError):
+                probabilities.append(0)
+        rain_probability = max(probabilities, default=0)
+    else:
+        # Backward-compatible fallback for archived/partial payloads without
+        # usable hourly rows.
+        try:
+            rain_mm = float(daily.get("rain_sum_mm") or 0.0)
+        except (TypeError, ValueError):
+            rain_mm = 0.0
+        try:
+            rain_probability = int(daily.get("rain_prob_max_pct") or 0)
+        except (TypeError, ValueError):
+            rain_probability = 0
+        try:
+            code = int(daily.get("weather_code"))
+        except (TypeError, ValueError):
+            code = None
+        wet = rain_mm > 0 or (
+            code in _WET_WEATHER_CODES and rain_probability >= 35
+        )
+
+    cues: list[str] = []
+    # A precipitation-named whole-day condition (for example "Light drizzle")
+    # is only authoritative when precipitation appears in the scene window.
+    if condition and not condition_has_digits and (not condition_is_wet or wet):
+        cues.append(condition)
+    if wet:
         cues.append("wet conditions")
-    elif condition and rain_probability <= 20:
+    elif rain_probability <= 20:
         cues.append("dry conditions")
     return _dedupe_cues(cues)
 
@@ -1342,15 +1543,22 @@ def synthesize_recipe_scene(
         return None
     brief_cues = _brief_weather_cues(brief_scene)
     forecast_cues = _forecast_weather_cues(forecast)
-    brief_text = " ".join(brief_cues).lower()
-    if any(
-        word in brief_text
-        for word in ("rain", "drizzle", "wet", "snow", "shower", "storm")
-    ):
+    brief_has_precipitation = any(
+        _PRECIPITATION_CUE_RE.search(cue) for cue in brief_cues
+    )
+    if brief_has_precipitation:
         # The accepted brief is authoritative for weather. Do not add a
         # contradictory dry-forecast marker from a stale structured summary.
         forecast_cues = [
             cue for cue in forecast_cues if cue.lower() != "dry conditions"
+        ]
+    elif _text_declares_dry(brief_scene):
+        # Issue #24: "mostly dry" / "no rain" is an explicit semantic claim.
+        # A whole-day condition such as "Light drizzle" (or a trace outside the
+        # daylight window) must not turn the authoritative scene wet.
+        forecast_cues = [
+            cue for cue in forecast_cues
+            if not _PRECIPITATION_CUE_RE.search(cue)
         ]
     cues = _dedupe_cues(brief_cues + forecast_cues)
     if not any("daylight" in cue.lower() for cue in cues):

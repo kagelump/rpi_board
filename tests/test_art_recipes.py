@@ -362,6 +362,121 @@ def test_no_weather_compatible_candidate_preserves_brief(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Issue #24: weather cues must preserve negation and the hero's scene window
+# ---------------------------------------------------------------------------
+
+ARCHIVED_ISSUE24_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "issue24_archived_oct22_brief.json"
+)
+
+
+def _archived_issue24_payload():
+    """The archived 2026-10-21 run for target date 2026-10-22."""
+    return json.loads(ARCHIVED_ISSUE24_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _issue24_delivery_rider_recipe():
+    return {
+        "status": "selected",
+        "recipe_id": "issue24-delivery-rider",
+        "forecast_weather": "dry",
+        "recipe_weather": "neutral",
+        "tags": {
+            "subject": "delivery_rider",
+            "subject_text": "a delivery rider pausing at a roadside bus stop",
+            "motif": "insulated box",
+            "motifs": ["insulated box"],
+            "setting": "bus_stop",
+            "setting_text": "a roadside bus stop",
+            "viewpoint": "eye_level",
+            "viewpoint_text": "eye-level medium shot",
+            "composition": "emblem",
+            "composition_text": (
+                "near-symmetrical emblem with one deliberate disruption"
+            ),
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "brief",
+    [
+        "A mostly dry day, no rain, with a breeze and daylight.",
+        "Dry with a breeze; without showers.",
+        "Mostly dry despite late drizzle, with bright daylight.",
+    ],
+)
+def test_issue24_negated_precipitation_never_becomes_positive_cue(brief):
+    cues = ar._brief_weather_cues(brief)
+    assert not any(ar._PRECIPITATION_CUE_RE.search(cue) for cue in cues)
+    # A negation must not erase an explicitly dry scene meaning.
+    assert "dry conditions" in cues
+
+
+def test_issue24_negation_scope_does_not_erase_independent_light_cues():
+    cues = ar._brief_weather_cues("No rain and a light breeze in daylight.")
+    lowered = [cue.lower() for cue in cues]
+    assert "breeze" in lowered
+    assert "daylight" in lowered
+    assert "dry conditions" in lowered
+    assert not any(ar._PRECIPITATION_CUE_RE.search(cue) for cue in cues)
+
+
+def test_issue24_positive_precipitation_cue_is_still_retained():
+    cues = ar._brief_weather_cues(
+        "Fine drizzle in soft overcast daylight with a calm breeze."
+    )
+    lowered = [cue.lower() for cue in cues]
+    assert "fine drizzle" in lowered
+    assert "daylight" in lowered
+
+
+def test_issue24_forecast_cues_respect_daylight_window_not_whole_day_trace():
+    payload = _archived_issue24_payload()
+    assert payload["today"]["daily_summary"]["rain_sum_mm"] == 0.2
+    assert payload["today"]["hourly"][3]["rain_mm"] == 0.2
+
+    cues = ar._forecast_weather_cues(payload)
+    assert cues == ["dry conditions"]
+
+    # A real daytime shower in the same payload still produces wet cues.
+    rainy = json.loads(json.dumps(payload))
+    rainy["today"]["hourly"][14]["rain_mm"] = 1.2
+    rainy["today"]["hourly"][14]["rain_probability_pct"] = 80
+    rainy["today"]["hourly"][14]["weather_code"] = 61
+    rainy_cues = ar._forecast_weather_cues(rainy)
+    assert "Light drizzle" in rainy_cues
+    assert "wet conditions" in rainy_cues
+
+
+def test_issue24_archived_replay_synthesizes_coherent_dry_recipe_scene():
+    payload = _archived_issue24_payload()
+    recipe = _issue24_delivery_rider_recipe()
+    scene = ar.synthesize_recipe_scene(
+        recipe,
+        brief_scene=payload["brief"]["illustration_prompt"],
+        forecast=payload,
+    )
+    assert scene is not None
+    lowered = scene.lower()
+
+    # Recipe realization from issue #23 remains intact.
+    for expected in (
+        "delivery rider", "insulated box", "roadside bus stop",
+        "eye-level medium shot", "near-symmetrical emblem",
+    ):
+        assert expected in lowered
+    assert scene.count("Subject and motif:") == 1
+
+    # The 03:00 trace and negated brief wording stay out of the daytime hero.
+    for contradictory in ("rain", "drizzle", "wet conditions"):
+        assert contradictory not in lowered
+    assert "dry conditions" in lowered
+    assert "daylight" in lowered
+    assert "breeze" in lowered
+
+
+# ---------------------------------------------------------------------------
 # Publication / reuse bookkeeping
 # ---------------------------------------------------------------------------
 
