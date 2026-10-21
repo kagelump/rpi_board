@@ -65,7 +65,8 @@ def baseline_retry(prompt, reasons):
 
 
 def rejection_reasons(metrics, verdict, threshold):
-    reasons = [r for r in ('has_text', 'is_collage') if verdict.get(r)]
+    reasons = [r for r in ('has_text', 'has_watermark_or_signature', 'is_collage')
+               if verdict.get(r)]
     if metrics['off_palette_pct'] > threshold:
         reasons.append(f"off_palette={metrics['off_palette_pct'] * 100:.0f}%")
     return reasons

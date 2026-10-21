@@ -95,9 +95,15 @@ def test_eval_baseline_is_exact_archived_prompt_and_retry():
 
 
 def test_eval_diagnostic_retry_does_not_count_as_operational_fallback():
-    verdict = {'status': 'accepted', 'has_text': False, 'is_collage': False}
+    verdict = {
+        'status': 'accepted', 'has_text': False,
+        'has_watermark_or_signature': False, 'is_collage': False,
+    }
     assert ev.rejection_reasons({'off_palette_pct': 0.15}, verdict, 0.15) == []
     assert ev.rejection_reasons({'off_palette_pct': 0.1501}, verdict, 0.15)
+    marked = dict(verdict, has_watermark_or_signature=True)
+    assert ev.rejection_reasons(
+        {'off_palette_pct': 0.0}, marked, 0.15) == ['has_watermark_or_signature']
     row = {'variant': 'candidate', 'attempts': [
         {'metrics': {'off_palette_pct': 0.0}}, {'metrics': {'off_palette_pct': 0.3}}],
         'operational_status': 'accepted', 'fallback': False}

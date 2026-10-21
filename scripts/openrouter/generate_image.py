@@ -512,6 +512,13 @@ _RETRY_PROMPT_CLAUSES = {
         "of any kind anywhere in the image: no letters, words, numbers, "
         "percentages, signs, labels, logos, or watermarks."
     ),
+    "has_watermark_or_signature": (
+        "The previous attempt was rejected for a creator signature, watermark, "
+        "or prominent logo/brand mark. Draw NO signature, handwritten mark, "
+        "watermark, logo, brand mark, or other creator mark anywhere in the "
+        "image. Ordinary environmental signage and natural scene lettering are "
+        "still allowed."
+    ),
     "is_collage": (
         "The previous attempt was rejected as a collage or framed image. Produce "
         "ONE unified illustration edge to edge. Draw the foreground and background "
@@ -711,12 +718,15 @@ def _generate_with_guardrail(settings, prompt, provider):
     for attempt in range(max_retries + 1):
         current_prompt = prompt if not attempts else _retry_prompt(prompt, rejected_reasons)
         image_bytes = _call_image_api(settings, current_prompt, provider)
-        verdict = inspect_art(image_bytes, settings)  # vision: text / collage
+        verdict = inspect_art(image_bytes, settings)  # vision: text, creator marks, collage
         inspection = verdict.get("status")
         if inspection is None:
             # Verdict dicts from older callers omit ``status``; fall back to the
             # ``ok``/flag shape so the guardrail still behaves sensibly.
-            vision_reasons = [k for k in ("has_text", "is_collage") if verdict.get(k)]
+            vision_reasons = [
+                k for k in ("has_text", "has_watermark_or_signature", "is_collage")
+                if verdict.get(k)
+            ]
             if not vision_reasons and not verdict.get("ok", True):
                 vision_reasons = ["rejected"]
             if vision_reasons:
@@ -727,7 +737,8 @@ def _generate_with_guardrail(settings, prompt, provider):
                 inspection = "accepted"
         else:
             vision_reasons = (
-                [k for k in ("has_text", "is_collage") if verdict.get(k)]
+                [k for k in ("has_text", "has_watermark_or_signature", "is_collage")
+                 if verdict.get(k)]
                 if inspection == "rejected" else []
             )
         reasons = list(vision_reasons)

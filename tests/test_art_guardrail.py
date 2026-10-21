@@ -1,7 +1,6 @@
 """Tests for the art guardrail (status separation + bounded retry)."""
 import io
 import json
-import pytest
 
 import pytest
 
@@ -41,16 +40,20 @@ def _mock_guardrail_response(monkeypatch, verdict):
 
 
 class TestInspectArtStatus:
-    @pytest.mark.parametrize("is_collage", [False, True])
-    def test_text_check_disabled_keeps_collage_check(self, monkeypatch, is_collage):
+    def test_relaxed_mode_allows_natural_sign_but_audits_mark_check(
+            self, monkeypatch):
         requests = []
         monkeypatch.setattr(ag, "get_openrouter_api_key", lambda settings: "k")
 
         def response(request, **kwargs):
             requests.append(json.loads(request.data))
-            # Even an unsolicited text flag cannot cause rejection.
+            # Broad text is ignored in this mode, but the narrow mark verdict
+            # must be explicitly false for the image to be accepted.
             return _FakeResponse({"choices": [{"message": {"content": json.dumps({
-                "has_text": True, "is_collage": is_collage, "note": "signage",
+                "has_text": True,
+                "has_watermark_or_signature": False,
+                "is_collage": False,
+                "note": "natural street sign",
             })}}]})
 
         monkeypatch.setattr(ag, "urlopen_with_context", response)
@@ -59,13 +62,101 @@ class TestInspectArtStatus:
             "pipeline": {"image_guardrail_check_text": False},
         }
         verdict = ag.inspect_art(b"x", settings)
-        assert verdict["ok"] is (not is_collage)
-        assert verdict["status"] == ("rejected" if is_collage else "accepted")
+
+        assert len(requests) == 1
+        assert verdict["ok"] is True
+        assert verdict["status"] == "accepted"
         assert verdict["has_text"] is None
         assert verdict["text_check_enabled"] is False
+        assert verdict["has_watermark_or_signature"] is False
+        assert verdict["is_collage"] is False
         prompt = requests[0]["messages"][0]["content"][0]["text"]
         assert '"has_text"' not in prompt
-        assert "Ignore all text" in prompt
+        assert '"has_watermark_or_signature"' in prompt
+        assert "Ordinary environmental lettering" in prompt
+        assert "Do not reject on broad text alone" in prompt
+
+    @pytest.mark.parametrize("mark_note", [
+        "handwritten artist signature",
+        "watermark",
+        "prominent creator/brand logo",
+    ])
+    def test_relaxed_mode_rejects_creator_marks(
+            self, monkeypatch, mark_note):
+        requests = []
+        monkeypatch.setattr(ag, "get_openrouter_api_key", lambda settings: "k")
+
+        def response(request, **kwargs):
+            requests.append(json.loads(request.data))
+            return _FakeResponse({"choices": [{"message": {"content": json.dumps({
+                "has_text": False,
+                "has_watermark_or_signature": True,
+                "is_collage": False,
+                "note": mark_note,
+            })}}]})
+
+        monkeypatch.setattr(ag, "urlopen_with_context", response)
+        settings = {
+            "openrouter": {"base_url": "https://x", "image_tool_model": "m"},
+            "pipeline": {"image_guardrail_check_text": False},
+        }
+        verdict = ag.inspect_art(b"x", settings)
+
+        assert len(requests) == 1
+        assert verdict["ok"] is False
+        assert verdict["status"] == "rejected"
+        assert verdict["has_text"] is None
+        assert verdict["text_check_enabled"] is False
+        assert verdict["has_watermark_or_signature"] is True
+
+    def test_relaxed_mode_rejects_collage_independently(self, monkeypatch):
+        _mock_guardrail_response(monkeypatch, {
+            "has_watermark_or_signature": False,
+            "is_collage": True,
+            "note": "framed photo",
+        })
+        settings = {
+            "openrouter": {"base_url": "https://x", "image_tool_model": "m"},
+            "pipeline": {"image_guardrail_check_text": False},
+        }
+        verdict = ag.inspect_art(b"x", settings)
+        assert verdict["ok"] is False
+        assert verdict["status"] == "rejected"
+        assert verdict["has_text"] is None
+        assert verdict["has_watermark_or_signature"] is False
+        assert verdict["is_collage"] is True
+
+    def test_relaxed_mode_clean_art_is_accepted(self, monkeypatch):
+        _mock_guardrail_response(monkeypatch, {
+            "has_watermark_or_signature": False,
+            "is_collage": False,
+            "note": "clean illustration",
+        })
+        settings = {
+            "openrouter": {"base_url": "https://x", "image_tool_model": "m"},
+            "pipeline": {"image_guardrail_check_text": False},
+        }
+        verdict = ag.inspect_art(b"x", settings)
+        assert verdict["ok"] is True
+        assert verdict["status"] == "accepted"
+        assert verdict["has_text"] is None
+        assert verdict["text_check_enabled"] is False
+        assert verdict["has_watermark_or_signature"] is False
+
+    def test_incomplete_relaxed_verdict_is_unverified(self, monkeypatch):
+        _mock_guardrail_response(monkeypatch, {
+            "is_collage": False,
+            "note": "model omitted mark verdict",
+        })
+        settings = {
+            "openrouter": {"base_url": "https://x", "image_tool_model": "m"},
+            "pipeline": {"image_guardrail_check_text": False},
+        }
+        verdict = ag.inspect_art(b"x", settings)
+        assert verdict["ok"] is True
+        assert verdict["status"] == "unverified"
+        assert verdict["has_watermark_or_signature"] is None
+        assert "has_watermark_or_signature" in verdict["error"]
 
     @pytest.mark.parametrize("model,temperature_supported", [
         ("openai/gpt-6-luna", False), ("openai/gpt-5.2", True)])
@@ -77,7 +168,11 @@ class TestInspectArtStatus:
         def response(request, **kwargs):
             requests.append(json.loads(request.data))
             return _FakeResponse({"choices": [{"message": {"content": json.dumps({
-                "has_text": False, "is_collage": False, "note": "clean"})}}]})
+                "has_text": False,
+                "has_watermark_or_signature": False,
+                "is_collage": False,
+                "note": "clean",
+            })}}]})
 
         monkeypatch.setattr(ag, "urlopen_with_context", response)
         settings = {"openrouter": {"base_url": "https://x", "image_tool_model": model}}
@@ -105,23 +200,66 @@ class TestInspectArtStatus:
         assert verdict["status"] == "unverified"
         assert "error" in verdict
 
-    def test_flagged_art_is_rejected(self, monkeypatch):
-        _mock_guardrail_response(
-            monkeypatch, {"has_text": True, "is_collage": False, "note": "caption"})
+    def test_strict_mode_still_rejects_any_text(self, monkeypatch):
+        _mock_guardrail_response(monkeypatch, {
+            "has_text": True,
+            "has_watermark_or_signature": False,
+            "is_collage": False,
+            "note": "caption",
+        })
         settings = {"openrouter": {"base_url": "https://x", "image_tool_model": "m"}, "pipeline": {}}
         verdict = ag.inspect_art(b"x", settings)
         assert verdict["ok"] is False
         assert verdict["status"] == "rejected"
         assert verdict["has_text"] is True
+        assert verdict["text_check_enabled"] is True
+        assert verdict["has_watermark_or_signature"] is False
         assert verdict["is_collage"] is False
 
-    def test_clean_art_is_accepted(self, monkeypatch):
-        _mock_guardrail_response(
-            monkeypatch, {"has_text": False, "is_collage": False, "note": "clean"})
+    def test_strict_mode_rejects_creator_mark_even_without_broad_text(
+            self, monkeypatch):
+        _mock_guardrail_response(monkeypatch, {
+            "has_text": False,
+            "has_watermark_or_signature": True,
+            "is_collage": False,
+            "note": "signature",
+        })
+        settings = {"openrouter": {"base_url": "https://x", "image_tool_model": "m"}, "pipeline": {}}
+        verdict = ag.inspect_art(b"x", settings)
+        assert verdict["status"] == "rejected"
+        assert verdict["has_watermark_or_signature"] is True
+
+    def test_strict_mode_clean_art_is_accepted(self, monkeypatch):
+        _mock_guardrail_response(monkeypatch, {
+            "has_text": False,
+            "has_watermark_or_signature": False,
+            "is_collage": False,
+            "note": "clean",
+        })
         settings = {"openrouter": {"base_url": "https://x", "image_tool_model": "m"}, "pipeline": {}}
         verdict = ag.inspect_art(b"x", settings)
         assert verdict["ok"] is True
         assert verdict["status"] == "accepted"
+        assert verdict["has_text"] is False
+        assert verdict["text_check_enabled"] is True
+        assert verdict["has_watermark_or_signature"] is False
+
+    def test_strict_mode_legacy_verdict_without_narrow_field_is_accepted(
+            self, monkeypatch):
+        # Strict mode's established contract is broad text rejection. Keep
+        # accepting an older/partial response when that check explicitly passed.
+        _mock_guardrail_response(monkeypatch, {
+            "has_text": False,
+            "is_collage": False,
+            "note": "clean",
+        })
+        settings = {"openrouter": {"base_url": "https://x", "image_tool_model": "m"}, "pipeline": {}}
+        verdict = ag.inspect_art(b"x", settings)
+        assert verdict["ok"] is True
+        assert verdict["status"] == "accepted"
+        assert verdict["has_text"] is False
+        assert verdict["text_check_enabled"] is True
+        assert verdict["has_watermark_or_signature"] is None
 
 
 class TestGenerateWithGuardrail:
@@ -198,6 +336,35 @@ class TestGenerateWithGuardrail:
         assert out["status"] == "accepted"
         assert "ONE unified illustration" in prompts[1]
         assert "NO text" in prompts[2]
+
+    def test_retry_correction_covers_creator_mark(self, monkeypatch):
+        seq = [b"bad", b"good"]
+        prompts = []
+
+        def fake_call(s, p, pr):
+            prompts.append(p)
+            return seq.pop(0)
+
+        monkeypatch.setattr(gi, "_call_image_api", fake_call)
+        verdicts = [
+            {
+                "ok": False,
+                "status": "rejected",
+                "has_watermark_or_signature": True,
+                "note": "artist signature",
+            },
+            {"ok": True, "status": "accepted"},
+        ]
+        monkeypatch.setattr(gi, "inspect_art", lambda b, s: verdicts.pop(0))
+        monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
+        out = gi._generate_with_guardrail(
+            self._settings(image_guardrail_max_retries=1), "p", "fal")
+
+        assert out["status"] == "accepted"
+        assert out["image_bytes"] == b"good"
+        assert out["attempts"][0]["reasons"] == ["has_watermark_or_signature"]
+        assert "Draw NO signature" in prompts[1]
+        assert "Ordinary environmental signage" in prompts[1]
 
     def test_exhausts_retries_returns_rejected(self, monkeypatch):
         produced = [b"bad1", b"bad2"]
