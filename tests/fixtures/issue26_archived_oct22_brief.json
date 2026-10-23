@@ -1,0 +1,251 @@
+{
+  "replay_run_id": "559af5ddb5ec4335988fe4670d2edf27",
+  "brief": {
+    "accent": "none",
+    "event_ref": "",
+    "headline": "Cloudy afternoon, near 21C and staying dry",
+    "illustration_prompt": "Keep the contrast between the buildings and the soft overcast sky clear without suggesting rain or strong sun. Emotional beat: a calm afternoon pause.",
+    "mood": "calm",
+    "subtitle": "Cloudy and dry through the afternoon."
+  },
+  "brief_context": {
+    "conflicts": [],
+    "missing_sections": [],
+    "ordered_facts": [],
+    "source_priority": [
+      "yahoo",
+      "open_meteo",
+      "other"
+    ],
+    "target_date_iso": "2026-10-22"
+  },
+  "brief_source": "openrouter",
+  "day_context": {
+    "date_iso": "2026-10-22",
+    "date_pretty": "Thursday, October 22",
+    "daypart_role": "afternoon",
+    "is_weekend": false,
+    "month_name": "October",
+    "part_of_day": "midday",
+    "run_date_iso": "2026-10-22",
+    "season": "autumn",
+    "sunrise": "05:52",
+    "sunset": "17:09",
+    "target_date_iso": "2026-10-22",
+    "weekday": "Thursday"
+  },
+  "generated_at_local": "2026-10-22T13:00:50+09:00",
+  "location": "Tokyo",
+  "timezone": "Asia/Tokyo",
+  "today": {
+    "daily_summary": {
+      "condition": "Overcast",
+      "date": "2026-10-22",
+      "rain_prob_max_pct": 2,
+      "rain_sum_mm": 0.0,
+      "temp_max_c": 21.0,
+      "temp_min_c": 15.0,
+      "weather_code": 3
+    },
+    "hourly": [
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 2,
+        "temp_c": 15.0,
+        "time": "2026-10-22T00:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 15.25,
+        "time": "2026-10-22T01:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 15.5,
+        "time": "2026-10-22T02:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 2,
+        "temp_c": 15.75,
+        "time": "2026-10-22T03:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 16.0,
+        "time": "2026-10-22T04:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 16.25,
+        "time": "2026-10-22T05:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 2,
+        "temp_c": 16.5,
+        "time": "2026-10-22T06:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 16.75,
+        "time": "2026-10-22T07:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 17.0,
+        "time": "2026-10-22T08:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 2,
+        "temp_c": 17.25,
+        "time": "2026-10-22T09:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 17.5,
+        "time": "2026-10-22T10:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 17.75,
+        "time": "2026-10-22T11:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 2,
+        "temp_c": 18.0,
+        "time": "2026-10-22T12:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 18.25,
+        "time": "2026-10-22T13:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 18.5,
+        "time": "2026-10-22T14:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 2,
+        "temp_c": 18.75,
+        "time": "2026-10-22T15:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 19.0,
+        "time": "2026-10-22T16:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 19.25,
+        "time": "2026-10-22T17:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 2,
+        "temp_c": 19.5,
+        "time": "2026-10-22T18:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 19.75,
+        "time": "2026-10-22T19:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 20.0,
+        "time": "2026-10-22T20:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 2,
+        "temp_c": 20.25,
+        "time": "2026-10-22T21:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 20.5,
+        "time": "2026-10-22T22:00",
+        "weather_code": 3
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 20.75,
+        "time": "2026-10-22T23:00",
+        "weather_code": 3
+      }
+    ],
+    "yahoo_summary": {
+      "condition": "曇り",
+      "date_iso": "2026-10-22",
+      "date_label": "10月22日",
+      "precipitation_windows": [
+        {
+          "period": "0-6",
+          "precipitation_probability_pct": 2,
+          "raw": "2％"
+        },
+        {
+          "period": "6-12",
+          "precipitation_probability_pct": 0,
+          "raw": "0％"
+        },
+        {
+          "period": "12-18",
+          "precipitation_probability_pct": 0,
+          "raw": "0％"
+        },
+        {
+          "period": "18-24",
+          "precipitation_probability_pct": 0,
+          "raw": "0％"
+        }
+      ],
+      "temp_max_c": 21,
+      "temp_min_c": 15
+    }
+  },
+  "tomorrow": {}
+}

@@ -1250,10 +1250,8 @@ _PRECIPITATION_CUE_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
-# Issue #24: a positive regex match is not enough. Keep negation scoped to the
-# cue itself (or to immediately adjacent precipitation wording) so "no rain"
-# cannot become a positive rain cue while an independent "breeze" survives in
-# the same sentence.
+# Issue #24: a positive regex match is not enough. Keep the existing narrow
+# check for light/wind cues so "no rain and a light breeze" keeps the breeze.
 _NEGATION_BEFORE_RE = re.compile(
     r"\b(?:no|not|never|without|free\s+(?:of|from)|absence\s+of|zero)\b"
     r"(?:\W+(?:any|a|an|the|chance|risk|possibility|sign|trace|of|more|"
@@ -1261,17 +1259,22 @@ _NEGATION_BEFORE_RE = re.compile(
     r"early|overnight))*\W*$",
     flags=re.IGNORECASE,
 )
-# Coordinated precipitation wording remains inside one negated scope:
-# "no rain or drizzle" negates both nouns. Do not use this broader form for
-# light/wind cues, so "no rain and a light breeze" still keeps the breeze.
-_NEGATION_COORDINATED_BEFORE_RE = re.compile(
-    r"\b(?:no|not|never|without|free\s+(?:of|from)|absence\s+of|zero)\b"
-    r"(?:\W+(?:any|a|an|the|chance|risk|possibility|sign|trace|of|more|"
-    r"further|significant|measurable|appreciable|expected|likely|late|"
-    r"early|overnight|rain|rainfall|drizzle|showers?|snow|sleet|storm|"
-    r"precipitation|wet|weather|or|and|nor))*\W*$",
+# Issue #26: precipitation mentions need clause scope, not a vocabulary of
+# possible filler words ("without suggesting rain" / "without showing rain").
+# A negation marker governs a precipitation cue when it occurs in the same
+# bounded clause. Sentence punctuation and contrastive joiners reset the scan;
+# the distance cap keeps this local and avoids treating a far-away negation as
+# authoritative. The cap is a count of words, not a list of allowed fillers.
+_CLAUSE_BOUNDARY_RE = re.compile(
+    r"[.!?;\n]|\b(?:but|however|yet|although|though|whereas|while)\b",
     flags=re.IGNORECASE,
 )
+_NEGATION_MARKER_RE = re.compile(
+    r"\b(?:no|not|never|without|none|free\s+(?:of|from)|"
+    r"absence\s+of|zero)\b",
+    flags=re.IGNORECASE,
+)
+_MAX_NEGATION_CLAUSE_WORDS = 12
 _DRY_CONTRAST_BEFORE_RE = re.compile(
     r"\b(?:dry|drier|clearing|clear)\b(?:\W+\w+){0,12}\W+"
     r"\b(?:despite|except(?:\s+for)?|apart\s+from|save\s+for)\b"
@@ -1305,26 +1308,61 @@ def _dedupe_cues(cues: list[str]) -> list[str]:
     return result
 
 
+def _bounded_clause_prefix(scene: str, start: int) -> str:
+    """Return the last words of the clause containing ``start``.
+
+    This is deliberately grammatical rather than a filler-word whitelist:
+    punctuation and contrastive clause joiners reset the scope, then only the
+    nearest bounded span is inspected for a negation marker.
+    """
+    prefix = scene[:start]
+    boundary = None
+    for match in _CLAUSE_BOUNDARY_RE.finditer(prefix):
+        boundary = match
+    if boundary is not None:
+        prefix = prefix[boundary.end():]
+    words = re.findall(r"[a-z0-9']+", prefix.lower())
+    return " ".join(words[-_MAX_NEGATION_CLAUSE_WORDS:])
+
+
+def _has_negation_in_clause(scene: str, start: int) -> bool:
+    """Whether a bounded clause immediately before ``start`` is negated."""
+    return bool(_NEGATION_MARKER_RE.search(_bounded_clause_prefix(scene, start)))
+
+
 def _text_declares_dry(text: str | None) -> bool:
-    """True when weather prose explicitly says the relevant scene stays dry."""
+    """True when weather prose explicitly says the relevant scene stays dry.
+
+    Besides the compact dry-phrase table, a text whose only precipitation
+    mentions are negated is an explicit dry claim: for example, "without
+    suggesting rain" or "not expected to look wet". This is what lets a
+    negation-only illustration direction retain a positive dry cue.
+    """
     normalized = _norm_text(text)
     if not normalized:
         return False
-    return any(phrase in normalized for phrase in _EXPLICIT_DRY_PHRASES)
+    if any(phrase in normalized for phrase in _EXPLICIT_DRY_PHRASES):
+        return True
+    precipitation_matches = list(_PRECIPITATION_CUE_RE.finditer(normalized))
+    return bool(precipitation_matches) and all(
+        _cue_is_negated(normalized, match) for match in precipitation_matches
+    )
 
 
 def _cue_is_negated(scene: str, match: re.Match[str]) -> bool:
     """Detect a negated or explicitly-excepted weather cue at ``match``."""
     cue = match.group(0)
-    # Commas do not end a clause; periods, semicolons and newlines do. This
-    # keeps "no rain, just breeze" from treating the breeze as negated.
+    # Commas do not end a clause; periods, semicolons, contrastive joiners and
+    # newlines do. This keeps "no rain, just breeze" from treating the breeze
+    # as negated while allowing any bounded verbs/modifiers before precipitation
+    # in forms such as "without suggesting rain".
     prefix = re.split(r"[.!?;\n]", scene[:match.start()])[-1]
     suffix = scene[match.end():match.end() + 40]
     is_precipitation = bool(_PRECIPITATION_CUE_RE.search(cue))
     negation_before = _NEGATION_BEFORE_RE.search(prefix)
     if is_precipitation:
-        negation_before = negation_before or _NEGATION_COORDINATED_BEFORE_RE.search(
-            prefix
+        negation_before = negation_before or _has_negation_in_clause(
+            scene, match.start()
         )
     if negation_before or _NEGATION_AFTER_RE.match(suffix):
         return True
@@ -1543,16 +1581,36 @@ def synthesize_recipe_scene(
         return None
     brief_cues = _brief_weather_cues(brief_scene)
     forecast_cues = _forecast_weather_cues(forecast)
+    brief_declares_dry = _text_declares_dry(brief_scene)
     brief_has_precipitation = any(
         _PRECIPITATION_CUE_RE.search(cue) for cue in brief_cues
     )
+    forecast_has_precipitation = any(
+        _PRECIPITATION_CUE_RE.search(cue) for cue in forecast_cues
+    )
+    forecast_declares_dry = (
+        not forecast_has_precipitation
+        and any(cue.lower() == "dry conditions" for cue in forecast_cues)
+    )
+    if brief_has_precipitation and brief_declares_dry and forecast_declares_dry:
+        # Issue #26: free-form lexical extraction must not override two
+        # consistent dry facts. A model-written scene can contain an incidental
+        # positive precipitation token ("rain" in "without suggesting rain")
+        # while the accepted brief and the structured scene window both say dry.
+        brief_cues = [
+            cue for cue in brief_cues
+            if not _PRECIPITATION_CUE_RE.search(cue)
+        ]
+        if not any(cue.lower() == "dry conditions" for cue in brief_cues):
+            brief_cues.append("dry conditions")
+        brief_has_precipitation = False
     if brief_has_precipitation:
         # The accepted brief is authoritative for weather. Do not add a
         # contradictory dry-forecast marker from a stale structured summary.
         forecast_cues = [
             cue for cue in forecast_cues if cue.lower() != "dry conditions"
         ]
-    elif _text_declares_dry(brief_scene):
+    elif brief_declares_dry:
         # Issue #24: "mostly dry" / "no rain" is an explicit semantic claim.
         # A whole-day condition such as "Light drizzle" (or a trace outside the
         # daylight window) must not turn the authoritative scene wet.

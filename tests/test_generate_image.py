@@ -1391,3 +1391,73 @@ def test_issue24_archived_run_prompt_stays_dry_and_still_books_recipe(
     assert len(entries) == 1
     assert entries[0]["tags"]["subject"] == "delivery rider"
     assert entries[0]["tags"]["setting"] == "bus stop"
+
+
+# ---------------------------------------------------------------------------
+# Issue #26: archived afternoon replay stays dry through the final candidate
+# ---------------------------------------------------------------------------
+
+ISSUE26_ARCHIVED_FIXTURE = (
+    ROOT / "tests" / "fixtures" / "issue26_archived_oct22_brief.json"
+)
+
+
+def test_issue26_archived_run_prompt_and_candidate_contract_stay_dry(
+        monkeypatch, tmp_path):
+    """End-to-end replay of the dry archived afternoon.
+
+    The deterministic contract checked here covers the copy, the synthesized
+    scene and the prompt sent for the accepted final candidate. A live vision
+    call is intentionally not used; without one, the provider prompt is the
+    weather contract the candidate is generated from.
+    """
+    payload = json.loads(ISSUE26_ARCHIVED_FIXTURE.read_text(encoding="utf-8"))
+    assert payload["today"]["daily_summary"]["rain_sum_mm"] == 0.0
+    assert all(row["rain_mm"] == 0.0 for row in payload["today"]["hourly"])
+
+    settings = _issue21_settings(tmp_path)
+    with open(settings["runtime"]["brief_file"], "w", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+    recipe = _issue24_delivery_rider_recipe()
+    _lock_recipe(settings, recipe, target_date="2026-10-22")
+
+    captured = {}
+
+    def fake_call(_settings, prompt, _provider):
+        captured["prompt"] = prompt
+        # The accepted candidate's generation contract is the full prompt;
+        # there is no image-API or vision call in this deterministic replay.
+        return b"dry-overcast-candidate"
+
+    monkeypatch.setattr(gi, "_call_image_api", fake_call)
+    monkeypatch.setattr(
+        gi, "inspect_art", lambda b, s: {"ok": True, "status": "accepted"})
+    monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
+
+    logs = []
+    _run_main(monkeypatch, settings, logs)
+    assert any(log["event_type"] == "image_generated" for log in logs)
+
+    prompt = captured["prompt"]
+    lowered = prompt.lower()
+    for contradictory in ("rain", "drizzle", "wet conditions", "puddle", "rainy"):
+        assert contradictory not in lowered
+
+    scene = prompt.split("Scene:\n", 1)[1].split("\n\n", 1)[0]
+    lowered_scene = scene.lower()
+    assert "dry conditions" in lowered_scene
+    assert "overcast" in lowered_scene
+    assert "daylight" in lowered_scene
+    assert "delivery rider" in lowered_scene
+    assert "roadside bus stop" in lowered_scene
+
+    # The board copy above the accepted candidate remains explicitly dry.
+    assert "staying dry" in payload["brief"]["headline"].lower()
+    assert _hero_path(settings).read_bytes() == b"dry-overcast-candidate"
+
+    state = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    assert state["art_recipe_used"]["tags"] == recipe["tags"]
+    assert state["art_recipe_suppressed"] is False
+    assert state["art_recipe_realization"]["status"] == "prompt_synthesized"
+    assert state["art_recipe_realization"]["used_for_hero"] is True
+    assert state["hero_validation"]["status"] == "accepted"

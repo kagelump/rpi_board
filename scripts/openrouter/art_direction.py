@@ -11,8 +11,9 @@ def artwork_context(payload):
         "scene_period": period,
         "guidance": (
             f"Show the forecast day's {period} outdoor conditions in daylight, "
-            "regardless of the time this image is generated. Overcast or rainy "
-            "daylight can be subdued; do not force sunshine. Keep night-only "
+            "regardless of the time this image is generated. Subdued, overcast "
+            "or diffused daylight is welcome; do not force sunshine. "
+            "Keep night-only "
             "weather as advice in the copy rather than turning the picture into "
             "a night scene. Use a daylight sky wherever sky is visible, with no "
             "moon, stars, night sky or artificial night lighting. A black ink "

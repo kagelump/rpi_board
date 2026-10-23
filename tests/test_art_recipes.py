@@ -477,6 +477,123 @@ def test_issue24_archived_replay_synthesizes_coherent_dry_recipe_scene():
 
 
 # ---------------------------------------------------------------------------
+# Issue #26: clause-scoped negation and dry-forecast authority
+# ---------------------------------------------------------------------------
+
+
+ARCHIVED_ISSUE26_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "issue26_archived_oct22_brief.json"
+)
+
+
+def _archived_issue26_payload():
+    """Representative replay of the archived 2026-10-22 afternoon run."""
+    return json.loads(ARCHIVED_ISSUE26_FIXTURE.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    "brief",
+    [
+        "Keep the contrast clear without suggesting rain or strong sun.",
+        "A calm street without showing rain in the daylight.",
+        "Cloudy and dry without implying showers later.",
+        "A gentle afternoon not expected to look wet.",
+    ],
+)
+def test_issue26_negated_weather_variants_do_not_become_positive_cues(brief):
+    cues = ar._brief_weather_cues(brief)
+    assert not any(ar._PRECIPITATION_CUE_RE.search(cue) for cue in cues)
+    assert "dry conditions" in cues
+
+
+def test_issue26_positive_weather_control_survives():
+    cues = ar._brief_weather_cues(
+        "Clouds build through the afternoon, suggesting rain later."
+    )
+    assert any(ar._PRECIPITATION_CUE_RE.search(cue) for cue in cues)
+    assert "rain" in [cue.lower() for cue in cues]
+
+
+def test_issue26_archived_replay_synthesizes_dry_overcast_daylight():
+    payload = _archived_issue26_payload()
+    recipe = _issue24_delivery_rider_recipe()
+    brief_scene = payload["brief"]["illustration_prompt"]
+
+    brief_cues = ar._brief_weather_cues(brief_scene)
+    forecast_cues = ar._forecast_weather_cues(payload)
+    assert "dry conditions" in brief_cues
+    assert not any(ar._PRECIPITATION_CUE_RE.search(cue) for cue in brief_cues)
+    assert "Overcast" in forecast_cues
+    assert "dry conditions" in forecast_cues
+
+    scene = ar.synthesize_recipe_scene(
+        recipe, brief_scene=brief_scene, forecast=payload
+    )
+    assert scene is not None
+    lowered = scene.lower()
+    for contradictory in ("rain", "drizzle", "wet conditions", "puddle"):
+        assert contradictory not in lowered
+    assert "dry conditions" in lowered
+    assert "overcast" in lowered
+    assert "daylight" in lowered
+    assert "delivery rider" in lowered
+    assert "roadside bus stop" in lowered
+
+
+def test_issue26_dry_brief_plus_dry_forecast_beats_incidental_lexical_rain():
+    payload = _archived_issue26_payload()
+    # This scene contains a positive-looking "rain shower" phrase as well as
+    # explicit dry wording. The positive token alone must not override the
+    # accepted dry meaning and the structured dry scene window.
+    brief_scene = (
+        "Mostly dry through the afternoon, but a rain shower is possible later. "
+        "Keep the contrast clear without suggesting rain."
+    )
+    assert ar._brief_weather_cues(brief_scene)
+    scene = ar.synthesize_recipe_scene(
+        _issue24_delivery_rider_recipe(),
+        brief_scene=brief_scene,
+        forecast=payload,
+    )
+    assert scene is not None
+    lowered = scene.lower()
+    assert "rain" not in lowered
+    assert "dry conditions" in lowered
+    assert "overcast" in lowered
+    assert "daylight" in lowered
+
+
+def test_issue26_positive_rain_is_kept_when_forecast_window_agrees():
+    payload = _archived_issue26_payload()
+    rainy = json.loads(json.dumps(payload))
+    rainy["today"]["daily_summary"].update({
+        "condition": "Light rain",
+        "rain_prob_max_pct": 80,
+        "rain_sum_mm": 1.2,
+        "weather_code": 61,
+    })
+    rainy["today"]["hourly"][14].update({
+        "rain_mm": 1.2,
+        "rain_probability_pct": 80,
+        "weather_code": 61,
+    })
+    brief_scene = (
+        "Clouds build through the afternoon, suggesting rain later. "
+        "Emotional beat: a quiet wait before the shower."
+    )
+    scene = ar.synthesize_recipe_scene(
+        _issue24_delivery_rider_recipe(),
+        brief_scene=brief_scene,
+        forecast=rainy,
+    )
+    assert scene is not None
+    lowered = scene.lower()
+    assert "rain" in lowered
+    assert "wet conditions" in lowered
+    assert "dry conditions" not in lowered
+
+
+# ---------------------------------------------------------------------------
 # Publication / reuse bookkeeping
 # ---------------------------------------------------------------------------
 
