@@ -1461,3 +1461,91 @@ def test_issue26_archived_run_prompt_and_candidate_contract_stay_dry(
     assert state["art_recipe_realization"]["status"] == "prompt_synthesized"
     assert state["art_recipe_realization"]["used_for_hero"] is True
     assert state["hero_validation"]["status"] == "accepted"
+
+
+# ---------------------------------------------------------------------------
+# Issue #27: locked recipes must also honour subject/setting compatibility
+# ---------------------------------------------------------------------------
+
+
+def _waterside_lane_recipe():
+    return {
+        "status": "selected",
+        "recipe_id": "issue27-waterside-lane",
+        "forecast_weather": "dry",
+        "recipe_weather": "neutral",
+        "tags": {
+            "subject": "waterside_figure",
+            "subject_text": "a lone figure at the water's edge",
+            "motif": "fishing rod",
+            "motifs": ["fishing rod"],
+            "setting": "residential_lane",
+            "setting_text": "a narrow residential lane",
+            "viewpoint": "low_angle",
+            "viewpoint_text": "low angle looking up",
+            "composition": "repeating_rhythm",
+            "composition_text": "repeating forms that create a bold visual rhythm",
+        },
+    }
+
+
+def test_inject_style_prompt_suppresses_incompatible_locked_recipe():
+    payload = _archived_dry_payload()
+    template = (
+        ROOT / "config/prompt_templates/weather_image.txt"
+    ).read_text(encoding="utf-8")
+
+    prompt = _inject_style_prompt(
+        template,
+        payload["brief"]["illustration_prompt"],
+        ART_STYLE_POOL[0],
+        PALETTE_STRATEGY_POOL[0],
+        recipe=_waterside_lane_recipe(),
+        forecast=payload,
+    )
+
+    lowered = prompt.lower()
+    assert "artwork recipe for this forecast day" not in lowered
+    assert "water's edge" not in lowered
+    assert "fishing rod" not in lowered
+    assert "narrow residential lane" not in lowered
+    assert "ginkgo" in lowered
+
+
+def test_same_day_locked_incompatible_recipe_is_audit_only(
+        monkeypatch, tmp_path):
+    settings = _issue21_settings(tmp_path)
+    _write_archived_dry_brief(settings)
+    _lock_recipe(settings, _waterside_lane_recipe())
+
+    captured = {}
+    _accept_generation(monkeypatch, captured)
+    logs = []
+    _run_main(monkeypatch, settings, logs)
+
+    lowered = captured["prompt"].lower()
+    assert "water's edge" not in lowered
+    assert "fishing rod" not in lowered
+    assert "narrow residential lane" not in lowered
+    assert "ginkgo" in lowered
+    assert any(log["event_type"] == "art_recipe_locked" for log in logs)
+
+    suppressed = [
+        log for log in logs if log["event_type"] == "art_recipe_suppressed"
+    ]
+    assert len(suppressed) == 1
+    assert suppressed[0]["data"]["suppression_reason"] == (
+        "incompatible_subject_setting"
+    )
+    assert suppressed[0]["data"]["used_for_hero"] is False
+
+    state_after = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    # The locked recipe remains in state for audit but never vouches for the
+    # generated hero or enters publication history.
+    assert state_after["art_recipe"]["tags"]["subject"] == "waterside_figure"
+    assert state_after["art_recipe_used"] is None
+    assert state_after["art_recipe_suppressed"] is True
+    assert state_after["art_recipe_realization"]["status"] == (
+        "suppressed_incompatible_scene"
+    )
+    assert state_after["art_recipe_realization"]["used_for_hero"] is False

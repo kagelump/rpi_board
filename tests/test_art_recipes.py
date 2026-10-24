@@ -1218,3 +1218,148 @@ def test_issue21_cli_appends_known_corrections_idempotently(tmp_path, monkeypatc
     assert len(_raw_events(ledger)) == 7
     assert len(ar.published_recipes(settings)) == 3
     assert len(ar.corrections(settings)) == 2
+
+
+# ---------------------------------------------------------------------------
+# Issue #27: subject/setting compatibility is enforced before novelty scoring
+# ---------------------------------------------------------------------------
+
+
+def _waterside_lane_recipe():
+    return {
+        "subject": "waterside_figure",
+        "subject_text": "a lone figure at the water's edge",
+        "motif": "fishing rod",
+        "motifs": ["fishing rod"],
+        "setting": "residential_lane",
+        "setting_text": "a narrow residential lane",
+        "viewpoint": "low_angle",
+        "viewpoint_text": "low angle looking up",
+        "composition": "repeating_rhythm",
+        "composition_text": "repeating forms that create a bold visual rhythm",
+    }
+
+
+def test_waterside_figure_only_pairs_with_coherent_water_settings():
+    candidates = ar.build_candidates(daypart_role="morning", wet=True)
+    pairs = {
+        (item["tags"]["subject"], item["tags"]["setting"])
+        for item in candidates
+    }
+    assert ("waterside_figure", "residential_lane") not in pairs
+    assert {
+        setting for subject, setting in pairs if subject == "waterside_figure"
+    } == {"riverside_path", "canal_side", "harbor_edge"}
+
+    # The lane remains useful: exclude only the one incompatible subject while
+    # retaining the rest of the pool for normal and fallback selection.
+    lane_subjects = {
+        subject for subject, setting in pairs if setting == "residential_lane"
+    }
+    assert "waterside_figure" not in lane_subjects
+    assert len(lane_subjects) >= 10
+    assert {"lone_walker", "cyclist", "dog_walker"}.issubset(lane_subjects)
+
+
+def test_recipe_scene_compatibility_handles_pool_names_and_free_text():
+    assert ar.subject_setting_compatible(
+        "waterside_figure", "residential_lane") is False
+    for setting in ("riverside_path", "canal_side", "harbor_edge"):
+        assert ar.subject_setting_compatible("waterside_figure", setting) is True
+
+    assert ar.recipe_scene_is_compatible(_waterside_lane_recipe()) is False
+    assert ar.recipe_scene_is_compatible({
+        **_waterside_lane_recipe(),
+        "setting": "canal_side",
+        "setting_text": "a canal lined with low buildings",
+    }) is True
+
+    # Free-text external recipes receive the same protection even without pool
+    # names; generic non-waterside recipes are not narrowed.
+    assert ar.subject_setting_compatible(
+        {"subject_text": "a lone figure at the water's edge", "motifs": ["fishing rod"]},
+        {"setting_text": "a narrow residential lane"},
+    ) is False
+    assert ar.subject_setting_compatible(
+        {"subject_text": "a lone figure at the water's edge", "motifs": ["fishing rod"]},
+        {"setting_text": "a harbor edge with stacked crates"},
+    ) is True
+    assert ar.recipe_scene_is_compatible(_tags()) is True
+
+
+def test_wet_oct24_replay_never_builds_a_waterside_lane_scene(tmp_path):
+    """Rain keeps the archived lane dry-ish, not an invented canal."""
+    payload = _wet_payload()
+    assert ar._forecast_is_wet(payload) is True
+    chosen = ar.choose_recipe(
+        _settings(tmp_path),
+        target_date="2026-10-24",
+        daypart_role="morning",
+        payload=payload,
+    )
+    assert chosen is not None
+    tags = chosen["tags"]
+    assert not (
+        tags["subject"].replace("_", " ") == "waterside figure"
+        and tags["setting"].replace("_", " ") == "residential lane"
+    )
+    assert ar.recipe_scene_is_compatible(chosen) is True
+    assert chosen["forecast_weather"] == "wet"
+
+    # Every rain-compatible residential-lane candidate has a lane-compatible
+    # subject and does not itself inject fishing or a waterway hazard.
+    lane_candidates = [
+        item for item in ar.build_candidates(daypart_role="morning", wet=True)
+        if item["tags"]["setting"] == "residential_lane"
+    ]
+    assert lane_candidates
+    for item in lane_candidates:
+        scene = " ".join([
+            item["tags"]["subject"],
+            item["tags"]["subject_text"],
+            item["tags"]["setting"],
+            item["tags"]["setting_text"],
+        ]).lower()
+        assert "water's edge" not in scene
+        assert "fishing rod" not in scene
+        assert "canal" not in scene
+        assert "flood" not in scene
+
+
+def test_variety_exhausted_fallback_filters_incompatible_candidates(
+        monkeypatch, tmp_path):
+    settings = _settings(tmp_path)
+    now = datetime(2026, 10, 24, 12, tzinfo=timezone.utc)
+    _record(settings, _tags(), sha="a" * 64,
+            published_at=_iso(now - timedelta(hours=12)),
+            target_date="2026-10-23")
+
+    incompatible = {"tags": _tags(
+        subject="waterside_figure",
+        subject_text="a lone figure at the water's edge",
+        motif="fishing rod",
+        motifs=["fishing rod"],
+        setting="residential_lane",
+        setting_text="a narrow residential lane",
+    )}
+    compatible = {"tags": _tags(
+        subject="cyclist",
+        subject_text="a cyclist leaning into the weather",
+        motif="bicycle",
+        motifs=["bicycle"],
+        setting="train_platform",
+        setting_text="an open train platform",
+    )}
+    monkeypatch.setattr(
+        ar, "build_candidates", lambda **kwargs: [incompatible, compatible])
+
+    chosen = ar.choose_recipe(
+        settings, target_date="2026-10-24",
+        daypart_role="morning", now=now,
+    )
+
+    assert chosen is not None
+    assert chosen["status"] == "variety_exhausted"
+    assert chosen["tags"]["subject"] == "cyclist"
+    assert ar.recipe_scene_is_compatible(chosen) is True
+    assert ar._fallback_candidate([incompatible], []) is None

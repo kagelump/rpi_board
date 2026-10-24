@@ -270,7 +270,10 @@ def _inject_style_prompt(template, illustration_prompt, style, palette, recipe=N
     # weather/light cues and the emotional beat carry over from the accepted
     # brief.
     scene_text = illustration_prompt.strip()
-    if recipe and not (
+    recipe_is_compatible = (
+        recipe is not None and art_recipes.recipe_scene_is_compatible(recipe)
+    )
+    if recipe and recipe_is_compatible and not (
         forecast is not None and art_recipes.recipe_conflicts_with_brief(recipe, forecast)
     ):
         synthesized_scene = art_recipes.synthesize_recipe_scene(
@@ -1036,9 +1039,25 @@ def main():
     # drives the image, so forecast accuracy is preserved. A suppressed recipe is
     # audit-only: it must never be booked as the recipe that guided the published
     # hero (the ledger reads ``art_recipe_used``, not ``art_recipe``).
-    recipe_suppressed = bool(
+    recipe_weather_conflict = bool(
         art_recipe is not None
         and art_recipes.recipe_conflicts_with_brief(art_recipe, payload)
+    )
+    # Issue #27: a locked recipe can predate the deterministic compatibility
+    # gate.  It remains audit-only if its subject and setting cannot form one
+    # coherent place; the accepted brief's original scene then drives the hero.
+    recipe_scene_incompatible = bool(
+        art_recipe is not None
+        and not art_recipes.recipe_scene_is_compatible(art_recipe)
+    )
+    recipe_suppressed = bool(
+        art_recipe is not None
+        and (recipe_weather_conflict or recipe_scene_incompatible)
+    )
+    recipe_suppression_reason = (
+        "incompatible_subject_setting" if recipe_scene_incompatible else
+        "weather_conflict" if recipe_weather_conflict else
+        None
     )
     recipe_dimensions = (
         art_recipes.recipe_scene_dimensions(art_recipe)
@@ -1067,10 +1086,12 @@ def main():
                 "forecast_weather": (
                     "wet" if art_recipes._forecast_is_wet(payload) else "dry"
                 ),
+                "suppression_reason": recipe_suppression_reason,
                 "used_for_hero": False,
                 "rationale": (
                     "The accepted brief/forecast is authoritative; the brief's "
-                    "original SUBJECT is used instead of contradictory recipe staging."
+                    "original SUBJECT is used instead of contradictory or "
+                    "physically incompatible recipe staging."
                 ),
             },
         )
@@ -1099,7 +1120,9 @@ def main():
 
     realization_status = "not_selected"
     if art_recipe is not None:
-        if recipe_suppressed:
+        if recipe_scene_incompatible:
+            realization_status = "suppressed_incompatible_scene"
+        elif recipe_suppressed:
             realization_status = "suppressed_forecast_conflict"
         elif recipe_not_realized:
             realization_status = "not_realized"

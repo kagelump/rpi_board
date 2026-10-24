@@ -114,8 +114,13 @@ SUBJECT_POOL = [
      "motifs": ["bedsheets"], "time": "any", "weather": "dry"},
     {"name": "train_bridge", "subject": "a train crossing a bridge",
      "motifs": ["railing"], "time": "any", "weather": "neutral"},
+    # Issue #27: a waterside figure needs an actual waterside setting.  This
+    # allow-list prevents the generic Cartesian product from forcing a fishing
+    # scene into a residential lane (where the provider resolved the conflict
+    # by inventing a canal or flooded street).
     {"name": "waterside_figure", "subject": "a lone figure at the water's edge",
-     "motifs": ["fishing rod"], "time": "any", "weather": "neutral"},
+     "motifs": ["fishing rod"], "time": "any", "weather": "neutral",
+     "allowed_settings": ("riverside_path", "canal_side", "harbor_edge")},
     {"name": "dog_walker", "subject": "a person walking a small dog",
      "motifs": ["leash"], "time": "any", "weather": "neutral"},
     {"name": "lantern_street", "subject": "paper lanterns strung over a street",
@@ -234,6 +239,133 @@ _VIEWPOINT_KEYWORDS = {
     "close_crop": ("close-up", "close up", "tight crop"),
     "flat_frontal": ("frontal", "straight on"),
 }
+
+
+# Issue #27: subject/setting compatibility is a deterministic, local scene
+# constraint checked before novelty scoring.  The known waterside subject may
+# only use settings that actually contain water, and free-text recipes are
+# recognised through the same bounded keyword tables used by recipe derivation.
+_WATERSIDE_SUBJECT_KEYWORDS = (
+    "water's edge", "waterside", "fishing", "fisher", "angler", "fishing rod",
+)
+_WATER_SETTING_KEYWORDS = (
+    "water's edge", "waterside", "river", "canal", "harbor", "harbour",
+    "dock", "pier", "quay", "shore", "beach", "lake", "pond", "sea",
+    "coast", "waterfront",
+)
+_WATERSIDE_SUBJECT_NAME = "waterside figure"
+_WATERSIDE_SETTINGS = frozenset(
+    {"riverside path", "canal side", "harbor edge"}
+)
+
+
+def _recipe_field_values(value: Any, dimension: str) -> tuple[str, str]:
+    """Return normalized ``(name, descriptive text)`` for a recipe dimension."""
+    if isinstance(value, dict):
+        tags = value.get("tags") if isinstance(value.get("tags"), dict) else {}
+        name = value.get("name")
+        if name is None:
+            name = value.get(dimension)
+        if name is None:
+            name = tags.get(dimension)
+        text = value.get("text")
+        if text is None:
+            text = value.get(f"{dimension}_text")
+        if text is None:
+            text = tags.get(f"{dimension}_text")
+        if dimension == "subject":
+            motifs = value.get("motifs") or tags.get("motifs") or []
+            if isinstance(motifs, str):
+                motifs = [motifs]
+            text = " ".join(
+                str(part) for part in [text, *motifs] if part
+            )
+    else:
+        name = value
+        text = None
+    return _norm_text(name), _norm_text(text)
+
+
+def _known_subject_name(name: str, text: str) -> str | None:
+    """Resolve a subject name/text to a canonical pool subject, if known."""
+    for item in SUBJECT_POOL:
+        if name and name == _norm_text(item["name"]):
+            return _norm_text(item["name"])
+    subject_blob = f"{name} {text}"
+    if any(keyword in subject_blob for keyword in _WATERSIDE_SUBJECT_KEYWORDS):
+        return _WATERSIDE_SUBJECT_NAME
+    detected = _keyword_lookup(subject_blob, _SUBJECT_KEYWORDS)
+    return _norm_text(detected) if detected else None
+
+
+def _known_setting_name(name: str, text: str) -> str | None:
+    """Resolve a setting name/text to a canonical pool setting, if known."""
+    for item in SETTING_POOL:
+        if name and name == _norm_text(item["name"]):
+            return _norm_text(item["name"])
+    detected = _keyword_lookup(f"{name} {text}", _SETTING_KEYWORDS)
+    return _norm_text(detected) if detected else None
+
+
+def _allowed_settings_for_subject(subject_name: str | None) -> frozenset[str] | None:
+    """Return a subject's declared setting allow-list, if it has one."""
+    if not subject_name:
+        return None
+    for item in SUBJECT_POOL:
+        if subject_name == _norm_text(item["name"]):
+            allowed = item.get("allowed_settings")
+            if allowed is None:
+                return None
+            return frozenset(_norm_text(value) for value in allowed)
+    if subject_name == _WATERSIDE_SUBJECT_NAME:
+        return _WATERSIDE_SETTINGS
+    return None
+
+
+def subject_setting_compatible(subject: Any, setting: Any) -> bool:
+    """Whether a subject can coherently occupy a setting.
+
+    Only known compatibility declarations are enforced; unknown subjects and
+    settings remain eligible, so this does not narrow the existing pools beyond
+    the incompatibilities the issue documents.  The waterside figure is the one
+    declared subject rule: it requires a river, canal, harbor, or other explicit
+    water setting, whether supplied as pool names or free text.
+    """
+    subject_name, subject_text = _recipe_field_values(subject, "subject")
+    setting_name, setting_text = _recipe_field_values(setting, "setting")
+    known_subject = _known_subject_name(subject_name, subject_text)
+    known_setting = _known_setting_name(setting_name, setting_text)
+    allowed_settings = _allowed_settings_for_subject(known_subject)
+    if allowed_settings is None:
+        return True
+    if known_setting is not None:
+        return known_setting in allowed_settings
+    if not setting_name and not setting_text:
+        # A missing dimension is handled by ``recipe_scene_dimensions`` as
+        # ``not_realized``; compatibility only rejects known bad pairings.
+        return True
+    setting_blob = f"{setting_name} {setting_text}"
+    return any(
+        keyword in setting_blob for keyword in _WATER_SETTING_KEYWORDS
+    )
+
+
+def recipe_scene_is_compatible(recipe: Any) -> bool:
+    """True when a recipe's subject and setting form a coherent place."""
+    tags = extract_tags(recipe)
+    subject = {
+        "name": tags.get("subject"),
+        "text": " ".join(
+            str(part)
+            for part in [tags.get("subject_text"), *(tags.get("motifs") or [])]
+            if part
+        ),
+    }
+    setting = {
+        "name": tags.get("setting"),
+        "text": tags.get("setting_text"),
+    }
+    return subject_setting_compatible(subject, setting)
 
 
 # ---------------------------------------------------------------------------
@@ -1171,6 +1303,11 @@ def build_candidates(
     candidates: list[dict[str, Any]] = []
     for subject in subjects:
         for setting in settings:
+            # Issue #27: compatibility is part of candidate construction, so
+            # both normal scoring and the variety-exhausted fallback only ever
+            # see physically coherent subject/setting pairs.
+            if not subject_setting_compatible(subject, setting):
+                continue
             for viewpoint in viewpoints:
                 for composition in compositions:
                     tags = {
@@ -1669,14 +1806,24 @@ def _score_candidate(
 
 def _fallback_candidate(
     candidates: list[dict[str, Any]], recent: list[dict[str, Any]]
-) -> dict[str, Any]:
-    """Pick the most-different available recipe rather than blocking an update."""
+) -> dict[str, Any] | None:
+    """Pick the most-different compatible recipe rather than blocking an update."""
+    # Keep the constraint at the fallback boundary too.  Normal selection gets
+    # this filtering from ``build_candidates``; callers/tests that supply a
+    # candidate list directly must not be able to reintroduce a known-bad pair.
+    compatible = [
+        candidate for candidate in candidates
+        if recipe_scene_is_compatible(candidate)
+    ]
+    if not compatible:
+        return None
+
     def key(candidate: dict[str, Any]) -> int:
         if not recent:
             return 0
         return min(len(_difference_dimensions(candidate, entry)) for entry in recent)
 
-    return max(candidates, key=key)
+    return max(compatible, key=key)
 
 
 def choose_recipe(
@@ -1707,7 +1854,11 @@ def choose_recipe(
         settings, now=now, days=policy["motif_cooldown_days"]
     )
     forecast_wet = _forecast_is_wet(payload)
-    candidates = build_candidates(daypart_role=daypart_role, wet=forecast_wet)
+    candidates = [
+        candidate
+        for candidate in build_candidates(daypart_role=daypart_role, wet=forecast_wet)
+        if recipe_scene_is_compatible(candidate)
+    ]
     if not candidates:
         # No weather-compatible subject exists: return ``None`` so the caller
         # keeps the accepted brief's original SUBJECT instead of forcing a
@@ -1739,6 +1890,8 @@ def choose_recipe(
         )
     else:
         chosen = _fallback_candidate(candidates, recent)
+        if chosen is None:
+            return None
         status = "variety_exhausted"
         rationale = (
             "variety_exhausted: every weather-compatible local candidate was "
