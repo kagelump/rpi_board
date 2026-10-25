@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Append-only storage for weather-board generation history.
+"""Append-only storage for weather-board history and human ratings.
 
-Every state change is an immutable, schema-versioned JSON object on one line of
-the ledger. Binary artifacts are copied into per-run directories. Query indexes
-are derived in memory from the ledger, which is intentionally practical for the
-board's low write volume (roughly three generations per day).
+Generation state and ratings are immutable, schema-versioned JSON objects in
+separate line-oriented files. Binary artifacts are copied into per-run
+directories. Query indexes are derived in memory from those files, which is
+practical for the board's low write volume (roughly three generations per day).
 """
 from __future__ import annotations
 
@@ -38,6 +38,12 @@ EVENT_TYPES = {
     "snapshot_added",
     "artifact_added",
 }
+LEGACY_EVENT_TYPES = EVENT_TYPES | {"rating_added"}
+RATEABLE_TARGETS = {
+    "artifact": {"hero"},
+    "snapshot": {"generated_brief"},
+}
+MAX_RATING_COMMENT_LENGTH = 4000
 
 
 def utc_now() -> str:
@@ -94,11 +100,13 @@ class GenerationStore:
         self,
         record_file: str | Path | None = None,
         artifacts_dir: str | Path | None = None,
+        ratings_file: str | Path | None = None,
         **legacy_kwargs: Any,
     ):
         # Accept db_path during the transition so callers get a useful ledger at
         # the requested test/custom location instead of failing mysteriously.
         record_file = record_file or legacy_kwargs.pop("db_path", None)
+        uses_default_record_file = record_file is None
         if legacy_kwargs:
             raise TypeError(f"Unexpected arguments: {', '.join(legacy_kwargs)}")
         settings = load_settings()
@@ -107,11 +115,23 @@ class GenerationStore:
             "generation_record_file", "runtime/generations.jsonl")))
         self.artifacts_dir = absolute_path(str(artifacts_dir or runtime.get(
             "generation_artifacts_dir", "runtime/generations")))
+        if ratings_file is None:
+            ratings_file = (
+                runtime.get("generation_ratings_file", "runtime/ratings.jsonl")
+                if uses_default_record_file
+                else self.record_file.with_name(f"{self.record_file.stem}.ratings.jsonl")
+            )
+        self.ratings_file = absolute_path(str(ratings_file))
+        if self.ratings_file == self.record_file:
+            raise ValueError("ratings_file must be separate from the generation record file")
         self.record_file.parent.mkdir(parents=True, exist_ok=True)
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self.ratings_file.parent.mkdir(parents=True, exist_ok=True)
         self._cache_lock = threading.RLock()
         self._cache_signature: tuple[int, int] | None = None
         self._cache_events: list[dict[str, Any]] = []
+        self._ratings_cache_signature: tuple[int, int] | None = None
+        self._ratings_cache_events: list[dict[str, Any]] = []
         self._initialize()
 
     @property
@@ -127,20 +147,51 @@ class GenerationStore:
             "event_types": sorted(EVENT_TYPES),
         })
 
-    def _append_event(self, event_type: str, run_id: str | None, data: dict[str, Any]) -> str:
+    def _append_event(
+        self,
+        event_type: str,
+        run_id: str | None,
+        data: dict[str, Any],
+        *,
+        recorded_at: str | None = None,
+    ) -> str:
         if event_type not in EVENT_TYPES:
             raise ValueError(f"Unknown ledger event type: {event_type}")
+        return self._append_to_file(
+            self.record_file, event_type, run_id, data, recorded_at=recorded_at
+        )
+
+    def _append_rating_event(
+        self,
+        run_id: str,
+        data: dict[str, Any],
+        *,
+        recorded_at: str,
+    ) -> str:
+        return self._append_to_file(
+            self.ratings_file, "rating_added", run_id, data, recorded_at=recorded_at
+        )
+
+    def _append_to_file(
+        self,
+        path: Path,
+        event_type: str,
+        run_id: str | None,
+        data: dict[str, Any],
+        *,
+        recorded_at: str | None = None,
+    ) -> str:
         event_id = uuid.uuid4().hex
         event = {
             "schema_version": SCHEMA_VERSION,
             "event_id": event_id,
-            "recorded_at": utc_now(),
+            "recorded_at": recorded_at or utc_now(),
             "type": event_type,
             "run_id": run_id,
             "data": data,
         }
         line = (_json(event) + "\n").encode("utf-8")
-        with self.record_file.open("a+b", buffering=0) as handle:
+        with path.open("a+b", buffering=0) as handle:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
             try:
                 handle.seek(0, os.SEEK_END)
@@ -155,7 +206,10 @@ class GenerationStore:
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         with self._cache_lock:
-            self._cache_signature = None
+            if path == self.record_file:
+                self._cache_signature = None
+            else:
+                self._ratings_cache_signature = None
         return event_id
 
     def _load_events(self) -> list[dict[str, Any]]:
@@ -179,7 +233,7 @@ class GenerationStore:
                             continue
                         if (
                             isinstance(event, dict)
-                            and event.get("type") in EVENT_TYPES
+                            and event.get("type") in LEGACY_EVENT_TYPES
                             and isinstance(event.get("schema_version"), int)
                         ):
                             events.append(event)
@@ -189,12 +243,57 @@ class GenerationStore:
             self._cache_signature = signature
             return events
 
+    def _load_rating_events(self) -> list[dict[str, Any]]:
+        try:
+            stat = self.ratings_file.stat()
+            signature = (stat.st_mtime_ns, stat.st_size)
+        except FileNotFoundError:
+            return []
+        with self._cache_lock:
+            if signature == self._ratings_cache_signature:
+                return self._ratings_cache_events
+            events: list[dict[str, Any]] = []
+            with self.ratings_file.open("rb") as handle:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
+                try:
+                    for raw_line in handle:
+                        try:
+                            event = json.loads(raw_line)
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            continue
+                        if (
+                            isinstance(event, dict)
+                            and event.get("type") == "rating_added"
+                            and isinstance(event.get("schema_version"), int)
+                        ):
+                            events.append(event)
+                finally:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            self._ratings_cache_events = events
+            self._ratings_cache_signature = signature
+            return events
+
     def _materialize(self) -> dict[str, Any]:
         runs: dict[str, dict[str, Any]] = {}
         stages: dict[str, dict[str, Any]] = {}
         snapshots: dict[str, dict[str, Any]] = {}
         artifacts: dict[str, dict[str, Any]] = {}
         logs: dict[str, dict[str, Any]] = {}
+        ratings: dict[str, dict[str, Any]] = {}
+
+        def add_rating_event(event: dict[str, Any]) -> None:
+            event_id = event.get("event_id")
+            if not isinstance(event_id, str):
+                return
+            data = event.get("data", {})
+            if not isinstance(data, dict):
+                data = {}
+            ratings[event_id] = {
+                "id": event_id,
+                "run_id": event.get("run_id"),
+                "rated_at": event.get("recorded_at"),
+                **data,
+            }
 
         for event in self._load_events():
             event_type = event["type"]
@@ -259,6 +358,13 @@ class GenerationStore:
                 snapshots[event_id] = {"id": event_id, "run_id": run_id, **data}
             elif event_type == "artifact_added":
                 artifacts[event_id] = {"id": event_id, "run_id": run_id, **data}
+            elif event_type == "rating_added":
+                add_rating_event(event)
+
+        # New ratings live outside the generation ledger so re-copying that
+        # ledger from the Pi leaves local human feedback intact.
+        for event in self._load_rating_events():
+            add_rating_event(event)
 
         return {
             "runs": runs,
@@ -266,6 +372,7 @@ class GenerationStore:
             "logs": logs,
             "snapshots": snapshots,
             "artifacts": artifacts,
+            "ratings": ratings,
         }
 
     def start_run(
@@ -489,8 +596,13 @@ class GenerationStore:
         target_date: str | None = None,
         status: str | None = None,
         style: str | None = None,
+        rating: str | None = None,
+        has_final: bool | None = None,
     ) -> dict[str, Any]:
         state = self._materialize()
+        review = self._review_index(state)
+        if rating not in (None, "", "rated", "unrated", "1", "2", "3", "4", "5"):
+            raise ValueError("rating must be rated, unrated, or 1 to 5")
         stage_counts: dict[str, int] = {}
         artifact_counts: dict[str, int] = {}
         for item in state["stages"].values():
@@ -504,7 +616,18 @@ class GenerationStore:
             items = [item for item in items if item.get("status") == status]
         if style:
             items = [item for item in items if item.get("selected_style") == style]
-        items.sort(key=lambda item: item.get("started_at") or "", reverse=True)
+        if has_final is not None:
+            items = [item for item in items if bool(review[item["id"]]["final_display"]) == has_final]
+        if rating:
+            def matches(item):
+                latest = review[item["id"]]["latest_rating"]
+                if rating == "unrated":
+                    return latest is None
+                if rating == "rated":
+                    return latest is not None
+                return latest is not None and latest["rating"] == int(rating)
+            items = [item for item in items if matches(item)]
+        items.sort(key=lambda item: (item.get("started_at") or "", item["id"]), reverse=True)
         total = len(items)
         limit = max(1, min(int(limit), 500))
         offset = max(0, int(offset))
@@ -516,8 +639,32 @@ class GenerationStore:
             row.pop("settings", None)
             row["stage_count"] = stage_counts.get(item["id"], 0)
             row["artifact_count"] = artifact_counts.get(item["id"], 0)
+            row.update(review[item["id"]])
             page.append(row)
         return {"items": page, "total": total, "limit": limit, "offset": offset}
+
+    @staticmethod
+    def _review_index(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        """Compact review data, using ledger order even when timestamps tie."""
+        index = {run_id: {"final_display": None, "reference": None, "latest_rating": None}
+                 for run_id in state["runs"]}
+        for artifact in state["artifacts"].values():
+            row = index.get(artifact["run_id"])
+            if row is None or not artifact.get("mime_type", "").startswith("image/"):
+                continue
+            compact = {key: artifact.get(key) for key in ("id", "kind", "width", "height", "sha256")}
+            if artifact["kind"] == "final_display":
+                row["final_display"] = compact
+            elif artifact["kind"] == "final_display_pre_quantize":
+                row["reference"] = compact
+            elif artifact["kind"] == "preview" and (
+                row["reference"] is None or row["reference"]["kind"] == "preview"
+            ):
+                row["reference"] = compact
+        for rating in state["ratings"].values():
+            if rating.get("target_type") == "run" and rating["run_id"] in index:
+                index[rating["run_id"]]["latest_rating"] = dict(rating)
+        return index
 
     def get_run(self, run_id: str, include_payloads: bool = False) -> dict[str, Any] | None:
         state = self._materialize()
@@ -545,6 +692,14 @@ class GenerationStore:
             (dict(item) for item in state["artifacts"].values() if item["run_id"] == run_id),
             key=lambda item: (item["captured_at"], item["id"]),
         )
+        # Dict insertion order follows the append-only ledger. Timestamps can
+        # tie when ratings are saved quickly, so sorting by timestamp and UUID
+        # would not reliably identify the latest rating for an output.
+        result["ratings"] = [
+            dict(item) for item in state["ratings"].values()
+            if item["run_id"] == run_id
+        ]
+        result.update(self._review_index(state)[run_id])
         return result
 
     def get_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
@@ -571,9 +726,80 @@ class GenerationStore:
             return None
         return metadata, path
 
+    def add_rating(
+        self,
+        target_type: str,
+        target_id: str,
+        rating: int,
+        comment: str = "",
+    ) -> dict[str, Any]:
+        """Append feedback; the latest run rating is its current overall score."""
+        if target_type not in {"run", *RATEABLE_TARGETS}:
+            raise ValueError("target_type must be run, artifact or snapshot")
+        if isinstance(rating, bool) or not isinstance(rating, int) or not 1 <= rating <= 5:
+            raise ValueError("rating must be an integer from 1 to 5")
+        if not isinstance(comment, str):
+            raise ValueError("comment must be a string")
+        comment = comment.strip()
+        if len(comment) > MAX_RATING_COMMENT_LENGTH:
+            raise ValueError(f"comment must be at most {MAX_RATING_COMMENT_LENGTH} characters")
+
+        state = self._materialize()
+        collection = state[{"run": "runs", "artifact": "artifacts", "snapshot": "snapshots"}[target_type]]
+        target = collection.get(str(target_id))
+        if target is None:
+            raise KeyError(f"Unknown {target_type}: {target_id}")
+        if target_type != "run" and target.get("kind") not in RATEABLE_TARGETS[target_type]:
+            raise ValueError(f"{target_type} kind {target.get('kind')!r} is not rateable")
+
+        run_id = str(target_id) if target_type == "run" else target["run_id"]
+        data = {
+            "target_type": target_type,
+            "target_id": str(target_id),
+            "target_kind": "run" if target_type == "run" else target["kind"],
+            "target_sha256": target.get("sha256"),
+            "rating": rating,
+            "comment": comment,
+        }
+        if target_type == "run":
+            # Capture the board version being judged for later training/export.
+            final = self._review_index(state)[run_id]["final_display"]
+            data["final_display_id"] = final["id"] if final else None
+            data["target_sha256"] = final["sha256"] if final else None
+        rated_at = utc_now()
+        event_id = self._append_rating_event(run_id, data, recorded_at=rated_at)
+        return {
+            "id": event_id,
+            "run_id": run_id,
+            "rated_at": rated_at,
+            **data,
+        }
+
+    def list_ratings(
+        self,
+        *,
+        run_id: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        ratings = list(self._materialize()["ratings"].values())
+        if run_id:
+            ratings = [item for item in ratings if item["run_id"] == run_id]
+        # Preserve ledger append order; timestamp ties do not imply UUID order.
+        total = len(ratings)
+        limit = max(1, min(int(limit), 1000))
+        offset = max(0, int(offset))
+        return {
+            "items": ratings[offset:offset + limit],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
     def stats(self) -> dict[str, Any]:
         state = self._materialize()
         runs = list(state["runs"].values())
+        review = self._review_index(state)
         style_counts: dict[str, int] = {}
         failed_stages: dict[str, int] = {}
         for run in runs:
@@ -585,6 +811,9 @@ class GenerationStore:
         started = [run["started_at"] for run in runs if run.get("started_at")]
         return {
             "runs": len(runs),
+            "rated": sum(row["latest_rating"] is not None for row in review.values()),
+            "unrated_boards": sum(row["latest_rating"] is None and row["final_display"] is not None
+                                   for row in review.values()),
             "succeeded": sum(run["status"] == "succeeded" for run in runs),
             "degraded": sum(run["status"] == "degraded" for run in runs),
             "failed": sum(run["status"] == "failed" for run in runs),

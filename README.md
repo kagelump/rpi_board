@@ -37,7 +37,8 @@ The board is designed as a **morning poster**: a generated weather illustration 
 
 ```text
 config/
-  settings.json
+  settings.example.json  # tracked defaults
+  settings.json          # ignored local configuration
   sample_openmeteo.json
   prompt_templates/
 scripts/
@@ -49,7 +50,6 @@ scripts/
   history/         # append-only storage, recorder CLI, HTTP API + dashboard
 tests/
 tokyo_weather.sh
-plan.md
 ```
 
 ## Update schedule
@@ -97,7 +97,9 @@ real data before shipping:
 - `palette_metrics.py` lives in `scripts/render/` (it shares the device palette
   with `palette_quantize.py`) and is reused by the production art guardrail.
 
-Outputs land under `runtime/eval*/` (gitignored).
+Outputs land under `runtime/eval*/` (gitignored). The calibrated judge prompt is
+tracked in `scripts/eval/run_eval.py`; individual ratings, comments, generated
+boards, and evaluation/training outputs stay under the ignored `runtime/` directory.
 
 ## Requirements
 
@@ -114,7 +116,17 @@ python3 -m pip install --user pillow certifi
 
 ## Configuration
 
-Main config: `config/settings.json`
+Main config: `config/settings.json` (ignored by Git). Start with the tracked
+example and edit it for your location and device:
+
+```bash
+cp config/settings.example.json config/settings.json
+```
+
+Without a local file, scripts load `config/settings.example.json`, which uses
+local preview mode. Existing local settings are never overwritten by setup.
+Keep machine-specific instructions in `LOCAL.md` or `docs/local/`; local
+planning files (`plan.md`, `TODO.md`, `IMPROVEMENT_PLAN.md`) are also ignored.
 
 Key sections:
 
@@ -287,6 +299,38 @@ The service binds to localhost by default. Binding `--host 0.0.0.0` is possible
 on a trusted network, but the server intentionally has no authentication, so an
 SSH tunnel is the safer default.
 
+The dashboard opens all runs newest first, with final-display thumbnails and
+each run's current overall rating in the list. The review pane shows a large
+palette-reduced `final_display` and a smaller `final_display_pre_quantize`
+reference. When only an archived `preview` exists it is labeled as a fallback:
+it may already be palette reduced. The illustration direction appears beside
+the reference, with expandable full image prompts. All recorded debug data is
+available under tabs for prompts/requests, pipeline, events, snapshots/outputs,
+artifacts (including every image), run metadata/settings, and rating history.
+
+Rate the overall board (art, text, readability and palette) from 1 to 5:
+
+- **1–5** saves the score immediately and focuses optional notes.
+- **Enter** in notes saves and advances to the next unrated board in the
+  filtered queue, skipping runs without a final display and wrapping to the
+  start. **Shift+Enter** adds a line. Notes also save on blur or navigation.
+- **J/K** or **↓/↑** selects the next/previous run; **N** focuses notes and
+  **Esc** leaves them. Letter/number shortcuts pause while typing.
+- **P** swaps the final and reference views; **C** toggles equal-size comparison.
+- **G** expands the full image prompt. **D** opens debug tabs; use **←/→** or
+  **Home/End** with a tab focused to switch sections.
+- **/** opens filters, **U** toggles unrated, **R** refreshes, and **?** shows
+  all shortcuts. Filters are keyboard accessible.
+
+One overall score and note is current per run. Each save appends a
+`rating_added` event to `runtime/ratings.jsonl`; revisions are retained and the
+latest run rating is shown in the list and at the top of the review pane. A
+rating records the final-display artifact ID and SHA-256 when available. Older
+hero/brief feedback remains readable but does not count as an overall rating;
+no migration is needed. This file is separate from the Pi generation ledger, so copying
+`runtime/generations.jsonl` over it leaves local ratings untouched. Retrieve
+training rows with `GET /api/ratings?run_id=<run-id>&limit=200&offset=0`.
+
 ### On-disk storage schema
 
 `runtime/generations.jsonl` is the canonical append-only ledger. Each line is
@@ -306,6 +350,10 @@ one complete JSON event with this envelope:
 Writes take an exclusive file lock, append one line, flush, and `fsync`. Readers
 take a shared lock and ignore an incomplete trailing line, making recovery after
 power loss straightforward. Existing records are never updated or deleted.
+
+Human feedback is kept separately in `runtime/ratings.jsonl`, with the same
+append-only event envelope and file-locking behavior. Replacing the generation
+ledger from the Raspberry Pi does not replace this local ratings file.
 
 The server materializes and indexes the ledger in memory by run ID, target date,
 status, selected style, event type, and artifact/snapshot ID. At three scheduled
@@ -330,9 +378,16 @@ guardrail verdicts, and each pipeline stage's combined stdout/stderr.
 - `GET /api/health`
 - `GET /api/stats`
 - `GET /api/runs?limit=50&offset=0&target_date=YYYY-MM-DD&status=degraded&style=Linocut`
+  also accepts `rating=unrated|rated|1|2|3|4|5` and `has_final=true|false`.
+  List and detail include `latest_rating`, `final_display`, and `reference`.
 - `GET /api/runs/<run-id>`
 - `GET /api/snapshots/<snapshot-id>`
 - `GET /api/artifacts/<artifact-id>`
+- `GET /api/ratings?run_id=<run-id>&limit=200&offset=0`
+- `POST /api/ratings` with `target_type: "run"`, `target_id` (run ID),
+  `rating` (integer 1–5), and optional `comment` (up to 4000 characters).
+  Returns the saved rating with the board artifact ID and hash. Legacy
+  `artifact`/`hero` and `snapshot`/`generated_brief` writes remain supported.
 - `GET /api/art-recipes` (also `/api/art_recipes`)
 
 ### Artwork recipe variety

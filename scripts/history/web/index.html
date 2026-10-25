@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Board Review · Generation History</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/review.css">
+  <script src="/static/review.js" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <div><span class="eyebrow">WEATHER BOARD / GENERATION HISTORY</span><h1>Board review</h1></div>
+    <div class="header-actions"><span id="progress" class="muted"></span><button id="menu-button" class="quiet" aria-expanded="false" aria-controls="runs"><span aria-hidden="true">☰</span> Runs <span id="mobile-queue-count"></span></button><button id="help-button" class="quiet">Shortcuts <kbd>?</kbd></button></div>
+  </header>
+  <main>
+    <aside id="queue-panel" class="queue" aria-label="Generation runs">
+      <div class="queue-toolbar"><div><strong>Review queue</strong><div id="queue-count" class="muted">Loading runs…</div></div><button id="filter-button" class="quiet">Filters <kbd>/</kbd></button></div>
+      <div class="queue-controls"><button id="unrated-button" class="quiet" aria-pressed="false">Unrated only <kbd>U</kbd></button><button id="refresh" class="quiet" aria-label="Refresh runs">↻ Refresh</button></div>
+      <div id="runs" aria-label="Runs, newest first" tabindex="0"><p class="empty">Loading runs…</p></div>
+    </aside>
+    <section id="workspace" aria-label="Review selected run" tabindex="-1">
+      <div id="detail"><p class="empty">Loading the newest run…</p></div>
+    </section>
+  </main>
+  <button id="queue-backdrop" class="queue-backdrop" type="button" aria-label="Close run list" hidden></button>
+  <footer><span><kbd>J</kbd> / <kbd>K</kbd> navigate</span><span><kbd>1–5</kbd> rate → notes</span><span><kbd>Enter</kbd> save → next unrated board</span><span><kbd>P</kbd> swap view</span><span><kbd>?</kbd> all shortcuts</span></footer>
+  <div id="announcement" role="status" aria-live="polite"></div>
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <div class="dialog-heading"><h2 id="help-title">Keyboard shortcuts</h2><button data-close class="quiet" aria-label="Close shortcuts">✕</button></div>
+    <p>Rate the overall final board: artwork, text, readability and palette.</p>
+    <dl class="shortcuts">
+      <dt>1–5</dt><dd>Save score, then focus notes</dd>
+      <dt>Enter</dt><dd>Save notes and go to the next unrated board</dd>
+      <dt>Shift + Enter</dt><dd>New line in notes</dd>
+      <dt>J / ↓ · K / ↑</dt><dd>Next run · previous run</dd>
+      <dt>N · Esc</dt><dd>Focus notes · leave notes (autosaves)</dd>
+      <dt>P</dt><dd>Swap the final and reference images</dd>
+      <dt>C</dt><dd>Toggle equal-size comparison</dd>
+      <dt>G</dt><dd>Expand or collapse the full image prompt</dd>
+      <dt>D</dt><dd>Open or close debug tabs</dd>
+      <dt>← / → · Home / End</dt><dd>Switch tabs while a debug tab is focused</dd>
+      <dt>/ · U · R</dt><dd>Filters · toggle unrated · refresh</dd>
+      <dt>? · Esc</dt><dd>Show shortcuts · close a dialog</dd>
+    </dl>
+    <p class="muted">While typing, shortcuts are paused. Enter saves and advances; Shift + Enter adds a line. Notes also save when you leave the field or change runs. Next unrated skips runs without a final display and wraps to the start of the filtered queue.</p>
+  </dialog>
+  <dialog id="filter-dialog" aria-labelledby="filter-title">
+    <form id="filters">
+      <div class="dialog-heading"><h2 id="filter-title">Filter runs</h2><button type="button" data-close class="quiet" aria-label="Close filters">✕</button></div>
+      <label>Rating<select name="rating"><option value="">All ratings</option><option value="unrated">Unrated</option><option value="rated">Rated</option><option value="1">1 / 5</option><option value="2">2 / 5</option><option value="3">3 / 5</option><option value="4">4 / 5</option><option value="5">5 / 5</option></select></label>
+      <label>Board availability<select name="has_final"><option value="">All runs</option><option value="true">Has final display</option><option value="false">Missing final display</option></select></label>
+      <label>Target date<input name="target_date" type="date"></label>
+      <label>Pipeline status<select name="status"><option value="">All statuses</option><option>succeeded</option><option>degraded</option><option>failed</option><option>running</option><option>legacy</option></select></label>
+      <label>Style<input name="style" placeholder="Exact style name"></label>
+      <div class="dialog-actions"><button type="button" id="reset-filters" class="quiet">Reset filters</button><button type="submit">Apply filters</button></div>
+      <p class="muted">Newest first. Tab between fields and the Apply filters button.</p>
+    </form>
+  </dialog>
+</body>
+</html>
