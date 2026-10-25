@@ -8,10 +8,12 @@ from typing import Any, Dict, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 SETTINGS_PATH = ROOT / "config" / "settings.json"
+EXAMPLE_SETTINGS_PATH = ROOT / "config" / "settings.example.json"
 
 
 def load_settings() -> Dict[str, Any]:
-    with SETTINGS_PATH.open("r", encoding="utf-8") as handle:
+    path = SETTINGS_PATH if SETTINGS_PATH.exists() else EXAMPLE_SETTINGS_PATH
+    with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 

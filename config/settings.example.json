@@ -1,15 +1,15 @@
 {
   "location": {
-    "label": "Tokyo 153-0051",
-    "latitude": 35.6580,
-    "longitude": 139.6835,
+    "label": "Tokyo",
+    "latitude": 35.6762,
+    "longitude": 139.6503,
     "timezone": "Asia/Tokyo"
   },
   "display": {
     "width": 960,
     "height": 640,
     "panel_fraction": 0.25,
-    "mode": "pi_display",
+    "mode": "local_preview",
     "waveshare_module_candidates": [
       "waveshare_epd.epd10in2g",
       "waveshare_epd.epd10in2_G"
@@ -36,6 +36,7 @@
     "image_style_state_file": "runtime/image_style_state.json",
     "generation_record_file": "runtime/generations.jsonl",
     "generation_artifacts_dir": "runtime/generations",
+    "generation_ratings_file": "runtime/ratings.jsonl",
     "art_recipe_ledger_file": "runtime/art_recipe_ledger.jsonl",
     "log_file": "runtime/logs/weather_display.log"
   },
@@ -67,7 +68,7 @@
     "image_guardrail_check_text": false,
     "image_guardrail_max_retries": 1,
     "image_guardrail_timeout_seconds": 30,
-    "image_guardrail_max_off_palette_pct": 0.40,
+    "image_guardrail_max_off_palette_pct": 0.4,
     "skip_unchanged": true,
     "regen_min_interval_seconds": 86400,
     "afternoon_art_prompt_similarity_threshold": 0.8
@@ -86,7 +87,7 @@
   "context": {
     "enable_events": true,
     "events_mode": "online_model",
-    "location_descriptor": "Komaba, Meguro, Tokyo",
+    "location_descriptor": "Tokyo, Japan",
     "holiday_country": "JP",
     "holidays_api_url": "https://date.nager.at/api/v3/PublicHolidays",
     "upcoming_holiday_window_days": 10,
@@ -98,7 +99,10 @@
     "base_url": "https://fal.run",
     "image_model": "fal-ai/flux-2/klein/9b",
     "image_generation_parameters": {
-      "image_size": { "width": 960, "height": 480 },
+      "image_size": {
+        "width": 960,
+        "height": 480
+      },
       "num_inference_steps": 8,
       "output_format": "png"
     },

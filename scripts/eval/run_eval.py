@@ -246,34 +246,83 @@ def run_pipeline(variant_name, variant, base_settings, city, city_dir, do_image)
 
 # --- Judge -------------------------------------------------------------------
 
-JUDGE_INSTRUCTIONS = """You are rating ONE rendered e-ink weather board (the image) plus its title text.
+JUDGE_INSTRUCTIONS = """You are rating ONE rendered e-ink weather board (the image) plus its title text
+for its owner's taste. Apply the preferences below, inferred from 76 rated
+boards and 19 comments. These are initial calibration guidelines, not a claim
+of validated agreement with the owner.
 
 BOARD LAYOUT -- read this so you judge the right region:
 - The bottom strip (roughly the lower 25%) holds the big black HEADLINE and a
   smaller subtitle. The system adds this. Do NOT count it as part of the artwork.
 - Small rounded chips in the top-left (the date) and top-right (temperature plus
-  a tiny weather icon) are also added by the system. IGNORE them entirely.
+  a tiny weather icon) are also added by the system. Exclude them from art
+  defect detection; their readability still matters to the overall board.
 - Everything else -- the large background illustration above/behind those -- is
   the AI-generated ART you are evaluating. Judge ONLY that region for the art
-  scores below.
+  scores below. Judge the supplied render, not an imagined improved version.
 
 THE GOALS:
 - Title (headline + subtitle): ~80% INFORMATIVE / ~20% whimsy. A reader should
   know today's ACTUAL weather from the words alone, with a light touch of voice.
   Pure poetry with no facts is bad; a dry numbers dump is also bad.
-- Background art: ONE single, cohesive illustration in ONE flat graphic poster
-  style, filling the whole canvas as a single image.
+- Background art: a coherent, meaningful scene with a convincing sense of the
+  weather. Familiar streets, parks, small everyday moments, and well-observed
+  details can be appealing. Decorative shapes alone are not enough.
 
-HARD RULES -- apply strictly:
-- COLLAGE / FRAME / PHOTO-IN-BLOCK: if the background art is a collage, OR places
-  a realistic or photographic image inside a graphic frame, border, grid, or
-  block (i.e. two competing aesthetics in one image), set
-  art_collage_or_frame=true and art_coherence MUST be <= 3.
-- BAKED-IN TEXT: if the background ARTWORK contains ANY letters, words, numbers,
-  or fake/garbled lettering (this does NOT include the system headline strip or
-  the corner chips described above), set art_text_detected=true and quote what
-  you see in art_text_sample. Real or fake text inside the artwork is a defect;
-  knock art_flat_graphic and overall down for it.
+OWNER PREFERENCES -- use these to determine overall, with concrete evidence:
+- WEATHER AND MOOD: the image should match the supplied conditions and the
+  period described by the title. Strongly penalize night skies, moons, stars,
+  or oppressive darkness when the board promises a bright daytime outing.
+  Avoid gratuitous night scenes. Darkness is not an automatic failure: a
+  convincing gray rainy scene or wet pavement can score highly when it fits.
+  Do not infer a contradiction solely from the generation time of day; read
+  the forecast period. If weather context is missing, state the uncertainty
+  instead of inventing facts.
+- PALETTE AND BALANCE: favor a clean result in black, white, red, and yellow.
+  Avoid dependence on blue or other colors the display cannot reproduce.
+  Palette compliance alone does not make good art: large red washes, red skies
+  or streets, and excessive black can feel harsh or like a blood night. Judge
+  how color supports the scene, not whether every available ink is used.
+- SENSE AND COMPOSITION: penalize nonsensical objects, confused geometry,
+  unmotivated floating objects, and redundant left/right pictures showing the
+  same thing. A giant face that overwhelms the weather scene is undesirable.
+  People and expressive compositions are welcome when they serve the scene.
+- INTEREST: reward atmosphere and a clear visual idea. A generic lone umbrella
+  or weather symbol can feel boring; simplicity can still work when it has
+  enough character and meaning. Pleasant vibes do not excuse incoherent content.
+- STYLE FLEXIBILITY: judge execution and suitability, not allegiance to a
+  particular art style. A photographic puddle earned 4/5 from the owner; a
+  convincing rainy street in the display palette earned 5/5. Photorealism,
+  texture, or gradients are not automatic overall penalties. art_flat_graphic
+  is descriptive and is NOT a proxy for quality or a required overall input.
+- TEXT AND LAYOUT: readable, useful weather text matters. Penalize illegible,
+  clipped, duplicated, or garbled text according to its visible impact. Detect
+  lettering within the artwork, but do not automatically reject incidental
+  plausible street/shop signs or confuse them with the system title and chips.
+
+DETECTION FLAGS -- report what is visible, then assess its actual impact:
+- Set art_collage_or_frame=true for a collage, split scene, or photo inside an
+  artistic frame/grid/block. System title/chip boundaries do not count. A
+  single cohesive photographic scene is not a collage. Penalize distracting
+  fragmentation or redundant panels, not the flag alone; no automatic score cap.
+- Set art_text_detected=true for letters, words, numbers, or fake lettering
+  within the artwork. Quote a legible example in art_text_sample; if lettering
+  is visible but unreadable, say so without inventing a transcription.
+
+OVERALL CALIBRATION -- retain the existing 0-10 output scale:
+- 0-2 (owner ~1/5): severe failure, e.g. contradictory night imagery, an
+  overwhelmingly harsh red scene, or broken/garbled content dominating the board.
+- 3-4 (owner ~2/5): clear substantial defects in mood, color, or scene logic.
+- 5-6 (owner ~3/5): mixed; some appeal but boring, confusing, or a poor weather fit.
+- 7-8 (owner ~4/5): good, coherent, readable, balanced, and appropriate to weather.
+- 9-10 (owner ~5/5): exceptionally convincing atmosphere and composition that
+  work especially well for this display, with no substantial visible defects.
+These anchors describe severity, not automatic caps for isolated features.
+Give a holistic preference judgment, not an arithmetic average of subscores.
+Prioritize weather/mood, scene logic, palette balance, and readability over
+style purity. Use neighboring scores for borderline cases; do not manufacture
+large differences between similarly good boards. Explain the decisive visible
+strength or weakness, and distinguish observation from uncertain interpretation.
 
 GROUND-TRUTH WEATHER for this board:
 {weather}
@@ -287,15 +336,15 @@ Score each 0-10 (higher is better) and return STRICT JSON only, no markdown:
   "title_informativeness": <0-10, can a reader tell today's real weather from the words?>,
   "title_whimsy": <0-10, is there voice/character?>,
   "title_pct_informative": <0-100, your estimate of the info-vs-whimsy split; target ~80>,
-  "art_coherence": <0-10, single unified piece? MUST be <=3 if art_collage_or_frame>,
+  "art_coherence": <0-10, meaningful scene, sensible objects, unified composition>,
   "art_collage_or_frame": <true|false>,
   "art_text_detected": <true|false, any letters/words/numbers baked into the artwork>,
   "art_text_sample": <quote the text you see in the artwork, or "">,
-  "art_flat_graphic": <0-10, flat poster, no photorealism/3D/gradient>,
-  "art_palette_fit": <0-10, reads cleanly in black/white/red/yellow>,
-  "art_matches_weather": <0-10, art reflects the real conditions>,
-  "overall": <0-10>,
-  "issues": [<short concrete problems, especially any collage/photo/frame/text>],
+  "art_flat_graphic": <0-10, degree of flat graphic styling; descriptive, not a quality requirement>,
+  "art_palette_fit": <0-10, clean display colors AND pleasing balance; avoid overwhelming red/black>,
+  "art_matches_weather": <0-10, conditions, forecast period, light and mood agree>,
+  "overall": <0-10, holistic owner preference using the calibration anchors>,
+  "issues": [<short concrete defects and their impact; mention uncertainty where relevant>],
   "one_line": <one sentence verdict>
 }}"""
 

@@ -1,4 +1,25 @@
 .DS_Store
 __pycache__/
 *.pyc
+.pytest_cache/
+.venv/
 runtime/
+
+# Local configuration, credentials, and deployment overrides.
+.env
+.env.*
+!.env.example
+/config/settings.json
+/config/*.local.*
+/scripts/ops/systemd/*-tailnet.service
+/.agents/
+/.aws/
+/.codex/
+
+# Local documentation and planning notes.
+/LOCAL.md
+/*.local.md
+/docs/local/
+/plan.md
+/TODO.md
+/IMPROVEMENT_PLAN.md
