@@ -12,8 +12,10 @@ The board is designed as a **morning poster**: a generated weather illustration 
 - OpenRouter text brief generation (optional).
 - Image generation via fal or OpenRouter (optional).
 - Art guardrail: after generation, rejects baked-in text, creator signatures or
-  watermarks, collage/photo-in-frame art, and art that leans on colours the
-  4-ink panel cannot show (off-palette),
+  watermarks, collage/photo-in-frame art, art that does not match the selected
+  illustration treatment (for example, a plain photograph for a Bauhaus
+  prompt), and art that leans on colours the 4-ink panel cannot show
+  (off-palette),
   regenerating within a bounded retry. If every attempt is explicitly rejected,
   the flagged candidate is never published: the run reuses a previously
   accepted hero or falls back to the deterministic pictogram, and the run is
@@ -138,14 +140,19 @@ Key sections:
 - `pipeline.enable_openrouter_image`: enable generated hero image.
 - `pipeline.image_provider`: `fal` (default) or `openrouter`.
 - `pipeline.enable_image_guardrail`: post-generation QA on the hero art. When on,
-  rejects collage/photo-in-frame and off-palette art, then regenerates:
+  rejects collage/photo-in-frame, requested-treatment mismatches and off-palette
+  art, then regenerates:
   - `image_guardrail_check_text` (shipped setting `false`): broad text
     classification is off, so natural signs and incidental lettering do not
     reject artwork. The same vision request still checks for artist signatures,
     watermarks, and prominent creator/brand logos; its normalized verdict
     records `has_text: null`, `text_check_enabled: false`, and an explicit
-    `has_watermark_or_signature` result. Collage and palette checks remain
-    active. Set to `true` to restore strict rejection of all baked-in text;
+    `has_watermark_or_signature` result. The same request also receives the
+    selected style's compact expected-treatment description and returns an
+    auditable `matches_requested_treatment` verdict, so a cohesive plain
+    photograph cannot pass as a requested illustration. Collage, treatment and
+    palette checks remain active. Set to `true` to restore strict rejection of
+    all baked-in text;
     older configurations that omit this key retain their previous text check.
   - `image_guardrail_max_retries` (default `1`): extra attempts on a rejection.
   - `image_guardrail_timeout_seconds` (default `30`): vision-check timeout.

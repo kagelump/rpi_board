@@ -462,6 +462,40 @@ class TestExhaustedRejectionMain:
 
 
 class TestAcceptedAndReuseMain:
+    def test_accepted_hero_records_expected_treatment_and_match_verdict(
+            self, tmp_path, monkeypatch):
+        settings = _main_settings(tmp_path)
+        _write_brief(settings)
+        # Lock the style so the expected-treatment provenance is deterministic.
+        _seed_style_state(settings, status="disabled", hero_bytes=None)
+        captured = {}
+
+        monkeypatch.setattr(gi, "_call_image_api", lambda s, p, pr: b"bauhaus")
+
+        def fake_inspect(image, settings, expected_treatment=None):
+            captured["expected_treatment"] = expected_treatment
+            return {
+                "ok": True,
+                "status": "accepted",
+                "expected_treatment": expected_treatment,
+                "matches_requested_treatment": True,
+            }
+
+        monkeypatch.setattr(gi, "inspect_art", fake_inspect)
+        monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
+        logs = []
+        _run_main(monkeypatch, settings, logs)
+
+        state = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+        validation = state["hero_validation"]
+        assert validation["status"] == "accepted"
+        assert "Bauhaus illustration" in captured["expected_treatment"]
+        assert validation["expected_treatment"] == captured["expected_treatment"]
+        assert validation["matches_requested_treatment"] is True
+        generated = [entry for entry in logs if entry["event_type"] == "image_generated"]
+        assert generated[0]["data"]["expected_treatment"] == captured["expected_treatment"]
+        assert generated[0]["data"]["matches_requested_treatment"] is True
+
     def test_accepted_retry_writes_hero_and_records_acceptance(self, tmp_path, monkeypatch):
         settings = _main_settings(tmp_path)
         _write_brief(settings)

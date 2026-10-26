@@ -2,6 +2,7 @@
 import argparse
 import base64
 import hashlib
+import inspect as python_inspect
 import json
 import random
 import re
@@ -213,6 +214,26 @@ def _pick_art_style(settings, state, target_date):
     # A new forecast day: any existing hero belongs to the previous day's prompt.
     state["hero_prompt"] = None
     return by_name[chosen_name]
+
+
+def _expected_treatment_for_style(style):
+    """Describe the selected illustration form for the vision guardrail.
+
+    This is deliberately compact and style-focused: the classifier already sees
+    the generated image, so its remaining job is to judge whether the whole
+    candidate uses the requested drawn treatment.
+    """
+    name = str(style.get("name") or "selected").strip()
+    guidance = str(style.get("prompt") or "").strip()
+    treatment = f"{name} illustration"
+    if guidance:
+        treatment += f": {guidance}"
+    return (
+        treatment
+        + ". The entire image must be a drawn illustration in that visual "
+        "style, using its shape language and marks. A plain or realistic "
+        "photograph does not match, even if cohesive and free of creator marks."
+    )
 
 
 def _pick_palette_strategy(state, new_target_day):
@@ -494,6 +515,53 @@ def _off_palette_pct(image_bytes):
         return None
 
 
+def _inspect_art_compat(image_bytes, settings, expected_treatment=None):
+    """Call ``inspect_art`` with the treatment check when the callee supports it.
+
+    Existing tests and downstream tool integrations monkeypatch the guardrail
+    with two-argument callables. Keep those integrations working while the
+    production guardrail receives the selected-treatment contract.
+    """
+    if not expected_treatment:
+        return inspect_art(image_bytes, settings)
+    try:
+        parameters = python_inspect.signature(inspect_art).parameters
+    except (TypeError, ValueError):
+        return inspect_art(image_bytes, settings)
+    accepts_keyword = (
+        "expected_treatment" in parameters
+        or any(param.kind is python_inspect.Parameter.VAR_KEYWORD
+               for param in parameters.values())
+    )
+    if accepts_keyword:
+        return inspect_art(
+            image_bytes, settings, expected_treatment=expected_treatment)
+    return inspect_art(image_bytes, settings)
+
+
+def _vision_rejection_reasons(verdict):
+    """Map a normalized vision verdict to retry-reason keys."""
+    reasons = [
+        key for key in ("has_text", "has_watermark_or_signature", "is_collage")
+        if verdict.get(key)
+    ]
+    if verdict.get("matches_requested_treatment") is False:
+        reasons.append("requested_treatment_mismatch")
+    if not reasons and not verdict.get("ok", True):
+        reasons.append("rejected")
+    return reasons
+
+
+def _attempt_match_verdict(attempts):
+    """Return the last explicit requested-treatment match from an attempt log."""
+    for attempt in reversed(attempts or []):
+        verdict = attempt.get("verdict") or {}
+        match = verdict.get("matches_requested_treatment")
+        if isinstance(match, bool):
+            return match
+    return None
+
+
 # Hero validation states that may become a reuse candidate.
 #
 # * "accepted" -- the image passed every validation check. Always reusable.
@@ -527,6 +595,14 @@ _RETRY_PROMPT_CLAUSES = {
         "ONE unified illustration edge to edge. Draw the foreground and background "
         "as parts of one scene; retain illustrated detail, depth or unified "
         "paper-cut forms without inserting photographs or framed pictures."
+    ),
+    "requested_treatment_mismatch": (
+        "The previous attempt was rejected because its visual medium or style "
+        "did not match the requested illustration treatment. Redraw the same "
+        "scene from scratch as one fully drawn illustration in the selected "
+        "style. Do not insert or return a photograph, photographic realism, "
+        "camera depth of field, or a realistic image without the requested "
+        "shape language. The selected style must govern the entire canvas."
     ),
 }
 _OFF_PALETTE_RETRY_CLAUSE = (
@@ -642,7 +718,8 @@ def _hero_reuse_eligible(style_state, target_date, hero_path,
 
 
 def _hero_validation_record(status, *, target_date, style, palette, provider,
-                            image_bytes, attempts, reasons):
+                            image_bytes, attempts, reasons,
+                            expected_treatment=None):
     """Provenance for the hero currently on disk, written into style state."""
     return {
         "status": status,
@@ -650,6 +727,8 @@ def _hero_validation_record(status, *, target_date, style, palette, provider,
         "style": style,
         "palette": palette,
         "provider": provider,
+        "expected_treatment": expected_treatment,
+        "matches_requested_treatment": _attempt_match_verdict(attempts),
         "image_byte_size": len(image_bytes) if image_bytes else None,
         "image_sha256": _sha256_bytes(image_bytes) if image_bytes else None,
         "attempts": [dict(item) for item in (attempts or [])],
@@ -658,16 +737,20 @@ def _hero_validation_record(status, *, target_date, style, palette, provider,
     }
 
 
-def _retry_prompt(prompt, reasons):
+def _retry_prompt(prompt, reasons, expected_treatment=None):
     """Rewrite conflicting scene cues after a palette rejection.
 
     This addresses the actual rejection instead of adding weather wording or
-    percentages, which can themselves encourage baked-in captions.
+    percentages, which can themselves encourage baked-in captions. A
+    requested-treatment rejection also names the selected style explicitly so
+    the retry cannot satisfy the check by merely being a cleaner photograph.
     """
     clauses = []
     for reason in reasons or []:
         clause = _RETRY_PROMPT_CLAUSES.get(reason)
         if clause:
+            if reason == "requested_treatment_mismatch" and expected_treatment:
+                clause += " Requested treatment: " + expected_treatment
             clauses.append(clause)
     if any(str(reason).startswith("off_palette=") for reason in reasons or []):
         clauses.append(_OFF_PALETTE_RETRY_CLAUSE)
@@ -685,7 +768,7 @@ def _retry_prompt(prompt, reasons):
     return "Retry correction:\n- " + "\n- ".join(clauses) + "\n\n" + prompt
 
 
-def _generate_with_guardrail(settings, prompt, provider):
+def _generate_with_guardrail(settings, prompt, provider, expected_treatment=None):
     """Generate art and return a structured guardrail outcome.
 
     ``status`` is one of:
@@ -710,6 +793,7 @@ def _generate_with_guardrail(settings, prompt, provider):
             "status": "disabled",
             "image_bytes": image_bytes,
             "reasons": [],
+            "expected_treatment": expected_treatment,
             "attempts": [{"attempt": 1, "verdict": {"status": "disabled"},
                           "reasons": [], "image_byte_size": len(image_bytes)}],
         }
@@ -719,19 +803,20 @@ def _generate_with_guardrail(settings, prompt, provider):
     attempts = []
     rejected_reasons = []
     for attempt in range(max_retries + 1):
-        current_prompt = prompt if not attempts else _retry_prompt(prompt, rejected_reasons)
+        current_prompt = (
+            prompt if not attempts else
+            _retry_prompt(
+                prompt, rejected_reasons, expected_treatment=expected_treatment)
+        )
         image_bytes = _call_image_api(settings, current_prompt, provider)
-        verdict = inspect_art(image_bytes, settings)  # vision: text, creator marks, collage
+        # One vision request covers broad text, creator marks, collage and the
+        # selected illustration treatment when it is supplied by the caller.
+        verdict = _inspect_art_compat(image_bytes, settings, expected_treatment)
         inspection = verdict.get("status")
         if inspection is None:
             # Verdict dicts from older callers omit ``status``; fall back to the
             # ``ok``/flag shape so the guardrail still behaves sensibly.
-            vision_reasons = [
-                k for k in ("has_text", "has_watermark_or_signature", "is_collage")
-                if verdict.get(k)
-            ]
-            if not vision_reasons and not verdict.get("ok", True):
-                vision_reasons = ["rejected"]
+            vision_reasons = _vision_rejection_reasons(verdict)
             if vision_reasons:
                 inspection = "rejected"
             elif verdict.get("skipped") or verdict.get("error"):
@@ -740,8 +825,7 @@ def _generate_with_guardrail(settings, prompt, provider):
                 inspection = "accepted"
         else:
             vision_reasons = (
-                [k for k in ("has_text", "has_watermark_or_signature", "is_collage")
-                 if verdict.get(k)]
+                _vision_rejection_reasons(verdict)
                 if inspection == "rejected" else []
             )
         reasons = list(vision_reasons)
@@ -757,6 +841,7 @@ def _generate_with_guardrail(settings, prompt, provider):
             "attempt": attempt + 1,
             "status": inspection,
             "verdict": verdict,
+            "expected_treatment": expected_treatment,
             "off_palette_pct": off,
             "palette_status": "analyzed" if palette_analyzed else "unavailable",
             "reasons": reasons,
@@ -786,19 +871,22 @@ def _generate_with_guardrail(settings, prompt, provider):
                 else:
                     print("[image] guardrail unavailable; keeping image as unverified")
             return {"status": status, "image_bytes": image_bytes,
-                    "reasons": [], "attempts": attempts}
+                    "reasons": [], "expected_treatment": expected_treatment,
+                    "attempts": attempts}
         for reason in reasons:
             if reason not in rejected_reasons:
                 rejected_reasons.append(reason)
         print(f"[image] guardrail rejected attempt {attempt + 1} ({', '.join(reasons)})")
     print("[image] guardrail retries exhausted; refusing to publish the rejected image")
     return {"status": "rejected", "image_bytes": None,
-            "reasons": rejected_reasons, "attempts": attempts}
+            "reasons": rejected_reasons, "expected_treatment": expected_treatment,
+            "attempts": attempts}
 
 
 def _handle_guardrail_exhaustion(settings, style_state, output_abs, *,
                                  target_date, daypart_role, style, palette,
-                                 provider, outcome, prior_hero_eligible):
+                                 provider, outcome, prior_hero_eligible,
+                                 expected_treatment=None):
     """Record explicit-rejection exhaustion and choose the fallback hero.
 
     A previously accepted hero is kept only when its recorded validation still
@@ -819,6 +907,9 @@ def _handle_guardrail_exhaustion(settings, style_state, output_abs, *,
             "style": style["name"],
             "palette": palette["name"],
             "provider": provider,
+            "expected_treatment": expected_treatment,
+            "matches_requested_treatment": _attempt_match_verdict(
+                outcome.get("attempts", [])),
             "reasons": reasons,
             "attempts": outcome.get("attempts", []),
             "fallback": fallback,
@@ -842,6 +933,7 @@ def _handle_guardrail_exhaustion(settings, style_state, output_abs, *,
             "rejected", target_date=target_date, style=style["name"],
             palette=palette["name"], provider=provider, image_bytes=None,
             attempts=outcome.get("attempts", []), reasons=reasons,
+            expected_treatment=expected_treatment,
         )
         record_current_log(
             "generate_image", "hero_fallback_pictogram",
@@ -854,7 +946,8 @@ def _handle_guardrail_exhaustion(settings, style_state, output_abs, *,
 
 
 def _handle_generation_failure(settings, style_state, output_abs, detail, *,
-                               target_date, style, palette, provider, eligible):
+                               target_date, style, palette, provider, eligible,
+                               expected_treatment=None):
     """Apply the fallback after an image API failure.
 
     The failed candidate was never written. The previous hero is kept only when
@@ -872,7 +965,7 @@ def _handle_generation_failure(settings, style_state, output_abs, detail, *,
     style_state["hero_validation"] = _hero_validation_record(
         "unverified", target_date=target_date, style=style["name"],
         palette=palette["name"], provider=provider, image_bytes=None,
-        attempts=[], reasons=[],
+        attempts=[], reasons=[], expected_treatment=expected_treatment,
     )
     _save_style_state(settings, style_state)
     print(f"image-fallback-blank: {detail}")
@@ -1164,8 +1257,10 @@ def main():
     print(f"[image] selected_palette={palette['name']}")
     print(f"[image] provider={provider}")
 
+    expected_treatment = _expected_treatment_for_style(style)
     try:
-        outcome = _generate_with_guardrail(settings, prompt, provider)
+        outcome = _generate_with_guardrail(
+            settings, prompt, provider, expected_treatment=expected_treatment)
         status = outcome.get("status")
         if status == "rejected":
             _handle_guardrail_exhaustion(
@@ -1173,6 +1268,7 @@ def main():
                 target_date=target_date, daypart_role=daypart_role,
                 style=style, palette=palette, provider=provider,
                 outcome=outcome, prior_hero_eligible=prior_hero_eligible,
+                expected_treatment=expected_treatment,
             )
             return
         image_bytes = outcome["image_bytes"]
@@ -1184,6 +1280,7 @@ def main():
             status, target_date=target_date, style=style["name"],
             palette=palette["name"], provider=provider, image_bytes=image_bytes,
             attempts=outcome.get("attempts", []), reasons=outcome.get("reasons", []),
+            expected_treatment=expected_treatment,
         )
         # Issue #21/#23: persist which recipe actually guided this hero and the
         # evidence that its dimensions were integrated into a single coherent
@@ -1218,6 +1315,9 @@ def main():
                 "byte_size": len(image_bytes),
                 "output_path": str(output_abs),
                 "validation_status": status,
+                "expected_treatment": expected_treatment,
+                "matches_requested_treatment": style_state[
+                    "hero_validation"].get("matches_requested_treatment"),
                 "guardrail_attempts": outcome.get("attempts", []),
             },
         )
@@ -1237,6 +1337,7 @@ def main():
             settings, style_state, output_abs, detail,
             target_date=target_date, style=style, palette=palette,
             provider=provider, eligible=prior_hero_eligible,
+            expected_treatment=expected_treatment,
         )
     except (KeyError, json.JSONDecodeError, RuntimeError) as error:
         record_current_log(
@@ -1252,6 +1353,7 @@ def main():
             settings, style_state, output_abs, str(error),
             target_date=target_date, style=style, palette=palette,
             provider=provider, eligible=prior_hero_eligible,
+            expected_treatment=expected_treatment,
         )
 
 

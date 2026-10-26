@@ -262,6 +262,206 @@ class TestInspectArtStatus:
         assert verdict["has_watermark_or_signature"] is None
 
 
+class TestRequestedTreatmentGuardrail:
+    _expected = (
+        "Bauhaus illustration: strict geometric construction, circles and bars. "
+        "The entire image must be drawn; a plain photograph does not match."
+    )
+
+    def _settings(self):
+        return {
+            "openrouter": {"base_url": "https://x", "image_tool_model": "m"},
+            "pipeline": {"image_guardrail_check_text": False},
+        }
+
+    def test_plain_photograph_is_rejected_even_without_a_collage_frame(
+            self, monkeypatch):
+        requests = []
+        monkeypatch.setattr(ag, "get_openrouter_api_key", lambda settings: "k")
+
+        def response(request, **kwargs):
+            requests.append(json.loads(request.data))
+            return _FakeResponse({"choices": [{"message": {"content": json.dumps({
+                "has_watermark_or_signature": False,
+                "is_collage": False,
+                "matches_requested_treatment": False,
+                "note": "cohesive photograph, no creator mark",
+            })}}]})
+
+        monkeypatch.setattr(ag, "urlopen_with_context", response)
+        verdict = ag.inspect_art(
+            b"photo", self._settings(), expected_treatment=self._expected)
+
+        assert verdict["ok"] is False
+        assert verdict["status"] == "rejected"
+        assert verdict["is_collage"] is False
+        assert verdict["matches_requested_treatment"] is False
+        assert verdict["expected_treatment"] == self._expected
+        prompt = requests[0]["messages"][0]["content"][0]["text"]
+        assert "Requested treatment: " + self._expected in prompt
+        assert '"matches_requested_treatment"' in prompt
+        assert "plain photograph" in prompt
+
+    def test_matching_bauhaus_illustration_is_accepted(self, monkeypatch):
+        _mock_guardrail_response(monkeypatch, {
+            "has_watermark_or_signature": False,
+            "is_collage": False,
+            "matches_requested_treatment": True,
+            "note": "geometric illustrated composition",
+        })
+        verdict = ag.inspect_art(
+            b"illustration", self._settings(), expected_treatment=self._expected)
+
+        assert verdict["ok"] is True
+        assert verdict["status"] == "accepted"
+        assert verdict["matches_requested_treatment"] is True
+        assert verdict["expected_treatment"] == self._expected
+
+    def test_mixed_collage_is_rejected_even_if_style_match_is_positive(
+            self, monkeypatch):
+        _mock_guardrail_response(monkeypatch, {
+            "has_watermark_or_signature": False,
+            "is_collage": True,
+            "matches_requested_treatment": True,
+            "note": "photo inside graphic frame",
+        })
+        verdict = ag.inspect_art(
+            b"collage", self._settings(), expected_treatment=self._expected)
+
+        assert verdict["status"] == "rejected"
+        assert verdict["is_collage"] is True
+        assert verdict["matches_requested_treatment"] is True
+
+    def test_creator_mark_is_rejected_even_when_treatment_matches(
+            self, monkeypatch):
+        _mock_guardrail_response(monkeypatch, {
+            "has_watermark_or_signature": True,
+            "is_collage": False,
+            "matches_requested_treatment": True,
+            "note": "artist signature",
+        })
+        verdict = ag.inspect_art(
+            b"marked", self._settings(), expected_treatment=self._expected)
+
+        assert verdict["status"] == "rejected"
+        assert verdict["has_watermark_or_signature"] is True
+
+    def test_environmental_text_stays_non_blocking_with_treatment_check(
+            self, monkeypatch):
+        _mock_guardrail_response(monkeypatch, {
+            "has_text": True,
+            "has_watermark_or_signature": False,
+            "is_collage": False,
+            "matches_requested_treatment": True,
+            "note": "natural scene sign",
+        })
+        verdict = ag.inspect_art(
+            b"scene", self._settings(), expected_treatment=self._expected)
+
+        assert verdict["status"] == "accepted"
+        assert verdict["has_text"] is None
+        assert verdict["text_check_enabled"] is False
+
+    def test_missing_treatment_verdict_is_unverified(self, monkeypatch):
+        _mock_guardrail_response(monkeypatch, {
+            "has_watermark_or_signature": False,
+            "is_collage": False,
+            "note": "model omitted treatment answer",
+        })
+        verdict = ag.inspect_art(
+            b"unknown", self._settings(), expected_treatment=self._expected)
+
+        assert verdict["ok"] is True
+        assert verdict["status"] == "unverified"
+        assert verdict["matches_requested_treatment"] is None
+        assert "matches_requested_treatment" in verdict["error"]
+
+
+class TestRequestedTreatmentRetry:
+    _expected = "Bauhaus illustration: strict geometric construction and circles."
+
+    def _settings(self, **pipeline):
+        base = {"enable_image_guardrail": True, "image_guardrail_max_retries": 1}
+        base.update(pipeline)
+        return {"pipeline": base}
+
+    def test_treatment_rejection_retries_with_focused_correction(
+            self, monkeypatch):
+        seq = [b"photo", b"illustration"]
+        prompts = []
+        seen_treatments = []
+
+        def fake_call(settings, prompt, provider):
+            prompts.append(prompt)
+            return seq.pop(0)
+
+        def fake_inspect(image, settings, expected_treatment=None):
+            seen_treatments.append(expected_treatment)
+            if image == b"photo":
+                return {
+                    "ok": False,
+                    "status": "rejected",
+                    "matches_requested_treatment": False,
+                    "expected_treatment": expected_treatment,
+                }
+            return {
+                "ok": True,
+                "status": "accepted",
+                "matches_requested_treatment": True,
+                "expected_treatment": expected_treatment,
+            }
+
+        monkeypatch.setattr(gi, "_call_image_api", fake_call)
+        monkeypatch.setattr(gi, "inspect_art", fake_inspect)
+        monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
+        out = gi._generate_with_guardrail(
+            self._settings(), "prompt", "fal",
+            expected_treatment=self._expected)
+
+        assert seen_treatments == [self._expected, self._expected]
+        assert out["status"] == "accepted"
+        assert out["image_bytes"] == b"illustration"
+        correction = prompts[1]
+        assert "Retry correction:" in correction
+        assert "did not match the requested illustration treatment" in correction
+        assert "Do not insert or return a photograph" in correction
+        assert self._expected in correction
+        assert out["attempts"][0]["reasons"] == ["requested_treatment_mismatch"]
+        assert out["attempts"][0]["expected_treatment"] == self._expected
+
+    def test_exhausted_treatment_rejection_returns_no_image(self, monkeypatch):
+        monkeypatch.setattr(gi, "_call_image_api", lambda s, p, pr: b"photo")
+        monkeypatch.setattr(
+            gi, "inspect_art",
+            lambda b, s, expected_treatment=None: {
+                "ok": False,
+                "status": "rejected",
+                "matches_requested_treatment": False,
+                "expected_treatment": expected_treatment,
+            })
+        monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
+        out = gi._generate_with_guardrail(
+            self._settings(image_guardrail_max_retries=1), "prompt", "fal",
+            expected_treatment=self._expected)
+
+        assert out["status"] == "rejected"
+        assert out["image_bytes"] is None
+        assert out["reasons"] == ["requested_treatment_mismatch"]
+        assert all(
+            attempt["verdict"]["matches_requested_treatment"] is False
+            for attempt in out["attempts"]
+        )
+
+
+def test_expected_treatment_for_style_includes_selected_style_and_photo_exclusion():
+    style = next(s for s in gi.ART_STYLE_POOL if s["name"] == "Bauhaus")
+    treatment = gi._expected_treatment_for_style(style)
+
+    assert "Bauhaus illustration" in treatment
+    assert style["prompt"] in treatment
+    assert "photograph" in treatment.lower()
+
+
 class TestGenerateWithGuardrail:
     def _settings(self, **pipeline):
         base = {"enable_image_guardrail": True, "image_guardrail_max_retries": 1}
