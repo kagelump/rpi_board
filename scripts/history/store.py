@@ -78,19 +78,94 @@ def _redact_settings(settings: dict[str, Any]) -> dict[str, Any]:
     return redacted
 
 
+GENERATION_SOURCE_PATHSPECS = ("config", "scripts", "tokyo_weather.sh")
+_GIT_PROVENANCE_UNKNOWN = {
+    "git_revision": None,
+    "git_dirty": None,
+    "git_worktree_status": "unknown",
+    "git_changed_paths": [],
+    "git_source_fingerprint": None,
+}
+
+
+def _git_output(*args: str) -> bytes:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        timeout=2,
+    )
+    return result.stdout
+
+
 def _git_revision() -> str | None:
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--short=12", "HEAD"],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-        return result.stdout.strip() or None
+        revision = _git_output("rev-parse", "--short=12", "HEAD").decode(
+            "ascii", errors="replace"
+        ).strip()
+        return revision or None
     except (OSError, subprocess.SubprocessError):
         return None
+
+
+def _git_provenance() -> dict[str, Any]:
+    """Return non-secret, source-level provenance for the current checkout.
+
+    The fingerprint covers only tracked generation-source paths.  Diff bodies
+    are hashed transiently and are never returned or persisted.  Untracked
+    paths make the worktree dirty, but their names and contents are deliberately
+    excluded from both the fingerprint and the changed-path list.
+    """
+    unknown = dict(_GIT_PROVENANCE_UNKNOWN)
+    try:
+        revision = _git_revision()
+        if revision is None:
+            return unknown
+
+        # Any output means the worktree or index differs from HEAD, including
+        # the presence of untracked, non-ignored files.  We intentionally do
+        # not parse or retain untracked paths here.
+        status = _git_output(
+            "status", "--porcelain=v1", "-z", "--untracked-files=normal"
+        )
+        changed = _git_output(
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-ext-diff",
+            "HEAD",
+            "--",
+            *GENERATION_SOURCE_PATHSPECS,
+        )
+        changed_paths = sorted(
+            item.decode("utf-8", errors="replace")
+            for item in changed.split(b"\0")
+            if item
+        )
+        source_diff = _git_output(
+            "diff",
+            "--binary",
+            "--no-ext-diff",
+            "--no-color",
+            "HEAD",
+            "--",
+            *GENERATION_SOURCE_PATHSPECS,
+        )
+        fingerprint = hashlib.sha256()
+        fingerprint.update(b"rpi-board-generation-source-v1\0")
+        fingerprint.update(revision.encode("ascii", errors="replace"))
+        fingerprint.update(b"\0")
+        fingerprint.update(source_diff)
+        return {
+            "git_revision": revision,
+            "git_dirty": bool(status),
+            "git_worktree_status": "dirty" if status else "clean",
+            "git_changed_paths": changed_paths,
+            "git_source_fingerprint": fingerprint.hexdigest(),
+        }
+    except (OSError, subprocess.SubprocessError):
+        return unknown
 
 
 class GenerationStore:
@@ -313,6 +388,10 @@ class GenerationStore:
                     "forced": bool(data.get("forced")),
                     "forecast_target": data.get("forecast_target"),
                     "git_revision": data.get("git_revision"),
+                    "git_dirty": data.get("git_dirty"),
+                    "git_worktree_status": data.get("git_worktree_status", "unknown"),
+                    "git_changed_paths": data.get("git_changed_paths", []),
+                    "git_source_fingerprint": data.get("git_source_fingerprint"),
                     "brief_source": None,
                     "selected_style": None,
                     "image_provider": None,
@@ -394,7 +473,7 @@ class GenerationStore:
             "status": status,
             "forced": bool(forced),
             "forecast_target": forecast_target,
-            "git_revision": _git_revision(),
+            **_git_provenance(),
             "settings": _redact_settings(settings),
         })
         return run_id

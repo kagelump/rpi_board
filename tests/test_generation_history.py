@@ -1,5 +1,6 @@
 import io
 import json
+import subprocess
 import threading
 from http.client import HTTPConnection
 
@@ -7,7 +8,7 @@ import pytest
 from PIL import Image
 
 from scripts.history.server import HistoryRequestHandler, make_server
-from scripts.history.store import GenerationStore, SCHEMA_VERSION
+from scripts.history.store import GenerationStore, SCHEMA_VERSION, _git_provenance
 
 
 def _store(tmp_path):
@@ -15,6 +16,93 @@ def _store(tmp_path):
         record_file=tmp_path / "history.jsonl",
         artifacts_dir=tmp_path / "artifacts",
     )
+
+
+def _git_repository(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "history-tests@example.invalid"],
+        cwd=repo, check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "History Tests"],
+        cwd=repo, check=True, capture_output=True,
+    )
+    prompt = repo / "config" / "prompt_templates" / "weather_image.txt"
+    prompt.parent.mkdir(parents=True)
+    prompt.write_text("clean image prompt\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "initial"],
+        cwd=repo, check=True, capture_output=True,
+    )
+    monkeypatch.setattr("scripts.history.store.ROOT", repo)
+    return repo, prompt
+
+
+def test_git_provenance_distinguishes_clean_and_dirty_tracked_sources(tmp_path, monkeypatch):
+    repo, prompt = _git_repository(tmp_path, monkeypatch)
+    head = subprocess.run(
+        ["git", "rev-parse", "--short=12", "HEAD"],
+        cwd=repo, check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    clean = _git_provenance()
+    assert clean["git_revision"] == head
+    assert clean["git_dirty"] is False
+    assert clean["git_worktree_status"] == "clean"
+    assert clean["git_changed_paths"] == []
+    assert clean["git_source_fingerprint"]
+
+    prompt.write_text("modified generation image prompt\n", encoding="utf-8")
+    dirty = _git_provenance()
+    assert dirty["git_revision"] == head
+    assert dirty["git_dirty"] is True
+    assert dirty["git_worktree_status"] == "dirty"
+    assert dirty["git_changed_paths"] == ["config/prompt_templates/weather_image.txt"]
+    assert dirty["git_source_fingerprint"] != clean["git_source_fingerprint"]
+    # The effective-source fingerprint is derived from content, not file mtimes.
+    assert _git_provenance() == dirty
+
+
+def test_untracked_paths_are_dirty_but_private_and_do_not_change_source_fingerprint(
+    tmp_path, monkeypatch,
+):
+    repo, _ = _git_repository(tmp_path, monkeypatch)
+    clean = _git_provenance()
+    private_name = "private-untracked-provenance-sentinel.txt"
+    private_contents = "do-not-persist-this-untracked-content"
+    (repo / private_name).write_text(private_contents, encoding="utf-8")
+
+    store = _store(tmp_path)
+    run_id = store.start_run()
+    detail = store.get_run(run_id)
+
+    assert detail["git_dirty"] is True
+    assert detail["git_worktree_status"] == "dirty"
+    assert detail["git_changed_paths"] == []
+    assert detail["git_source_fingerprint"] == clean["git_source_fingerprint"]
+    ledger = store.record_file.read_text(encoding="utf-8")
+    assert private_name not in ledger
+    assert private_contents not in ledger
+
+
+def test_git_inspection_failure_is_unknown_not_clean(tmp_path, monkeypatch):
+    def fail_git(*args):
+        raise OSError("git unavailable")
+
+    monkeypatch.setattr("scripts.history.store._git_output", fail_git)
+    store = _store(tmp_path)
+    run_id = store.start_run()
+    detail = store.get_run(run_id)
+
+    assert detail["git_revision"] is None
+    assert detail["git_dirty"] is None
+    assert detail["git_worktree_status"] == "unknown"
+    assert detail["git_changed_paths"] == []
+    assert detail["git_source_fingerprint"] is None
 
 
 def test_ledger_is_schema_versioned_append_only(tmp_path):
@@ -148,7 +236,12 @@ def test_http_api_dashboard_and_artifact(tmp_path):
     status, _, body = request("/api/runs")
     assert status == 200 and json.loads(body)["items"][0]["id"] == run_id
     status, _, body = request(f"/api/runs/{run_id}")
-    assert status == 200 and json.loads(body)["summary"]["headline"] == "Clear and warm"
+    detail = json.loads(body)
+    assert status == 200 and detail["summary"]["headline"] == "Clear and warm"
+    assert {
+        "git_revision", "git_dirty", "git_worktree_status",
+        "git_changed_paths", "git_source_fingerprint",
+    } <= detail.keys()
     status, _, body = request(f"/api/snapshots/{snapshot_id}")
     assert status == 200 and json.loads(body)["payload"] == "hello"
     status, headers, body = request(f"/api/artifacts/{artifact_id}")

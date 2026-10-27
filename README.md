@@ -358,6 +358,16 @@ Writes take an exclusive file lock, append one line, flush, and `fsync`. Readers
 take a shared lock and ignore an incomplete trailing line, making recovery after
 power loss straightforward. Existing records are never updated or deleted.
 
+Each `run_started` event records Git provenance separately from settings:
+`git_revision` is the short `HEAD` SHA; `git_dirty` and
+`git_worktree_status` (`clean`, `dirty`, or `unknown`) describe the worktree;
+`git_changed_paths` lists only tracked generation-source paths; and
+`git_source_fingerprint` is a deterministic SHA-256 over the revision and
+tracked generation-source diff. Untracked paths make the worktree dirty but are
+not stored, and diff bodies, untracked contents, settings, and credentials are
+never included in these fields. The fields are available from run list/detail
+responses, including `GET /api/runs/<run-id>`.
+
 Human feedback is kept separately in `runtime/ratings.jsonl`, with the same
 append-only event envelope and file-locking behavior. Replacing the generation
 ledger from the Raspberry Pi does not replace this local ratings file.
