@@ -1583,3 +1583,120 @@ def test_same_day_locked_incompatible_recipe_is_audit_only(
         "suppressed_incompatible_scene"
     )
     assert state_after["art_recipe_realization"]["used_for_hero"] is False
+
+
+# ---------------------------------------------------------------------------
+# Issue #31: locked balcony laundry cannot turn a public path into a clothesline
+# ---------------------------------------------------------------------------
+
+
+def _archived_balcony_riverside_recipe():
+    return {
+        "status": "selected",
+        "recipe_id": "79bc97914d302a625568",
+        "forecast_weather": "dry",
+        "recipe_weather": "dry",
+        "tags": {
+            "subject": "balcony_laundry",
+            "subject_text": "laundry lifting on a balcony line",
+            "motif": "bedsheets",
+            "motifs": ["bedsheets"],
+            "setting": "riverside_path",
+            "setting_text": "a riverside path",
+            "viewpoint": "distant_wide",
+            "viewpoint_text": "distant wide establishing shot",
+            "composition": "layered_depth",
+            "composition_text": "layered foreground, middle distance, and far weather",
+        },
+    }
+
+
+def test_inject_style_prompt_suppresses_archived_balcony_riverside_recipe():
+    payload = _archived_dry_payload()
+    template = (
+        ROOT / "config/prompt_templates/weather_image.txt"
+    ).read_text(encoding="utf-8")
+
+    prompt = _inject_style_prompt(
+        template,
+        payload["brief"]["illustration_prompt"],
+        ART_STYLE_POOL[0],
+        PALETTE_STRATEGY_POOL[0],
+        recipe=_archived_balcony_riverside_recipe(),
+        forecast=payload,
+    )
+
+    lowered = prompt.lower()
+    assert "artwork recipe for this forecast day" not in lowered
+    assert "laundry lifting" not in lowered
+    assert "bedsheets" not in lowered
+    assert "a riverside path" not in lowered
+    assert "ginkgo" in lowered
+
+
+def test_inject_style_prompt_preserves_balcony_overlook_relationship():
+    from scripts.openrouter import art_recipes as ar
+
+    payload = _archived_dry_payload()
+    template = (
+        ROOT / "config/prompt_templates/weather_image.txt"
+    ).read_text(encoding="utf-8")
+    recipe = next(
+        item for item in ar.build_candidates(daypart_role="morning", wet=False)
+        if item["tags"]["subject"] == "balcony_laundry"
+        and item["tags"]["setting"] == "balcony_over_riverside_path"
+        and item["tags"]["viewpoint"] == "eye_level"
+        and item["tags"]["composition"] == "cropped_edge"
+    )
+
+    prompt = _inject_style_prompt(
+        template,
+        payload["brief"]["illustration_prompt"],
+        ART_STYLE_POOL[0],
+        PALETTE_STRATEGY_POOL[0],
+        recipe=recipe,
+        forecast=payload,
+    )
+
+    lowered = prompt.lower()
+    assert "artwork recipe for this forecast day" in lowered
+    assert "private apartment balcony overlooking a riverside path" in lowered
+    assert "laundry line anchored to the balcony railing" in lowered
+    assert "balcony kept clearly visible" in lowered
+
+
+def test_same_day_locked_archived_balcony_path_is_audit_only(
+        monkeypatch, tmp_path):
+    settings = _issue21_settings(tmp_path)
+    _write_archived_dry_brief(settings)
+    _lock_recipe(settings, _archived_balcony_riverside_recipe())
+
+    captured = {}
+    _accept_generation(monkeypatch, captured)
+    logs = []
+    _run_main(monkeypatch, settings, logs)
+
+    lowered = captured["prompt"].lower()
+    assert "laundry lifting" not in lowered
+    assert "bedsheets" not in lowered
+    assert "riverside path" not in lowered
+    assert "ginkgo" in lowered
+    assert any(log["event_type"] == "art_recipe_locked" for log in logs)
+
+    suppressed = [
+        log for log in logs if log["event_type"] == "art_recipe_suppressed"
+    ]
+    assert len(suppressed) == 1
+    assert suppressed[0]["data"]["suppression_reason"] == (
+        "incompatible_subject_setting"
+    )
+    assert suppressed[0]["data"]["used_for_hero"] is False
+
+    state_after = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    assert state_after["art_recipe"]["tags"]["subject"] == "balcony_laundry"
+    assert state_after["art_recipe_used"] is None
+    assert state_after["art_recipe_suppressed"] is True
+    assert state_after["art_recipe_realization"]["status"] == (
+        "suppressed_incompatible_scene"
+    )
+    assert state_after["art_recipe_realization"]["used_for_hero"] is False

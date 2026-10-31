@@ -110,8 +110,16 @@ SUBJECT_POOL = [
      "motifs": ["birds"], "time": "any", "weather": "neutral"},
     {"name": "window_cat", "subject": "a cat watching from a window ledge",
      "motifs": ["potted plant"], "time": "any", "weather": "neutral"},
+    # Issue #31: balcony laundry needs a private balcony (or another explicit
+    # private clothesline structure) as its anchor.  Without a declared
+    # requirement the generic product can place the line on a public railing.
     {"name": "balcony_laundry", "subject": "laundry lifting on a balcony line",
-     "motifs": ["bedsheets"], "time": "any", "weather": "dry"},
+     "motifs": ["bedsheets"], "time": "any", "weather": "dry",
+     "allowed_settings": ("apartment_balcony", "balcony_over_riverside_path"),
+     "required_setting_keywords": (
+         "balcony", "private clothesline", "private laundry line",
+         "private washing line", "private drying line",
+     )},
     {"name": "train_bridge", "subject": "a train crossing a bridge",
      "motifs": ["railing"], "time": "any", "weather": "neutral"},
     # Issue #27: a waterside figure needs an actual waterside setting.  This
@@ -145,6 +153,14 @@ SETTING_POOL = [
     {"name": "under_overpass", "text": "under a concrete overpass", "time": "any"},
     {"name": "subway_entrance", "text": "a subway entrance", "time": "any"},
     {"name": "apartment_balcony", "text": "an apartment balcony", "time": "any"},
+    # Issue #31: a deliberately composed cross-setting scene.  The balcony is
+    # the private anchor for the laundry line; the riverside path is only the
+    # view below it, never the place where the bedding is hung.
+    {"name": "balcony_over_riverside_path",
+     "text": ("a private apartment balcony overlooking a riverside path, with "
+              "the laundry line anchored to the balcony railing and the balcony "
+              "kept clearly visible in the foreground"),
+     "time": "any"},
     {"name": "market_alley", "text": "a covered market alley", "time": "any"},
     {"name": "canal_side", "text": "a canal lined with low buildings", "time": "any"},
     {"name": "shrine_steps", "text": "the steps of a small shrine", "time": "any"},
@@ -222,6 +238,11 @@ _SETTING_KEYWORDS = {
     "under_overpass": ("overpass", "underpass"),
     "subway_entrance": ("subway", "metro entrance"),
     "apartment_balcony": ("balcony",),
+    "balcony_over_riverside_path": (
+        "balcony overlooking a riverside path",
+        "balcony overlooking the riverside path",
+        "private balcony above a riverside path",
+    ),
     "market_alley": ("market",),
     "canal_side": ("canal",),
     "shrine_steps": ("shrine", "temple"),
@@ -322,29 +343,51 @@ def _allowed_settings_for_subject(subject_name: str | None) -> frozenset[str] | 
     return None
 
 
+def _required_setting_keywords_for_subject(
+    subject_name: str | None,
+) -> frozenset[str] | None:
+    """Return setting terms that must anchor a subject, if it declares any."""
+    if not subject_name:
+        return None
+    for item in SUBJECT_POOL:
+        if subject_name == _norm_text(item["name"]):
+            required = item.get("required_setting_keywords")
+            if required is None:
+                return None
+            return frozenset(_norm_text(value) for value in required)
+    return None
+
+
 def subject_setting_compatible(subject: Any, setting: Any) -> bool:
     """Whether a subject can coherently occupy a setting.
 
     Only known compatibility declarations are enforced; unknown subjects and
     settings remain eligible, so this does not narrow the existing pools beyond
-    the incompatibilities the issue documents.  The waterside figure is the one
-    declared subject rule: it requires a river, canal, harbor, or other explicit
-    water setting, whether supplied as pool names or free text.
+    the incompatibilities the issue documents.  The waterside figure requires a
+    river, canal, harbor, or other explicit water setting.  Balcony laundry
+    requires an explicit private balcony or private clothesline structure, so a
+    public path or railing cannot become an accidental clothesline.  Both rules
+    recognise pool names and free text through the same bounded vocabulary.
     """
     subject_name, subject_text = _recipe_field_values(subject, "subject")
     setting_name, setting_text = _recipe_field_values(setting, "setting")
     known_subject = _known_subject_name(subject_name, subject_text)
     known_setting = _known_setting_name(setting_name, setting_text)
+    if not setting_name and not setting_text:
+        # A missing dimension is handled by ``recipe_scene_dimensions`` as
+        # ``not_realized``; compatibility only rejects known bad pairings.
+        return True
+
+    setting_blob = f"{setting_name} {setting_text}"
+    required_keywords = _required_setting_keywords_for_subject(known_subject)
+    if required_keywords is not None:
+        return any(keyword in setting_blob for keyword in required_keywords)
+
     allowed_settings = _allowed_settings_for_subject(known_subject)
     if allowed_settings is None:
         return True
     if known_setting is not None:
         return known_setting in allowed_settings
-    if not setting_name and not setting_text:
-        # A missing dimension is handled by ``recipe_scene_dimensions`` as
-        # ``not_realized``; compatibility only rejects known bad pairings.
-        return True
-    setting_blob = f"{setting_name} {setting_text}"
     return any(
         keyword in setting_blob for keyword in _WATER_SETTING_KEYWORDS
     )

@@ -1363,3 +1363,138 @@ def test_variety_exhausted_fallback_filters_incompatible_candidates(
     assert chosen["tags"]["subject"] == "cyclist"
     assert ar.recipe_scene_is_compatible(chosen) is True
     assert ar._fallback_candidate([incompatible], []) is None
+
+
+# ---------------------------------------------------------------------------
+# Issue #31: balcony laundry needs a private balcony/clothesline anchor
+# ---------------------------------------------------------------------------
+
+
+def _archived_balcony_riverside_recipe():
+    """The exact selection dimensions recorded by recipe 79bc97914d302a625568."""
+    return {
+        "status": "selected",
+        "recipe_id": "79bc97914d302a625568",
+        "tags": {
+            "subject": "balcony_laundry",
+            "subject_text": "laundry lifting on a balcony line",
+            "motif": "bedsheets",
+            "motifs": ["bedsheets"],
+            "setting": "riverside_path",
+            "setting_text": "a riverside path",
+            "viewpoint": "distant_wide",
+            "viewpoint_text": "distant wide establishing shot",
+            "composition": "layered_depth",
+            "composition_text": (
+                "layered foreground, middle distance, and far weather"
+            ),
+        },
+    }
+
+
+def test_balcony_laundry_candidates_require_private_clothesline_anchor():
+    candidates = ar.build_candidates(daypart_role="morning", wet=False)
+    pairs = {
+        (item["tags"]["subject"], item["tags"]["setting"])
+        for item in candidates
+    }
+
+    # The archived public-path combination is never constructed.
+    assert ("balcony_laundry", "riverside_path") not in pairs
+    balcony_candidates = [
+        item for item in candidates
+        if item["tags"]["subject"] == "balcony_laundry"
+    ]
+    assert balcony_candidates
+    assert {
+        item["tags"]["setting"] for item in balcony_candidates
+    } == {"apartment_balcony", "balcony_over_riverside_path"}
+    assert all(ar.recipe_scene_is_compatible(item) for item in balcony_candidates)
+
+    # The cross-setting option is part of the ordinary pool, and its setting
+    # keeps the private balcony as the laundry anchor while naming the view.
+    overlook = next(
+        item for item in balcony_candidates
+        if item["tags"]["setting"] == "balcony_over_riverside_path"
+    )
+    setting_text = overlook["tags"]["setting_text"].lower()
+    assert "private apartment balcony" in setting_text
+    assert "overlooking a riverside path" in setting_text
+    assert "laundry line anchored to the balcony railing" in setting_text
+    assert "balcony kept clearly visible" in setting_text
+
+    # Explicit free-text balcony scenes stay eligible; public paths do not.
+    assert ar.subject_setting_compatible(
+        {"subject": "balcony_laundry"},
+        {"setting_text": "a private balcony above a market alley"},
+    ) is True
+    assert ar.subject_setting_compatible(
+        {"subject": "balcony_laundry"},
+        {"setting_text": "a public riverside path with a railing"},
+    ) is False
+
+    # Only balcony-dependent pairings are narrowed; the pool remains large and
+    # every other setting continues to carry the rest of the subjects.
+    assert len(candidates) >= 10_000
+    assert len({item["tags"]["subject"] for item in candidates}) >= 12
+    assert len({item["tags"]["setting"] for item in candidates}) == len(ar.SETTING_POOL)
+
+
+def test_archived_balcony_riverside_recipe_is_rejected():
+    recipe = _archived_balcony_riverside_recipe()
+    assert ar._recipe_id(ar.extract_tags(recipe)) == "79bc97914d302a625568"
+    assert ar.recipe_scene_is_compatible(recipe) is False
+
+
+def test_normal_selection_can_choose_balcony_overlooking_riverside(tmp_path):
+    chosen = ar.choose_recipe(
+        _settings(tmp_path),
+        target_date="2026-02-02",
+        daypart_role="morning",
+    )
+
+    assert chosen is not None
+    assert chosen["status"] == "selected"
+    assert chosen["tags"]["subject"] == "balcony_laundry"
+    assert chosen["tags"]["setting"] == "balcony_over_riverside_path"
+    assert ar.recipe_scene_is_compatible(chosen) is True
+
+    directive = ar.recipe_directive(chosen).lower()
+    assert "private apartment balcony overlooking a riverside path" in directive
+    assert "laundry line anchored to the balcony railing" in directive
+    assert "balcony kept clearly visible" in directive
+
+
+def test_variety_exhausted_fallback_applies_balcony_anchor_rule(
+        monkeypatch, tmp_path):
+    settings = _settings(tmp_path)
+    now = datetime(2026, 10, 24, 12, tzinfo=timezone.utc)
+    _record(settings, _tags(), sha="b" * 64,
+            published_at=_iso(now - timedelta(hours=12)),
+            target_date="2026-10-23")
+
+    invalid = _archived_balcony_riverside_recipe()
+    pool = ar.build_candidates(daypart_role="morning", wet=False)
+    valid = next(
+        item for item in pool
+        if item["tags"]["subject"] == "balcony_laundry"
+        and item["tags"]["setting"] == "balcony_over_riverside_path"
+        and item["tags"]["viewpoint"] == "eye_level"
+        and item["tags"]["composition"] == "cropped_edge"
+    )
+
+    # The valid candidate matches the recent recipe's viewpoint/composition,
+    # so ordinary eligibility is exhausted and choose_recipe must fall back.
+    monkeypatch.setattr(ar, "build_candidates", lambda **kwargs: [invalid, valid])
+    chosen = ar.choose_recipe(
+        settings, target_date="2026-10-24",
+        daypart_role="morning", now=now,
+    )
+
+    assert chosen is not None
+    assert chosen["status"] == "variety_exhausted"
+    assert chosen["tags"]["subject"] == "balcony_laundry"
+    assert chosen["tags"]["setting"] == "balcony_over_riverside_path"
+    assert ar.recipe_scene_is_compatible(chosen) is True
+    assert ar._fallback_candidate([invalid], []) is None
+    assert ar._fallback_candidate([invalid, valid], []) is valid
