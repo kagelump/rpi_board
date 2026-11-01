@@ -542,7 +542,10 @@ def _inspect_art_compat(image_bytes, settings, expected_treatment=None):
 def _vision_rejection_reasons(verdict):
     """Map a normalized vision verdict to retry-reason keys."""
     reasons = [
-        key for key in ("has_text", "has_watermark_or_signature", "is_collage")
+        key for key in (
+            "has_text", "has_watermark_or_signature", "has_prominent_text",
+            "is_collage",
+        )
         if verdict.get(key)
     ]
     if verdict.get("matches_requested_treatment") is False:
@@ -589,6 +592,14 @@ _RETRY_PROMPT_CLAUSES = {
         "watermark, logo, brand mark, or other creator mark anywhere in the "
         "image. Ordinary environmental signage and natural scene lettering are "
         "still allowed."
+    ),
+    "has_prominent_text": (
+        "The previous attempt was rejected for prominent generated lettering, "
+        "gibberish or fake words, caption-like blocks, or fake signboards. "
+        "Remove ALL baked-in text and pseudo-lettering from the artwork: draw "
+        "no signs, signboards, captions, labels, logos, or letter-like marks. "
+        "Do not replace a signboard with smaller fake lettering; keep the "
+        "scene itself free of generated text."
     ),
     "is_collage": (
         "The previous attempt was rejected as a collage or framed image. Produce "
@@ -809,8 +820,9 @@ def _generate_with_guardrail(settings, prompt, provider, expected_treatment=None
                 prompt, rejected_reasons, expected_treatment=expected_treatment)
         )
         image_bytes = _call_image_api(settings, current_prompt, provider)
-        # One vision request covers broad text, creator marks, collage and the
-        # selected illustration treatment when it is supplied by the caller.
+        # One vision request covers broad text, creator marks, prominent
+        # generated lettering, collage and the selected illustration treatment
+        # when it is supplied by the caller.
         verdict = _inspect_art_compat(image_bytes, settings, expected_treatment)
         inspection = verdict.get("status")
         if inspection is None:

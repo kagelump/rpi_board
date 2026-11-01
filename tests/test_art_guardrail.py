@@ -52,6 +52,7 @@ class TestInspectArtStatus:
             return _FakeResponse({"choices": [{"message": {"content": json.dumps({
                 "has_text": True,
                 "has_watermark_or_signature": False,
+                "has_prominent_text": False,
                 "is_collage": False,
                 "note": "natural street sign",
             })}}]})
@@ -69,11 +70,15 @@ class TestInspectArtStatus:
         assert verdict["has_text"] is None
         assert verdict["text_check_enabled"] is False
         assert verdict["has_watermark_or_signature"] is False
+        assert verdict["has_prominent_text"] is False
         assert verdict["is_collage"] is False
         prompt = requests[0]["messages"][0]["content"][0]["text"]
         assert '"has_text"' not in prompt
         assert '"has_watermark_or_signature"' in prompt
+        assert '"has_prominent_text"' in prompt
         assert "Ordinary environmental lettering" in prompt
+        assert "tiny" in prompt
+        assert "gibberish" in prompt
         assert "Do not reject on broad text alone" in prompt
 
     @pytest.mark.parametrize("mark_note", [
@@ -91,6 +96,7 @@ class TestInspectArtStatus:
             return _FakeResponse({"choices": [{"message": {"content": json.dumps({
                 "has_text": False,
                 "has_watermark_or_signature": True,
+                "has_prominent_text": False,
                 "is_collage": False,
                 "note": mark_note,
             })}}]})
@@ -112,6 +118,7 @@ class TestInspectArtStatus:
     def test_relaxed_mode_rejects_collage_independently(self, monkeypatch):
         _mock_guardrail_response(monkeypatch, {
             "has_watermark_or_signature": False,
+            "has_prominent_text": False,
             "is_collage": True,
             "note": "framed photo",
         })
@@ -129,6 +136,7 @@ class TestInspectArtStatus:
     def test_relaxed_mode_clean_art_is_accepted(self, monkeypatch):
         _mock_guardrail_response(monkeypatch, {
             "has_watermark_or_signature": False,
+            "has_prominent_text": False,
             "is_collage": False,
             "note": "clean illustration",
         })
@@ -142,6 +150,7 @@ class TestInspectArtStatus:
         assert verdict["has_text"] is None
         assert verdict["text_check_enabled"] is False
         assert verdict["has_watermark_or_signature"] is False
+        assert verdict["has_prominent_text"] is False
 
     def test_incomplete_relaxed_verdict_is_unverified(self, monkeypatch):
         _mock_guardrail_response(monkeypatch, {
@@ -157,6 +166,55 @@ class TestInspectArtStatus:
         assert verdict["status"] == "unverified"
         assert verdict["has_watermark_or_signature"] is None
         assert "has_watermark_or_signature" in verdict["error"]
+
+    def test_relaxed_mode_rejects_prominent_generated_text(self, monkeypatch):
+        requests = []
+        monkeypatch.setattr(ag, "get_openrouter_api_key", lambda settings: "k")
+
+        def response(request, **kwargs):
+            requests.append(json.loads(request.data))
+            return _FakeResponse({"choices": [{"message": {"content": json.dumps({
+                "has_text": None,
+                "has_watermark_or_signature": False,
+                "has_prominent_text": True,
+                "is_collage": False,
+                # These notes mirror the two archived relaxed-mode acceptances.
+                "note": "ordinary roadside signage is not a creator mark",
+            })}}]})
+
+        monkeypatch.setattr(ag, "urlopen_with_context", response)
+        settings = {
+            "openrouter": {"base_url": "https://x", "image_tool_model": "m"},
+            "pipeline": {"image_guardrail_check_text": False},
+        }
+        verdict = ag.inspect_art(b"x", settings)
+
+        assert len(requests) == 1
+        assert verdict["ok"] is False
+        assert verdict["status"] == "rejected"
+        assert verdict["has_text"] is None
+        assert verdict["text_check_enabled"] is False
+        assert verdict["has_watermark_or_signature"] is False
+        assert verdict["has_prominent_text"] is True
+        assert verdict["is_collage"] is False
+
+    def test_incomplete_relaxed_verdict_missing_prominent_text_is_unverified(
+            self, monkeypatch):
+        _mock_guardrail_response(monkeypatch, {
+            "has_watermark_or_signature": False,
+            "is_collage": False,
+            "note": "model omitted prominent-text verdict",
+        })
+        settings = {
+            "openrouter": {"base_url": "https://x", "image_tool_model": "m"},
+            "pipeline": {"image_guardrail_check_text": False},
+        }
+        verdict = ag.inspect_art(b"x", settings)
+
+        assert verdict["ok"] is True
+        assert verdict["status"] == "unverified"
+        assert verdict["has_prominent_text"] is None
+        assert "has_prominent_text" in verdict["error"]
 
     @pytest.mark.parametrize("model,temperature_supported", [
         ("openai/gpt-6-luna", False), ("openai/gpt-5.2", True)])
@@ -305,6 +363,7 @@ class TestRequestedTreatmentGuardrail:
     def test_matching_bauhaus_illustration_is_accepted(self, monkeypatch):
         _mock_guardrail_response(monkeypatch, {
             "has_watermark_or_signature": False,
+            "has_prominent_text": False,
             "is_collage": False,
             "matches_requested_treatment": True,
             "note": "geometric illustrated composition",
@@ -351,6 +410,7 @@ class TestRequestedTreatmentGuardrail:
         _mock_guardrail_response(monkeypatch, {
             "has_text": True,
             "has_watermark_or_signature": False,
+            "has_prominent_text": False,
             "is_collage": False,
             "matches_requested_treatment": True,
             "note": "natural scene sign",
@@ -361,10 +421,12 @@ class TestRequestedTreatmentGuardrail:
         assert verdict["status"] == "accepted"
         assert verdict["has_text"] is None
         assert verdict["text_check_enabled"] is False
+        assert verdict["has_prominent_text"] is False
 
     def test_missing_treatment_verdict_is_unverified(self, monkeypatch):
         _mock_guardrail_response(monkeypatch, {
             "has_watermark_or_signature": False,
+            "has_prominent_text": False,
             "is_collage": False,
             "note": "model omitted treatment answer",
         })
@@ -565,6 +627,51 @@ class TestGenerateWithGuardrail:
         assert out["attempts"][0]["reasons"] == ["has_watermark_or_signature"]
         assert "Draw NO signature" in prompts[1]
         assert "Ordinary environmental signage" in prompts[1]
+
+    def test_retry_correction_covers_prominent_generated_text(
+            self, monkeypatch):
+        seq = [b"gibberish-signs", b"clean"]
+        prompts = []
+        inspected = []
+
+        def fake_call(s, p, pr):
+            prompts.append(p)
+            return seq.pop(0)
+
+        monkeypatch.setattr(gi, "_call_image_api", fake_call)
+        verdicts = [
+            {
+                "ok": False,
+                "status": "rejected",
+                "has_text": None,
+                "text_check_enabled": False,
+                "has_watermark_or_signature": False,
+                "has_prominent_text": True,
+                "is_collage": False,
+                "note": "ordinary roadside signage is not a creator mark",
+            },
+            {"ok": True, "status": "accepted"},
+        ]
+
+        def fake_inspect(*args, **kwargs):
+            inspected.append(args)
+            return verdicts.pop(0)
+
+        monkeypatch.setattr(gi, "inspect_art", fake_inspect)
+        monkeypatch.setattr(gi, "_off_palette_pct", lambda b: 0.0)
+        out = gi._generate_with_guardrail(
+            self._settings(image_guardrail_max_retries=1), "p", "fal")
+
+        assert out["status"] == "accepted"
+        assert out["image_bytes"] == b"clean"
+        assert len(inspected) == 2  # one vision check per generated attempt
+        assert out["attempts"][0]["reasons"] == ["has_prominent_text"]
+        assert out["attempts"][0]["verdict"]["has_prominent_text"] is True
+        retry = prompts[1].lower()
+        assert "prominent generated lettering" in retry
+        assert "gibberish" in retry
+        assert "fake signboards" in retry
+        assert "caption" in retry
 
     def test_exhausts_retries_returns_rejected(self, monkeypatch):
         produced = [b"bad1", b"bad2"]

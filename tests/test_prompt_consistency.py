@@ -74,3 +74,27 @@ def test_style_and_qa_wording_allow_rich_continuous_illustration():
         assert 'flat, minimal' not in prompt
         assert 'Detailed illustrated backgrounds' in prompt
         assert 'realistic/photographic image' in prompt
+
+
+def test_relaxed_guardrail_prompt_separates_tiny_signs_from_prominent_text():
+    prompt = ag._request_prompt(check_text=False, expected_treatment=None)
+
+    assert '"has_text"' not in prompt
+    assert '"has_prominent_text"' in prompt
+    assert 'no-text artwork contract' in prompt
+    assert 'Ordinary environmental lettering' in prompt
+    assert 'tiny, distant, or minor scene detail' in prompt
+    assert 'gibberish or fake lettering' in prompt
+    assert 'caption-like blocks' in prompt
+    assert 'signboards' in prompt
+    assert 'Do not reject on broad text alone' in prompt
+
+
+def test_prominent_text_rejection_has_a_focused_retry_correction():
+    retry = gi._retry_prompt('original prompt', ['has_prominent_text'])
+
+    assert 'Retry correction:' in retry
+    assert 'prominent generated lettering' in retry
+    assert 'gibberish or fake words' in retry
+    assert 'fake signboards' in retry
+    assert 'caption-like blocks' in retry
