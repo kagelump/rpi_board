@@ -1498,3 +1498,193 @@ def test_variety_exhausted_fallback_applies_balcony_anchor_rule(
     assert ar.recipe_scene_is_compatible(chosen) is True
     assert ar._fallback_candidate([invalid], []) is None
     assert ar._fallback_candidate([invalid, valid], []) is valid
+
+
+# ---------------------------------------------------------------------------
+# Issue #32: mixed dry-then-rain windows and action-specific weather staging
+# ---------------------------------------------------------------------------
+
+
+ARCHIVED_ISSUE32_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "issue32_archived_nov2_brief.json"
+)
+
+
+def _archived_issue32_payload():
+    """Replay the archived November 2, 2026 mixed dry-then-rain brief."""
+    return json.loads(ARCHIVED_ISSUE32_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _issue32_forecast_payload(*rain_hours, headline, subtitle):
+    """Build a deterministic target-day payload with rain in selected hours."""
+    hourly = []
+    for hour in range(24):
+        wet = hour in rain_hours
+        hourly.append({
+            "time": f"2026-11-02T{hour:02d}:00",
+            "rain_mm": 1.0 if wet else 0.0,
+            "rain_probability_pct": 80 if wet else 0,
+            "weather_code": 61 if wet else 3,
+        })
+    return {
+        "day_context": {
+            "target_date_iso": "2026-11-02",
+            "daypart_role": "primary",
+            "sunrise": "06:00",
+            "sunset": "18:00",
+        },
+        "today": {
+            "daily_summary": {
+                "date": "2026-11-02",
+                "condition": "Rain" if rain_hours else "Overcast",
+                "rain_sum_mm": float(len(rain_hours)),
+                "rain_prob_max_pct": 80 if rain_hours else 0,
+                "weather_code": 61 if rain_hours else 3,
+            },
+            "hourly": hourly,
+        },
+        "brief": {"headline": headline, "subtitle": subtitle},
+    }
+
+
+def _gardener_watering_recipe():
+    return {
+        "status": "selected",
+        "recipe_id": "issue32-gardener-watering",
+        "forecast_weather": "dry",
+        "recipe_weather": "neutral",
+        "tags": {
+            "subject": "gardener",
+            "subject_text": "a gardener tending a few plants",
+            "motif": "watering can",
+            "motifs": ["watering can"],
+            "setting": "harbor_edge",
+            "setting_text": "a harbor edge with stacked crates",
+            "viewpoint": "flat_frontal",
+            "viewpoint_text": "flat frontal view",
+            "composition": "tiny_focal",
+            "composition_text": (
+                "tiny focal subject surrounded by purposeful negative space"
+            ),
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "rain_hours,headline,subtitle,expected_wet",
+    [
+        (
+            (),
+            "Sunny and dry all day",
+            "No rain; clear through the afternoon.",
+            False,
+        ),
+        (
+            (8, 12, 14),
+            "Rain all day",
+            "Showers through the day.",
+            True,
+        ),
+        (
+            (14, 15, 16),
+            "Cloudy; rain by 3pm",
+            "Dry morning commute; pack an umbrella for the ride home.",
+            True,
+        ),
+    ],
+    ids=["dry-all-day", "wet-all-day", "dry-then-rain"],
+)
+def test_issue32_structured_window_weather_covers_dry_and_wet_cases(
+        rain_hours, headline, subtitle, expected_wet):
+    payload = _issue32_forecast_payload(
+        *rain_hours, headline=headline, subtitle=subtitle
+    )
+
+    assert ar._forecast_is_wet(payload) is expected_wet
+    if expected_wet:
+        assert "wet conditions" in ar._forecast_weather_cues(payload)
+    else:
+        assert ar.brief_declares_dry(payload) is True
+        assert "dry conditions" in ar._forecast_weather_cues(payload)
+
+
+def test_issue32_archived_mixed_dry_then_rain_replay_is_wet(tmp_path):
+    payload = _archived_issue32_payload()
+    assert "Dry morning" in payload["brief"]["subtitle"]
+    assert payload["today"]["daily_summary"]["rain_sum_mm"] == 6.3
+
+    # The partial dry phrase no longer overrides supported afternoon rain.
+    assert ar.brief_declares_dry(payload) is False
+    assert ar._is_wet(payload) is True
+    assert ar._forecast_is_wet(payload) is True
+    assert "wet conditions" in ar._forecast_weather_cues(payload)
+
+    chosen = ar.choose_recipe(
+        _settings(tmp_path),
+        target_date="2026-11-02",
+        daypart_role="primary",
+        payload=payload,
+    )
+    assert chosen is not None
+    assert chosen["forecast_weather"] == "wet"
+    assert chosen["tags"]["subject"] != "gardener"
+    assert "watering can" not in (chosen["tags"].get("motifs") or [])
+
+
+def test_issue32_watering_can_is_dry_action_staging():
+    recipe = _gardener_watering_recipe()
+    payload = _archived_issue32_payload()
+
+    assert ar.recipe_weather_class(recipe) == "dry"
+    assert ar.recipe_weather_class(
+        {"subject_text": "a person watering the garden plants"}
+    ) == "dry"
+    assert ar.recipe_conflicts_with_brief(recipe, payload) is True
+    assert ar.synthesize_recipe_scene(
+        recipe,
+        brief_scene=payload["brief"]["illustration_prompt"],
+        forecast=payload,
+    ) is None
+
+    wet_candidates = ar.build_candidates(daypart_role="primary", wet=True)
+    dry_candidates = ar.build_candidates(daypart_role="primary", wet=False)
+    assert not any(
+        item["tags"]["subject"] == "gardener" for item in wet_candidates
+    )
+    assert any(
+        item["tags"]["subject"] == "gardener" for item in dry_candidates
+    )
+
+
+def test_issue32_normal_selection_and_fallback_reject_watering_in_rain(
+        monkeypatch, tmp_path):
+    payload = _archived_issue32_payload()
+    gardener = {"tags": _gardener_watering_recipe()["tags"]}
+    neutral = {"tags": _tags(
+        subject="cyclist",
+        subject_text="a cyclist leaning into the weather",
+        motif="bicycle",
+        motifs=["bicycle"],
+        setting="train_platform",
+        setting_text="an open train platform",
+    )}
+    monkeypatch.setattr(
+        ar, "build_candidates", lambda **kwargs: [gardener, neutral]
+    )
+
+    chosen = ar.choose_recipe(
+        _settings(tmp_path),
+        target_date="2026-11-02",
+        daypart_role="primary",
+        payload=payload,
+    )
+    assert chosen is not None
+    assert chosen["forecast_weather"] == "wet"
+    assert chosen["tags"]["subject"] == "cyclist"
+
+    # The variety-exhausted path applies the same weather rule even when
+    # callers/tests supply a candidate list directly.
+    assert ar._fallback_candidate([gardener], [], wet=True) is None
+    fallback = ar._fallback_candidate([gardener, neutral], [], wet=True)
+    assert fallback is not None
+    assert fallback["tags"]["subject"] == "cyclist"

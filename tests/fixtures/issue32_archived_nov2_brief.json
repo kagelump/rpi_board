@@ -1,0 +1,354 @@
+{
+  "brief": {
+    "accent": "yellow",
+    "event_ref": "",
+    "headline": "Cloudy, high 23C; rain by 3pm",
+    "illustration_prompt": "At curb height beside a Tokyo station approach, frame a close run of raised paving dots and narrow drain slots repeating diagonally across the foreground. A fallen autumn leaf rests at the edge of a shallow puddle; the first afternoon raindrops make small rings around it. In the middle distance, commuters' shoes pass through the frame, with their steps and paving patterns continuing toward a quiet street in the background. Show overcast daytime light, dry pavement farther away, and rain gathering nearer the foreground, suggesting showers building through the afternoon. Let the repeated paving and ripples give the scene a steady commuting rhythm. Clear overlapping depth across a wide 2:1 composition. No text, letters, numbers, captions, signs or logos.",
+    "mood": "calm",
+    "subtitle": "Dry morning commute; pack an umbrella for the ride home."
+  },
+  "brief_context": {
+    "conflicts": [],
+    "missing_sections": [
+      "yahoo:alerts",
+      "yahoo:heatstroke",
+      "yahoo:pollen"
+    ],
+    "ordered_facts": [
+      {
+        "date_iso": "2026-11-02",
+        "id": "yahoo.today_tomorrow.1.condition",
+        "source": "yahoo",
+        "text": "11月2日(月): 曇のち雨",
+        "value": "曇のち雨"
+      },
+      {
+        "date_iso": "2026-11-02",
+        "id": "yahoo.today_tomorrow.1.temperature",
+        "source": "yahoo",
+        "text": "Temp 14C to 22C",
+        "value": {
+          "max_c": 22,
+          "min_c": 14
+        }
+      },
+      {
+        "date_iso": "2026-11-02",
+        "id": "yahoo.today_tomorrow.1.precip.0-6",
+        "source": "yahoo",
+        "text": "Rain 0-6=0％",
+        "value": 0
+      },
+      {
+        "date_iso": "2026-11-02",
+        "id": "yahoo.today_tomorrow.1.precip.6-12",
+        "source": "yahoo",
+        "text": "Rain 6-12=20％",
+        "value": 20
+      },
+      {
+        "date_iso": "2026-11-02",
+        "id": "yahoo.today_tomorrow.1.precip.12-18",
+        "source": "yahoo",
+        "text": "Rain 12-18=80％",
+        "value": 80
+      },
+      {
+        "date_iso": "2026-11-02",
+        "id": "yahoo.today_tomorrow.1.precip.18-24",
+        "source": "yahoo",
+        "text": "Rain 18-24=20％",
+        "value": 20
+      },
+      {
+        "id": "open_meteo.daily.0",
+        "source": "open_meteo",
+        "text": "2026-11-01 max=20.1C min=12.1C rain_prob_max=0%",
+        "value": {
+          "date": "2026-11-01",
+          "rain_prob_max_pct": 0,
+          "temp_max_c": 20.1,
+          "temp_min_c": 12.1
+        }
+      },
+      {
+        "id": "open_meteo.daily.1",
+        "source": "open_meteo",
+        "text": "2026-11-02 max=22.5C min=12.9C rain_prob_max=91%",
+        "value": {
+          "date": "2026-11-02",
+          "rain_prob_max_pct": 91,
+          "temp_max_c": 22.5,
+          "temp_min_c": 12.9
+        }
+      },
+      {
+        "id": "open_meteo.daily.2",
+        "source": "open_meteo",
+        "text": "2026-11-03 max=19.0C min=13.0C rain_prob_max=6%",
+        "value": {
+          "date": "2026-11-03",
+          "rain_prob_max_pct": 6,
+          "temp_max_c": 19.0,
+          "temp_min_c": 13.0
+        }
+      }
+    ],
+    "source_priority": [
+      "yahoo",
+      "open_meteo",
+      "other"
+    ],
+    "target_date_iso": "2026-11-02"
+  },
+  "brief_source": "openrouter",
+  "day_context": {
+    "date_iso": "2026-11-02",
+    "date_pretty": "Monday, November 2",
+    "daypart_role": "primary",
+    "is_weekend": false,
+    "month_name": "November",
+    "part_of_day": "night",
+    "run_date_iso": "2026-11-01",
+    "season": "autumn",
+    "sunrise": "06:03",
+    "sunset": "16:45",
+    "target_date_iso": "2026-11-02",
+    "weekday": "Monday"
+  },
+  "generated_at_local": "2026-11-01T21:00:57+09:00",
+  "location": {
+    "label": "Tokyo 153-0051",
+    "latitude": 35.658,
+    "longitude": 139.6835,
+    "timezone": "Asia/Tokyo"
+  },
+  "timezone": "Asia/Tokyo",
+  "today": {
+    "daily_summary": {
+      "condition": "Slight rain",
+      "date": "2026-11-02",
+      "rain_prob_max_pct": 91,
+      "rain_sum_mm": 6.3,
+      "temp_max_c": 22.5,
+      "temp_min_c": 12.9,
+      "weather_code": 61
+    },
+    "hourly": [
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 15.8,
+        "time": "2026-11-02T00:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 14.5,
+        "time": "2026-11-02T01:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 13.8,
+        "time": "2026-11-02T02:00",
+        "weather_code": 0
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 13.2,
+        "time": "2026-11-02T03:00",
+        "weather_code": 0
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 13.1,
+        "time": "2026-11-02T04:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 12.9,
+        "time": "2026-11-02T05:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 13.0,
+        "time": "2026-11-02T06:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 13.2,
+        "time": "2026-11-02T07:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 14.7,
+        "time": "2026-11-02T08:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 16.6,
+        "time": "2026-11-02T09:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 19.1,
+        "time": "2026-11-02T10:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 21.4,
+        "time": "2026-11-02T11:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 2,
+        "temp_c": 22.3,
+        "time": "2026-11-02T12:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 26,
+        "temp_c": 22.4,
+        "time": "2026-11-02T13:00",
+        "weather_code": 2
+      },
+      {
+        "rain_mm": 0.3,
+        "rain_probability_pct": 58,
+        "temp_c": 21.3,
+        "time": "2026-11-02T14:00",
+        "weather_code": 51
+      },
+      {
+        "rain_mm": 2.3,
+        "rain_probability_pct": 82,
+        "temp_c": 15.8,
+        "time": "2026-11-02T15:00",
+        "weather_code": 61
+      },
+      {
+        "rain_mm": 1.2,
+        "rain_probability_pct": 91,
+        "temp_c": 14.9,
+        "time": "2026-11-02T16:00",
+        "weather_code": 55
+      },
+      {
+        "rain_mm": 1.8,
+        "rain_probability_pct": 91,
+        "temp_c": 14.5,
+        "time": "2026-11-02T17:00",
+        "weather_code": 61
+      },
+      {
+        "rain_mm": 0.7,
+        "rain_probability_pct": 82,
+        "temp_c": 14.4,
+        "time": "2026-11-02T18:00",
+        "weather_code": 53
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 58,
+        "temp_c": 14.4,
+        "time": "2026-11-02T19:00",
+        "weather_code": 1
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 26,
+        "temp_c": 14.3,
+        "time": "2026-11-02T20:00",
+        "weather_code": 0
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 2,
+        "temp_c": 14.1,
+        "time": "2026-11-02T21:00",
+        "weather_code": 0
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 14.1,
+        "time": "2026-11-02T22:00",
+        "weather_code": 0
+      },
+      {
+        "rain_mm": 0.0,
+        "rain_probability_pct": 0,
+        "temp_c": 14.1,
+        "time": "2026-11-02T23:00",
+        "weather_code": 0
+      }
+    ],
+    "yahoo_summary": {
+      "condition": "曇のち雨",
+      "date_iso": "2026-11-02",
+      "date_label": "11月2日",
+      "precipitation_windows": [
+        {
+          "period": "0-6",
+          "precipitation_probability_pct": 0,
+          "raw": "0％"
+        },
+        {
+          "period": "6-12",
+          "precipitation_probability_pct": 20,
+          "raw": "20％"
+        },
+        {
+          "period": "12-18",
+          "precipitation_probability_pct": 80,
+          "raw": "80％"
+        },
+        {
+          "period": "18-24",
+          "precipitation_probability_pct": 20,
+          "raw": "20％"
+        }
+      ],
+      "temp_max_c": 22,
+      "temp_max_delta": "0",
+      "temp_min_c": 14,
+      "temp_min_delta": "0",
+      "wave": "0.5メートル後1.5メートル",
+      "weekday": "月",
+      "wind": "南西の風後北の風２３区西部では南西の風やや強く"
+    }
+  },
+  "tomorrow": {
+    "daily_summary": {
+      "condition": "Partly cloudy",
+      "date": "2026-11-03",
+      "rain_prob_max_pct": 6,
+      "rain_sum_mm": 0.0,
+      "temp_max_c": 19.0,
+      "temp_min_c": 13.0,
+      "weather_code": 2
+    },
+    "yahoo_summary": {}
+  }
+}

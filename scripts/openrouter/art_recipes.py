@@ -133,8 +133,11 @@ SUBJECT_POOL = [
      "motifs": ["leash"], "time": "any", "weather": "neutral"},
     {"name": "lantern_street", "subject": "paper lanterns strung over a street",
      "motifs": ["lanterns"], "time": "night", "weather": "neutral"},
+    # Issue #32: watering plants is an inherently dry-weather action.  Active
+    # rain makes the motif nonsensical, so this subject must not remain neutral
+    # and slip into a wet forecast's candidate pool.
     {"name": "gardener", "subject": "a gardener tending a few plants",
-     "motifs": ["watering can"], "time": "day", "weather": "neutral"},
+     "motifs": ["watering can"], "time": "day", "weather": "dry"},
     {"name": "sleeping_cat", "subject": "a cat asleep on a warm ledge",
      "motifs": ["tail"], "time": "any", "weather": "neutral"},
     {"name": "school_children", "subject": "children hurrying through a school gate",
@@ -1204,21 +1207,88 @@ _EXPLICIT_DRY_PHRASES = (
     "no need for umbrella",
 )
 
+# Issue #32: these phrases describe only a *part* of the hero's daytime window.
+# They are useful prose cues, but they cannot certify that the whole scene is
+# dry when structured hourly facts show later rain.
+_PARTIAL_DAY_DRY_PHRASES = (
+    "dry morning",
+    "dry afternoon",
+    "dry evening",
+    "dry night",
+)
+_WHOLE_DAY_DRY_PHRASES = tuple(
+    phrase for phrase in _EXPLICIT_DRY_PHRASES
+    if phrase not in _PARTIAL_DAY_DRY_PHRASES
+)
 
-def _is_wet(payload: dict[str, Any] | None) -> bool:
-    payload = payload or {}
-    daily = (payload.get("today") or {}).get("daily_summary") or {}
+
+def _scene_structured_weather(
+    payload: dict[str, Any] | None,
+) -> tuple[bool | None, bool]:
+    """Return ``(wet, has_evidence)`` for the hero's scene window.
+
+    Hourly rows inside the target day's daylight/display window are the most
+    precise evidence.  Only when no usable hourly rows exist do we fall back
+    to the whole-day summary.  The second item distinguishes a confirmed dry
+    window from missing weather data.
+    """
+    if not isinstance(payload, dict):
+        return None, False
+    today = payload.get("today")
+    if not isinstance(today, dict):
+        return None, False
+    daily = today.get("daily_summary")
+    if not isinstance(daily, dict):
+        daily = {}
+
+    scene_rows = _window_hourly_rows(payload, today.get("hourly"), daily)
+    if scene_rows:
+        return any(_row_is_wet(row) for row in scene_rows), True
+
+    # Backward-compatible fallback for archived/partial payloads without usable
+    # target-window hourly rows.
+    summary_keys = (
+        "condition", "weather_code", "rain_sum_mm", "rain_prob_max_pct",
+    )
+    if not any(key in daily for key in summary_keys):
+        return None, False
     condition = str(daily.get("condition") or "").lower()
     if any(word in condition for word in _WET_CONDITION_WORDS):
-        return True
-    code = daily.get("weather_code")
-    if isinstance(code, int) and code in _WET_WEATHER_CODES:
-        return True
-    # An explicit dry claim in the brief ("no rain", "stays dry") must not be
-    # read as wet just because of the ``rain`` substring.
-    if brief_declares_dry(payload):
+        return True, True
+    try:
+        code = int(daily.get("weather_code"))
+    except (TypeError, ValueError):
+        code = None
+    if code in _WET_WEATHER_CODES:
+        return True, True
+    try:
+        rain_mm = float(daily.get("rain_sum_mm") or 0.0)
+    except (TypeError, ValueError):
+        rain_mm = 0.0
+    if rain_mm > 0:
+        return True, True
+    try:
+        probability = int(daily.get("rain_prob_max_pct") or 0)
+    except (TypeError, ValueError):
+        probability = 0
+    return (code in _WET_WEATHER_CODES and probability >= 35), True
+
+
+def _is_wet(payload: dict[str, Any] | None) -> bool:
+    """Whether structured/direct weather evidence supports active rain.
+
+    This intentionally checks the hero's scene window first.  A whole-day dry
+    claim in the accepted brief still wins, but a partial phrase such as
+    "dry morning" is not allowed to hide supported afternoon rain.
+    """
+    payload = payload or {}
+    if _text_declares_whole_day_dry(brief_weather_text(payload)):
         return False
-    # Fall back to the transformed brief context when available.
+    structured_wet, has_evidence = _scene_structured_weather(payload)
+    if has_evidence:
+        return bool(structured_wet)
+    # Fall back to the transformed/context weather wording when no structured
+    # forecast facts are available.
     text = " ".join(
         str(value)
         for value in (
@@ -1249,22 +1319,43 @@ def brief_weather_text(payload: dict[str, Any] | None) -> str:
 
 
 def brief_declares_dry(payload: dict[str, Any] | None) -> bool:
-    """True when the accepted brief explicitly tells the user it stays dry."""
+    """True when dry wording covers the hero's relevant forecast window.
+
+    A whole-day claim (``no rain`` / ``stays dry``) is authoritative.  A
+    partial claim such as ``dry morning`` is checked against the structured
+    scene window so it cannot label a dry-then-rain day wholly dry.
+    """
     text = brief_weather_text(payload)
     if not text:
         return False
-    return any(phrase in text for phrase in _EXPLICIT_DRY_PHRASES)
+    if _text_declares_whole_day_dry(text):
+        return True
+    if _text_declares_partial_day_dry(text):
+        structured_wet, has_evidence = _scene_structured_weather(payload)
+        return has_evidence and not structured_wet
+    return False
 
 
 def _forecast_is_wet(payload: dict[str, Any] | None) -> bool:
     """Whether the accepted forecast/brief supports rain staging.
 
-    The brief's explicit dry meaning is authoritative: a "stays dry" / "no rain"
-    brief is never treated as wet, so rain-specific recipes stay ineligible.
+    The structured forecast for the hero's daylight/display window is the
+    primary source of truth.  Whole-day dry wording remains authoritative, but
+    partial wording ("dry morning") must not suppress supported later rain.
     """
-    if brief_declares_dry(payload):
+    text = brief_weather_text(payload)
+    if _text_declares_whole_day_dry(text):
         return False
-    return _is_wet(payload)
+    structured_wet, has_evidence = _scene_structured_weather(payload)
+    if has_evidence:
+        return bool(structured_wet)
+    # Backward-compatible lexical fallback for partial/archived payloads with
+    # no structured forecast facts.
+    if _is_wet(payload):
+        return True
+    return any(
+        _PRECIPITATION_CUE_RE.search(cue) for cue in _brief_weather_cues(text)
+    )
 
 
 _RECIPE_WET_KEYWORDS = (
@@ -1272,6 +1363,37 @@ _RECIPE_WET_KEYWORDS = (
     "puddle", "downpour", "raincoat", "gumboot", "waterproof",
 )
 _RECIPE_DRY_KEYWORDS = ("laundry", "bedsheet", "line-dried", "sun-dried")
+# Issue #32: some motifs describe an action that becomes physically nonsensical
+# in active rain even though the subject itself is not otherwise weather-bound.
+# Keep these separate from the general dry table and check them before wet
+# keywords so a free-text "watering can" recipe cannot be mislabelled wet just
+# because its scene also mentions rain.
+_RECIPE_DRY_ACTION_KEYWORDS = (
+    "watering can",
+    "watering plants",
+    "watering the plants",
+    "watering garden",
+    "watering the garden",
+    "watering flowers",
+    "watering the flowers",
+    "garden hose",
+    "hosepipe",
+    "hose pipe",
+    "sprinkler",
+    "irrigation",
+)
+
+
+def _phrase_start_pattern(keywords: tuple[str, ...]) -> re.Pattern[str]:
+    """Compile phrase-start matching that still accepts plural/inflected forms."""
+    return re.compile(
+        r"(?<!\w)(?:" + "|".join(re.escape(word) for word in keywords) + r")"
+    )
+
+
+_RECIPE_WET_RE = _phrase_start_pattern(_RECIPE_WET_KEYWORDS)
+_RECIPE_DRY_RE = _phrase_start_pattern(_RECIPE_DRY_KEYWORDS)
+_RECIPE_DRY_ACTION_RE = _phrase_start_pattern(_RECIPE_DRY_ACTION_KEYWORDS)
 
 
 def _subject_pool_weather(subject: Any) -> str | None:
@@ -1305,11 +1427,24 @@ def recipe_weather_class(recipe: Any) -> str:
     if isinstance(motifs, list):
         parts.extend(motifs)
     text = _norm_text(" ".join(str(part) for part in parts if part))
-    if any(keyword in text for keyword in _RECIPE_WET_KEYWORDS):
+    # Phrase-start matching avoids substring false positives such as "wet"
+    # inside "weather" (the issue #32 replay exposed this in fallback) while
+    # still accepting natural inflections such as "umbrellas".
+    if _RECIPE_DRY_ACTION_RE.search(text):
+        return "dry"
+    if _RECIPE_WET_RE.search(text):
         return "wet"
-    if any(keyword in text for keyword in _RECIPE_DRY_KEYWORDS):
+    if _RECIPE_DRY_RE.search(text):
         return "dry"
     return "neutral"
+
+
+def recipe_weather_compatible(recipe: Any, wet: bool) -> bool:
+    """True when recipe staging is allowed for a wet/dry forecast class."""
+    weather = recipe_weather_class(recipe)
+    if weather == "neutral":
+        return True
+    return weather == ("wet" if wet else "dry")
 
 
 def recipe_conflicts_with_brief(
@@ -1317,9 +1452,10 @@ def recipe_conflicts_with_brief(
 ) -> bool:
     """True when injecting ``recipe`` staging would contradict the forecast.
 
-    Rain-specific staging is invalid on a dry forecast and dry-only staging is
-    invalid on a wet one. Neutral recipes never conflict, and the accepted
-    brief's explicit dry claim always wins over a loose wet heuristic.
+    Rain-specific staging is invalid on a dry forecast and dry-only staging
+    (including action-specific staging such as outdoor watering) is invalid on
+    a wet one. Neutral recipes never conflict, and a whole-day dry claim in the
+    accepted brief remains authoritative.
     """
     weather = recipe_weather_class(recipe)
     if weather == "neutral":
@@ -1510,6 +1646,34 @@ def _has_negation_in_clause(scene: str, start: int) -> bool:
     return bool(_NEGATION_MARKER_RE.search(_bounded_clause_prefix(scene, start)))
 
 
+def _only_negated_precipitation(normalized: str) -> bool:
+    """True when every precipitation mention in ``normalized`` is negated."""
+    precipitation_matches = list(_PRECIPITATION_CUE_RE.finditer(normalized))
+    return bool(precipitation_matches) and all(
+        _cue_is_negated(normalized, match) for match in precipitation_matches
+    )
+
+
+def _text_declares_partial_day_dry(text: str | None) -> bool:
+    """True when prose describes only a dry part of the hero's window."""
+    normalized = _norm_text(text)
+    return bool(normalized) and any(
+        phrase in normalized for phrase in _PARTIAL_DAY_DRY_PHRASES
+    )
+
+
+def _text_declares_whole_day_dry(text: str | None) -> bool:
+    """True when prose claims the whole relevant forecast window stays dry."""
+    normalized = _norm_text(text)
+    if not normalized:
+        return False
+    if any(phrase in normalized for phrase in _WHOLE_DAY_DRY_PHRASES):
+        return True
+    # "without suggesting rain" and similar negation-only directions are
+    # whole-scene dry claims even though they contain a precipitation token.
+    return _only_negated_precipitation(normalized)
+
+
 def _text_declares_dry(text: str | None) -> bool:
     """True when weather prose explicitly says the relevant scene stays dry.
 
@@ -1523,10 +1687,7 @@ def _text_declares_dry(text: str | None) -> bool:
         return False
     if any(phrase in normalized for phrase in _EXPLICIT_DRY_PHRASES):
         return True
-    precipitation_matches = list(_PRECIPITATION_CUE_RE.finditer(normalized))
-    return bool(precipitation_matches) and all(
-        _cue_is_negated(normalized, match) for match in precipitation_matches
-    )
+    return _only_negated_precipitation(normalized)
 
 
 def _cue_is_negated(scene: str, match: re.Match[str]) -> bool:
@@ -1759,9 +1920,15 @@ def synthesize_recipe_scene(
     dimensions = recipe_scene_dimensions(recipe)
     if not dimensions["complete"]:
         return None
+    if forecast is not None and recipe_conflicts_with_brief(recipe, forecast):
+        # The accepted brief's original scene is safer than forcing a recipe
+        # whose weather class contradicts the forecast.  In particular, do not
+        # stage outdoor watering in authoritative rain.
+        return None
     brief_cues = _brief_weather_cues(brief_scene)
     forecast_cues = _forecast_weather_cues(forecast)
     brief_declares_dry = _text_declares_dry(brief_scene)
+    brief_whole_day_dry = _text_declares_whole_day_dry(brief_scene)
     brief_has_precipitation = any(
         _PRECIPITATION_CUE_RE.search(cue) for cue in brief_cues
     )
@@ -1790,15 +1957,33 @@ def synthesize_recipe_scene(
         forecast_cues = [
             cue for cue in forecast_cues if cue.lower() != "dry conditions"
         ]
-    elif brief_declares_dry:
+    elif brief_declares_dry and (
+        brief_whole_day_dry or not forecast_has_precipitation
+    ):
         # Issue #24: "mostly dry" / "no rain" is an explicit semantic claim.
         # A whole-day condition such as "Light drizzle" (or a trace outside the
-        # daylight window) must not turn the authoritative scene wet.
+        # daylight window) must not turn the authoritative scene wet.  Issue
+        # #32: a partial phrase such as "dry morning" must not strip supported
+        # later rain from the hero's scene window.
         forecast_cues = [
             cue for cue in forecast_cues
             if not _PRECIPITATION_CUE_RE.search(cue)
         ]
+    if forecast_has_precipitation and not brief_whole_day_dry:
+        # "Dry morning" can coexist with afternoon rain, but the authoritative
+        # hero is the rainy window; a generic dry marker would contradict it.
+        brief_cues = [
+            cue for cue in brief_cues if cue.lower() != "dry conditions"
+        ]
     cues = _dedupe_cues(brief_cues + forecast_cues)
+    recipe_weather = recipe_weather_class(recipe)
+    has_active_precipitation = any(
+        _PRECIPITATION_CUE_RE.search(cue) for cue in cues
+    )
+    if recipe_weather == "dry" and has_active_precipitation:
+        return None
+    if recipe_weather == "wet" and brief_whole_day_dry and not has_active_precipitation:
+        return None
     if not any("daylight" in cue.lower() for cue in cues):
         cues.append("daylight")
     lines = [recipe_directive(recipe)]
@@ -1848,15 +2033,20 @@ def _score_candidate(
 
 
 def _fallback_candidate(
-    candidates: list[dict[str, Any]], recent: list[dict[str, Any]]
+    candidates: list[dict[str, Any]],
+    recent: list[dict[str, Any]],
+    *,
+    wet: bool | None = None,
 ) -> dict[str, Any] | None:
     """Pick the most-different compatible recipe rather than blocking an update."""
-    # Keep the constraint at the fallback boundary too.  Normal selection gets
-    # this filtering from ``build_candidates``; callers/tests that supply a
-    # candidate list directly must not be able to reintroduce a known-bad pair.
+    # Keep both compatibility constraints at the fallback boundary too.  Normal
+    # selection gets this filtering from ``build_candidates``; callers/tests
+    # that supply a candidate list directly must not be able to reintroduce a
+    # known-bad scene or a recipe whose weather class contradicts the forecast.
     compatible = [
         candidate for candidate in candidates
         if recipe_scene_is_compatible(candidate)
+        and (wet is None or recipe_weather_compatible(candidate, wet))
     ]
     if not compatible:
         return None
@@ -1901,6 +2091,7 @@ def choose_recipe(
         candidate
         for candidate in build_candidates(daypart_role=daypart_role, wet=forecast_wet)
         if recipe_scene_is_compatible(candidate)
+        and recipe_weather_compatible(candidate, forecast_wet)
     ]
     if not candidates:
         # No weather-compatible subject exists: return ``None`` so the caller
@@ -1913,6 +2104,8 @@ def choose_recipe(
 
     eligible: list[dict[str, Any]] = []
     for candidate in candidates:
+        if not recipe_weather_compatible(candidate, forecast_wet):
+            continue
         if _in_cooldown(candidate, cooldown):
             continue
         if recent and not passes_two_dimension_rule(candidate, recent[-1], policy):
@@ -1932,7 +2125,7 @@ def choose_recipe(
             f"the latest publication"
         )
     else:
-        chosen = _fallback_candidate(candidates, recent)
+        chosen = _fallback_candidate(candidates, recent, wet=forecast_wet)
         if chosen is None:
             return None
         status = "variety_exhausted"

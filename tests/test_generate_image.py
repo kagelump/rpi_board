@@ -1700,3 +1700,108 @@ def test_same_day_locked_archived_balcony_path_is_audit_only(
         "suppressed_incompatible_scene"
     )
     assert state_after["art_recipe_realization"]["used_for_hero"] is False
+
+
+# ---------------------------------------------------------------------------
+# Issue #32: locked outdoor-watering recipe must not survive active rain
+# ---------------------------------------------------------------------------
+
+
+ARCHIVED_ISSUE32_FIXTURE = (
+    ROOT / "tests" / "fixtures" / "issue32_archived_nov2_brief.json"
+)
+
+
+def _archived_issue32_payload():
+    return json.loads(ARCHIVED_ISSUE32_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _watering_can_recipe():
+    return {
+        "status": "selected",
+        "recipe_id": "d2666a717fa9e3ec2a29",
+        "forecast_weather": "dry",
+        "recipe_weather": "neutral",
+        "tags": {
+            "subject": "gardener",
+            "subject_text": "a gardener tending a few plants",
+            "motif": "watering can",
+            "motifs": ["watering can"],
+            "setting": "harbor_edge",
+            "setting_text": "a harbor edge with stacked crates",
+            "viewpoint": "flat_frontal",
+            "viewpoint_text": "flat frontal view",
+            "composition": "tiny_focal",
+            "composition_text": (
+                "tiny focal subject surrounded by purposeful negative space"
+            ),
+        },
+    }
+
+
+def _write_archived_issue32_brief(settings):
+    payload = _archived_issue32_payload()
+    with open(settings["runtime"]["brief_file"], "w", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+    return payload
+
+
+def test_inject_style_prompt_suppresses_watering_recipe_on_active_rain():
+    payload = _archived_issue32_payload()
+    template = (
+        ROOT / "config/prompt_templates/weather_image.txt"
+    ).read_text(encoding="utf-8")
+
+    prompt = _inject_style_prompt(
+        template,
+        payload["brief"]["illustration_prompt"],
+        ART_STYLE_POOL[0],
+        PALETTE_STRATEGY_POOL[0],
+        recipe=_watering_can_recipe(),
+        forecast=payload,
+    )
+
+    lowered = prompt.lower()
+    assert "artwork recipe for this forecast day" not in lowered
+    assert "watering can" not in lowered
+    assert "gardener" not in lowered
+    # The accepted brief's rainy scene still drives the picture.
+    assert "raindrops" in lowered
+    assert "rain gathering" in lowered
+
+
+def test_same_day_locked_watering_recipe_is_audit_only(
+        monkeypatch, tmp_path):
+    settings = _issue21_settings(tmp_path)
+    _write_archived_issue32_brief(settings)
+    _lock_recipe(
+        settings, _watering_can_recipe(), target_date="2026-11-02"
+    )
+
+    captured = {}
+    _accept_generation(monkeypatch, captured)
+    logs = []
+    _run_main(monkeypatch, settings, logs)
+
+    lowered = captured["prompt"].lower()
+    assert "watering can" not in lowered
+    assert "gardener" not in lowered
+    assert "raindrops" in lowered
+    assert any(log["event_type"] == "art_recipe_locked" for log in logs)
+
+    suppressed = [
+        log for log in logs if log["event_type"] == "art_recipe_suppressed"
+    ]
+    assert len(suppressed) == 1
+    assert suppressed[0]["data"]["suppression_reason"] == "weather_conflict"
+    assert suppressed[0]["data"]["forecast_weather"] == "wet"
+    assert suppressed[0]["data"]["used_for_hero"] is False
+
+    state_after = json.loads(_state_path(settings).read_text(encoding="utf-8"))
+    assert state_after["art_recipe"]["tags"]["subject"] == "gardener"
+    assert state_after["art_recipe_used"] is None
+    assert state_after["art_recipe_suppressed"] is True
+    assert state_after["art_recipe_realization"]["status"] == (
+        "suppressed_forecast_conflict"
+    )
+    assert state_after["art_recipe_realization"]["used_for_hero"] is False
